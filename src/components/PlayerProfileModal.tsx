@@ -1,0 +1,265 @@
+import React from 'react';
+import { UserProfile, Award, CharacterSheet } from '../types';
+import { AvatarWithFrame } from './AvatarWithFrame';
+import { ProfileAnimatedTheme } from './ProfileAnimatedTheme';
+import { Award as AwardIcon, Sparkles, Shield, Coins, Calendar, X, ExternalLink } from 'lucide-react';
+
+interface PlayerProfileModalProps {
+  user: UserProfile | null;
+  awards: Award[];
+  characters: CharacterSheet[];
+  currentUser: UserProfile;
+  isAdmin: boolean;
+  onClose: () => void;
+  onSelectCharacter?: (char: CharacterSheet) => void;
+  onQuickGrantMoney?: (userId: string, amount: number) => void;
+}
+
+export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
+  user,
+  awards,
+  characters,
+  currentUser,
+  isAdmin,
+  onClose,
+  onSelectCharacter,
+  onQuickGrantMoney
+}) => {
+  if (!user) return null;
+
+  const userAwards = awards.filter(a => a.recipientUsername.toLowerCase() === user.username.toLowerCase());
+  const userCharacters = characters.filter(c => c.creatorTelegram.toLowerCase() === user.username.toLowerCase());
+  const isBlackTreeTheme = user.activeThemeId === 'black_tree';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/80 backdrop-blur-md animate-fade-in overflow-y-auto">
+      <div className="relative w-full max-w-xl max-h-[92vh] overflow-y-auto rounded-3xl bg-zinc-950 border border-zinc-800 shadow-2xl text-zinc-100 flex flex-col">
+        {/* Close Button */}
+        <button
+          onClick={onClose}
+          className="absolute top-3.5 right-3.5 z-20 w-8 h-8 rounded-full bg-zinc-900/80 hover:bg-zinc-800 border border-zinc-700/80 flex items-center justify-center text-zinc-300 hover:text-white transition"
+        >
+          <X className="w-4 h-4" />
+        </button>
+
+        {/* Top Profile Card with Applied Theme & Cosmetics */}
+        <div className={`relative p-6 rounded-t-3xl overflow-hidden ${user.activeTextBg || 'bg-gradient-to-b from-zinc-900 to-zinc-950 border-b border-zinc-800'}`}>
+          <ProfileAnimatedTheme themeId={user.activeThemeId || 'default'} />
+
+          <div className="relative z-10 flex flex-col sm:flex-row items-center sm:items-start gap-4">
+            {/* Avatar */}
+            <div className="relative">
+              <AvatarWithFrame
+                avatarUrl={user.avatarUrl}
+                frameId={user.activeAvatarFrame}
+                size="lg"
+              />
+              {user.username === '@MrWhitePio' && (
+                <div className="absolute -bottom-2 -right-2 px-1.5 py-0.5 rounded-md bg-amber-500 text-black font-extrabold text-[10px] tracking-wide shadow flex items-center gap-1 z-20">
+                  <Shield className="w-2.5 h-2.5" /> OWNER
+                </div>
+              )}
+            </div>
+
+            {/* User Meta with Applied Custom Text Style */}
+            <div className="flex-1 text-center sm:text-left">
+              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                <h3 className={`text-xl font-bold font-heading ${user.activeTextColor || 'text-white'}`}>
+                  {user.displayName}
+                </h3>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-zinc-800/80 text-zinc-400 font-mono-pip border border-zinc-700/60">
+                  {user.username}
+                </span>
+              </div>
+
+              {user.bio && (
+                <p className="mt-2 text-xs text-zinc-300 leading-relaxed italic max-w-md">
+                  "{user.bio}"
+                </p>
+              )}
+
+              {/* Balance & Date */}
+              <div className="mt-3 flex flex-wrap items-center justify-center sm:justify-start gap-3 text-xs">
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 font-mono-pip font-bold">
+                  <Coins className="w-3.5 h-3.5 text-amber-400" />
+                  <span>
+                    {user.isInfiniteEquivaxes || user.username === '@MrWhitePio' ? '∞' : user.equivaxes.toLocaleString()} ℰQ
+                  </span>
+                </div>
+                <div className="flex items-center gap-1 text-zinc-400 text-[11px]">
+                  <Calendar className="w-3 h-3" />
+                  <span>В Пустоши с {new Date(user.joinedAt).toLocaleDateString()}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Admin Money Buttons */}
+          {isAdmin && onQuickGrantMoney && (
+            <div className="relative z-10 mt-4 pt-3 border-t border-zinc-700/50 flex flex-wrap items-center justify-between gap-2">
+              <span className="text-[11px] font-mono-pip text-amber-400 font-semibold">
+                ⚙️ Панель управления сталкером:
+              </span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => onQuickGrantMoney(user.id, 50)}
+                  className="px-2 py-1 rounded bg-amber-600/30 hover:bg-amber-600/50 text-amber-300 text-xs font-mono font-bold border border-amber-500/40"
+                >
+                  +50 ℰQ
+                </button>
+                <button
+                  onClick={() => onQuickGrantMoney(user.id, 200)}
+                  className="px-2 py-1 rounded bg-amber-600/30 hover:bg-amber-600/50 text-amber-300 text-xs font-mono font-bold border border-amber-500/40"
+                >
+                  +200 ℰQ
+                </button>
+                <button
+                  onClick={() => onQuickGrantMoney(user.id, 1000)}
+                  className="px-2 py-1 rounded bg-amber-500 hover:bg-amber-400 text-black text-xs font-mono font-bold shadow"
+                >
+                  +1,000 ℰQ
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Modal Body */}
+        <div className="p-5 space-y-6">
+          {/* Stats Bar */}
+          <div className="grid grid-cols-3 gap-2">
+            <div className="p-3 rounded-2xl bg-zinc-900/60 border border-zinc-800 text-center">
+              <div className="text-xl font-bold font-mono-pip text-amber-400">{user.eventsAttended}</div>
+              <div className="text-[10px] text-zinc-400 uppercase tracking-wider font-semibold">Ивентов</div>
+            </div>
+            <div className="p-3 rounded-2xl bg-zinc-900/60 border border-zinc-800 text-center">
+              <div className="text-xl font-bold font-mono-pip text-cyan-400">{user.plannedRpsAttended}</div>
+              <div className="text-[10px] text-zinc-400 uppercase tracking-wider font-semibold">РП-Сессий</div>
+            </div>
+            <div className="p-3 rounded-2xl bg-zinc-900/60 border border-zinc-800 text-center">
+              <div className="text-xl font-bold font-mono-pip text-emerald-400">{userCharacters.length}</div>
+              <div className="text-[10px] text-zinc-400 uppercase tracking-wider font-semibold">Анкет</div>
+            </div>
+          </div>
+
+          {/* Awards Section («ЗАСЛУГИ») */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <AwardIcon className="w-4 h-4 text-cyan-400" />
+              <h4 className="text-sm font-bold tracking-wider uppercase shimmer-neon-text font-heading">
+                ✦ ЗАСЛУГИ И ОРДЕНА ✦
+              </h4>
+              <span className="text-xs text-zinc-400 font-mono-pip">({userAwards.length})</span>
+            </div>
+
+            {userAwards.length === 0 ? (
+              <div className="p-4 rounded-xl bg-zinc-900/40 border border-dashed border-zinc-800 text-center text-xs text-zinc-500">
+                У сталкера пока нет врученных наград.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {userAwards.map(award => (
+                  <div
+                    key={award.id}
+                    className={`p-3.5 rounded-2xl border bg-gradient-to-br ${award.cardBg} transition-all duration-300 hover:scale-[1.02] shadow-md`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="text-2xl filter drop-shadow-[0_0_8px_rgba(255,255,255,0.4)]">
+                        {award.icon}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className={`text-xs font-bold font-heading truncate ${award.titleColor}`}>
+                          {award.title}
+                        </div>
+                        <p className={`text-[11px] mt-1 leading-snug line-clamp-3 ${award.textColor}`}>
+                          {award.description}
+                        </p>
+                        <div className="mt-2 text-[9px] text-zinc-400 font-mono-pip flex justify-between">
+                          <span>От: {award.awardedBy}</span>
+                          <span>{new Date(award.awardedAt).toLocaleDateString()}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* User Characters */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-amber-400" />
+                <h4 className="text-sm font-bold uppercase tracking-wider font-heading text-zinc-200">
+                  Анкеты персонажей ({userCharacters.length})
+                </h4>
+              </div>
+            </div>
+
+            {userCharacters.length === 0 ? (
+              <div className="p-4 rounded-xl bg-zinc-900/40 border border-dashed border-zinc-800 text-center text-xs text-zinc-500">
+                Персонажи ещё не созданы.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {userCharacters.map(char => (
+                  <div
+                    key={char.id}
+                    onClick={() => onSelectCharacter && onSelectCharacter(char)}
+                    className="p-3 rounded-2xl bg-zinc-900/70 hover:bg-zinc-800/80 border border-zinc-800 flex items-center justify-between gap-3 cursor-pointer transition"
+                  >
+                    <div className="flex items-center gap-3">
+                      <img
+                        src={char.avatarIcon || char.photoUrl}
+                        alt={char.name}
+                        className="w-10 h-10 rounded-xl object-cover border border-amber-500/40"
+                      />
+                      <div>
+                        <div className="text-xs font-bold text-amber-300 font-heading">
+                          {char.name} {char.surname !== '—' ? char.surname : ''} {char.nickname && `«${char.nickname}»`}
+                        </div>
+                        <div className="text-[10px] text-zinc-400 font-mono-pip">
+                          {char.race} • {char.faction} • {char.age}
+                        </div>
+                      </div>
+                    </div>
+                    <span className="text-xs text-amber-400 flex items-center gap-1 font-mono-pip">
+                      Анкета <ExternalLink className="w-3 h-3" />
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* User Inventory Preview */}
+          {user.inventory && user.inventory.length > 0 && (
+            <div>
+              <h4 className="text-sm font-bold uppercase tracking-wider font-heading text-zinc-200 mb-3">
+                Инвентарь ({user.inventory.length})
+              </h4>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {user.inventory.map(item => (
+                  <div
+                    key={item.id}
+                    className={`p-2.5 rounded-xl border bg-gradient-to-br ${item.bgStyle} flex flex-col items-center text-center`}
+                  >
+                    <img
+                      src={item.photoUrl}
+                      alt={item.name}
+                      className="w-12 h-12 object-contain rounded-lg drop-shadow"
+                    />
+                    <span className={`text-[11px] mt-1.5 line-clamp-1 ${item.textStyle}`}>
+                      {item.name}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
