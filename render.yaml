@@ -8,5 +8,7 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: APP_URL
+        value: https://dusttown-rp-render-6.onrender.com/?view=miniapp
       - key: TELEGRAM_BOT_TOKEN
         sync: false
