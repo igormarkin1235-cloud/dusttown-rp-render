@@ -13,7 +13,6 @@ import {
   Sparkles,
   Download,
   Check,
-  Copy,
   FileArchive,
   Globe,
   Server,
@@ -29,12 +28,11 @@ export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp 
   const [botInfo, setBotInfo] = useState<any>(null);
   const [logs, setLogs] = useState<Array<{ id: string; time: string; type: string; text: string }>>([
     { id: '1', time: '12:00:00', type: 'info', text: 'Сервер DustTown RP запущен' },
-    { id: '2', time: '12:00:01', type: 'info', text: 'Telegram Long-Polling активен' }
+    { id: '2', time: '12:00:01', type: 'info', text: 'Панель управления Telegram-ботом готова' }
   ]);
-  const [tokenMasked, setTokenMasked] = useState('не задан');
+  const [tokenConfigured, setTokenConfigured] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadDone, setDownloadDone] = useState(false);
-  const [copiedToken, setCopiedToken] = useState(false);
 
   const [chatMessages, setChatMessages] = useState<Array<{ id: string; sender: 'user' | 'bot'; text: string; buttons?: any[] }>>([
     {
@@ -62,7 +60,7 @@ export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp 
       if (res.ok) {
         const data = await res.json();
         setIsPolling(data.isPolling);
-        setTokenMasked(data.tokenMasked || 'не задан');
+        setTokenConfigured(Boolean(data.tokenConfigured));
         if (data.botInfo) setBotInfo(data.botInfo);
         if (Array.isArray(data.logs) && data.logs.length > 0) setLogs(data.logs);
       }
@@ -91,65 +89,20 @@ export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp 
     }
   };
 
-  const [downloadError, setDownloadError] = useState<string | null>(null);
-
-  const handleDownloadZip = async () => {
+  const handleDownloadZip = () => {
     setIsDownloading(true);
-    setDownloadError(null);
-    try {
-      // 1. Try to fetch base64 from server for 100% reliable binary blob generation
-      const res = await fetch('/api/get-zip-base64');
-      if (res.ok) {
-        const data = await res.json();
-        if (data.base64) {
-          const byteCharacters = atob(data.base64);
-          const byteNumbers = new Uint8Array(byteCharacters.length);
-          for (let i = 0; i < byteCharacters.length; i++) {
-            byteNumbers[i] = byteCharacters.charCodeAt(i);
-          }
-          const blob = new Blob([byteNumbers], { type: 'application/zip' });
-          const blobUrl = window.URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          link.href = blobUrl;
-          link.setAttribute('download', 'dusttown-rp-render.zip');
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          setTimeout(() => window.URL.revokeObjectURL(blobUrl), 3000);
+    const link = document.createElement('a');
+    link.href = '/api/download-render-zip';
+    link.download = 'dusttown-rp-render.zip';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 
-          setDownloadDone(true);
-          setTimeout(() => setDownloadDone(false), 5000);
-          return;
-        }
-      }
-
-      // Fallback: standard binary fetch
-      const fallbackRes = await fetch('/api/download-render-zip');
-      if (!fallbackRes.ok) throw new Error('Не удалось получить архив от сервера');
-      const blob = await fallbackRes.blob();
-      const blobUrl = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      link.setAttribute('download', 'dusttown-rp-render.zip');
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      setTimeout(() => window.URL.revokeObjectURL(blobUrl), 3000);
-
+    setTimeout(() => {
+      setIsDownloading(false);
       setDownloadDone(true);
       setTimeout(() => setDownloadDone(false), 5000);
-    } catch (err: any) {
-      console.error('Download error:', err);
-      setDownloadError(err?.message || 'Ошибка загрузки');
-    } finally {
-      setIsDownloading(false);
-    }
-  };
-
-  const handleCopyToken = () => {
-    navigator.clipboard.writeText('TELEGRAM_BOT_TOKEN');
-    setCopiedToken(true);
-    setTimeout(() => setCopiedToken(false), 3000);
+    }, 1200);
   };
 
   const handleSendMessage = (textToSend?: string) => {
@@ -223,7 +176,7 @@ export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp 
                 </span>
               </div>
               <p className="text-xs text-zinc-400 font-mono-pip mt-0.5">
-                DustTown RP Bot • Токен: {tokenMasked}
+                DustTown RP Bot • Токен: {tokenConfigured ? 'настроен' : 'не настроен'}
               </p>
             </div>
           </div>
@@ -342,12 +295,12 @@ export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp 
             </div>
           </div>
 
-          {/* Big Download Button & Direct Fallback */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+          {/* Big Download Button */}
+          <div className="flex items-center gap-2 w-full sm:w-auto">
             <button
               onClick={handleDownloadZip}
               disabled={isDownloading}
-              className={`px-6 py-3 rounded-2xl font-heading font-black text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-xl ${
+              className={`w-full sm:w-auto px-6 py-3 rounded-2xl font-heading font-black text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-xl ${
                 downloadDone
                   ? 'bg-emerald-500 text-black shadow-emerald-950/50'
                   : 'bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-600 hover:from-indigo-400 hover:to-purple-500 text-white shadow-indigo-950/50 hover:scale-[1.02]'
@@ -356,32 +309,20 @@ export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp 
               {downloadDone ? (
                 <>
                   <Check className="w-4 h-4" />
-                  <span>Архив (.ZIP) скачан!</span>
+                  <span>Архив успешно скачан!</span>
                 </>
               ) : isDownloading ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span>Формирование Blob (.ZIP)...</span>
+                  <span>Формирование архива...</span>
                 </>
               ) : (
                 <>
                   <FileArchive className="w-4 h-4" />
-                  <span>Скачать архив (.ZIP)</span>
+                  <span>Скачать все файлы для Render (.ZIP)</span>
                 </>
               )}
             </button>
-
-            <a
-              href="/api/download-render-zip"
-              target="_blank"
-              rel="noopener noreferrer"
-              download="dusttown-rp-render.zip"
-              className="px-4 py-3 rounded-2xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-700 transition flex items-center justify-center gap-1.5 text-xs font-mono-pip"
-              title="Открыть прямое скачивание в отдельной вкладке (без iframe)"
-            >
-              <ExternalLink className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Прямая ссылка</span>
-            </a>
 
             <a
               href="https://dashboard.render.com/select-repo?type=web"
@@ -392,24 +333,6 @@ export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp 
             >
               <ExternalLink className="w-4 h-4" />
             </a>
-          </div>
-        </div>
-
-        {downloadError && (
-          <div className="p-3 rounded-xl bg-red-950/80 border border-red-500/50 text-xs text-red-200 flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0" />
-            <span>Ошибка скачивания: {downloadError}. Попробуйте кнопку «Прямая ссылка» рядом или встроенный экспорт Google AI Studio.</span>
-          </div>
-        )}
-
-        {/* AI Studio Built-in Export Notice */}
-        <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-2.5 text-xs">
-          <Sparkles className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
-          <div className="text-zinc-300 leading-relaxed">
-            <strong className="text-amber-300 font-bold">Самый надёжный способ (Встроенный в Google AI Studio):</strong>{' '}
-            В самом верху справа экрана AI Studio нажмите на кнопку со значком экспорта{' '}
-            <span className="px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700 text-amber-300 font-mono">Export / GitHub</span>.
-            Там можно в 1 клик выгрузить чистый ZIP-архив проекта или отправить проект напрямую в ваш репозиторий GitHub без скачивания на диск!
           </div>
         </div>
 
@@ -468,30 +391,14 @@ export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp 
           </div>
         </div>
 
-        {/* Ready Environment Variables Snippet */}
+        {/* Environment Variables */}
         <div className="p-4 rounded-2xl bg-black/60 border border-zinc-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs font-mono-pip relative z-10">
           <div className="space-y-1">
             <span className="text-zinc-500 uppercase text-[10px]">Переменная окружения для Render (Environment Variables):</span>
             <div className="text-zinc-200 font-bold">
-              <span className="text-indigo-400">TELEGRAM_BOT_TOKEN</span> = <span className="text-amber-300">задайте приватно в Render</span>
+              <span className="text-indigo-400">TELEGRAM_BOT_TOKEN</span> = задайте секрет в настройках Render
             </div>
           </div>
-          <button
-            onClick={handleCopyToken}
-            className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 flex items-center gap-1.5 transition text-[11px]"
-          >
-            {copiedToken ? (
-              <>
-                <Check className="w-3.5 h-3.5 text-emerald-400" />
-                <span className="text-emerald-400 font-bold">Скопировано!</span>
-              </>
-            ) : (
-              <>
-                <Copy className="w-3.5 h-3.5 text-zinc-400" />
-                <span>Скопировать имя переменной</span>
-              </>
-            )}
-          </button>
         </div>
       </div>
 

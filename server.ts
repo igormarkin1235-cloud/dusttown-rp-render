@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
@@ -10,7 +11,11 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+if (!TELEGRAM_BOT_TOKEN) {
+  throw new Error('TELEGRAM_BOT_TOKEN is required. Set it in the environment or .env file.');
+}
+const APP_URL = process.env.APP_URL || process.env.RENDER_EXTERNAL_URL || 'https://t.me/DustTown_RP_bot/app';
 
 app.use(express.json({ limit: '10mb' }));
 
@@ -58,12 +63,6 @@ async function tgApi(method: string, body?: any) {
 let lastUpdateId = 0;
 
 async function startTelegramPolling() {
-  if (!TELEGRAM_BOT_TOKEN) {
-    lastBotError = 'TELEGRAM_BOT_TOKEN не задан';
-    addBotLog('error', lastBotError);
-    return;
-  }
-
   if (pollingAbortController) {
     pollingAbortController.abort();
   }
@@ -130,7 +129,7 @@ async function handleTelegramUpdate(update: any) {
 
   addBotLog('message', `[${userTag}]: ${text}`);
 
-  const appUrl = process.env.APP_URL || 'https://t.me/DustTown_RP_bot/app';
+  const appUrl = APP_URL;
 
   if (text.startsWith('/start')) {
     const welcomeText = `👋 Добро пожаловать в **DustTown RP** (Fallout: Equestria)!
@@ -196,10 +195,8 @@ app.get('/api/bot/status', (req, res) => {
     botInfo,
     logs: botLogs,
     lastError: lastBotError,
-    tokenMasked: TELEGRAM_BOT_TOKEN
-      ? `${TELEGRAM_BOT_TOKEN.substring(0, 10)}...${TELEGRAM_BOT_TOKEN.substring(TELEGRAM_BOT_TOKEN.length - 6)}`
-      : 'не задан',
-    appUrl: process.env.APP_URL || ''
+    tokenConfigured: Boolean(TELEGRAM_BOT_TOKEN),
+    appUrl: APP_URL
   });
 });
 
@@ -226,37 +223,10 @@ app.get('/api/download-render-zip', (req, res) => {
       return res.status(500).json({ error: 'Failed to generate zip file' });
     }
 
-    const stat = fs.statSync(zipPath);
-    res.setHeader('Content-Type', 'application/octet-stream');
-    res.setHeader('Content-Length', stat.size);
+    res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', 'attachment; filename="dusttown-rp-render.zip"');
     const fileStream = fs.createReadStream(zipPath);
     fileStream.pipe(res);
-  });
-});
-
-app.get('/api/get-zip-base64', (req, res) => {
-  const scriptPath = path.join(__dirname, 'scripts', 'make_zip.py');
-  const zipPath = path.join(__dirname, 'dusttown-rp-render.zip');
-
-  exec(`python3 "${scriptPath}"`, (err, stdout, stderr) => {
-    if (err || !fs.existsSync(zipPath)) {
-      console.error('Failed to create zip:', err || stderr);
-      return res.status(500).json({ error: 'Failed to generate zip file' });
-    }
-
-    try {
-      const buffer = fs.readFileSync(zipPath);
-      res.json({
-        success: true,
-        filename: 'dusttown-rp-render.zip',
-        size: buffer.length,
-        base64: buffer.toString('base64')
-      });
-    } catch (readErr) {
-      console.error('Error reading zip:', readErr);
-      res.status(500).json({ error: 'Error reading zip file' });
-    }
   });
 });
 

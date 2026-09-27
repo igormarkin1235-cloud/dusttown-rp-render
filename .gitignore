@@ -1,6 +1,10 @@
 node_modules/
+build/
 dist/
-firebase-debug.log
-test.zip
-dusttown-rp-render.zip
+coverage/
+.DS_Store
+*.log
+*.zip
 .dusttown_data.json
+.env*
+!.env.example

@@ -10,7 +10,11 @@ with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
         # Prune excluded directories
         dirs[:] = [d for d in dirs if d not in exclude_dirs and not d.startswith('.')]
         for file in files:
-            if file in exclude_files or file.endswith('.pyc'):
+            if (
+                file in exclude_files
+                or file.endswith(('.pyc', '.log', '.zip'))
+                or (file.startswith('.env') and file != '.env.example')
+            ):
                 continue
             full_path = os.path.join(root, file)
             rel_path = os.path.relpath(full_path, '.')
