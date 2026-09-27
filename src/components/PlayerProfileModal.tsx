@@ -2,7 +2,7 @@ import React from 'react';
 import { UserProfile, Award, CharacterSheet, AdminInfo } from '../types';
 import { AvatarWithFrame } from './AvatarWithFrame';
 import { ProfileAnimatedTheme } from './ProfileAnimatedTheme';
-import { Award as AwardIcon, Sparkles, Shield, Coins, Calendar, X, ExternalLink, Crown, UserCheck, UserX } from 'lucide-react';
+import { Award as AwardIcon, Sparkles, Shield, Coins, Calendar, X, ExternalLink, Crown, UserCheck, UserX, History } from 'lucide-react';
 
 interface PlayerProfileModalProps {
   user: UserProfile | null;
@@ -97,10 +97,20 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
 
               {/* Balance & Date */}
               <div className="mt-3 flex flex-wrap items-center justify-center sm:justify-start gap-3 text-xs">
-                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 font-mono-pip font-bold">
-                  <Coins className="w-3.5 h-3.5 text-amber-400" />
+                <div
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border font-mono-pip font-bold ${
+                    user.equivaxes < 0
+                      ? 'bg-rose-950/80 border-rose-500/80 text-rose-300'
+                      : 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+                  }`}
+                >
+                  <Coins className={`w-3.5 h-3.5 ${user.equivaxes < 0 ? 'text-rose-400 animate-pulse' : 'text-amber-400'}`} />
                   <span>
-                    {user.isInfiniteEquivaxes || isOwner ? '∞' : user.equivaxes.toLocaleString()} ℰQ
+                    {user.isInfiniteEquivaxes || isOwner
+                      ? '∞ ℰQ'
+                      : user.equivaxes < 0
+                      ? `ДОЛГ: ${user.equivaxes.toLocaleString()} ℰQ`
+                      : `${user.equivaxes.toLocaleString()} ℰQ`}
                   </span>
                 </div>
                 <div className="flex items-center gap-1 text-zinc-400 text-[11px]">
@@ -390,6 +400,58 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                     </span>
                   </div>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* User Recent Transactions Log */}
+          {user.transactions && user.transactions.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <History className="w-4 h-4 text-amber-400" />
+                  <h4 className="text-sm font-bold uppercase tracking-wider font-heading text-zinc-200">
+                    История операций ℰQ
+                  </h4>
+                </div>
+                <span className="text-[10px] font-mono-pip text-zinc-500">
+                  {user.transactions.length} операций
+                </span>
+              </div>
+
+              <div className="space-y-1.5">
+                {user.transactions.slice(0, 4).map(tx => {
+                  const isPositive = tx.amount > 0;
+                  return (
+                    <div
+                      key={tx.id}
+                      className="p-2.5 rounded-xl bg-zinc-900/60 border border-zinc-800 flex items-center justify-between gap-3 text-xs"
+                    >
+                      <div className="min-w-0">
+                        <div className="font-heading font-bold text-zinc-200 truncate">
+                          {tx.title}
+                        </div>
+                        <div className="text-[10px] text-zinc-500 font-mono-pip truncate">
+                          {new Date(tx.timestamp).toLocaleDateString('ru-RU', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                          {tx.description ? ` • ${tx.description}` : ''}
+                        </div>
+                      </div>
+
+                      <div
+                        className={`font-mono-pip font-bold text-xs shrink-0 ${
+                          isPositive ? 'text-emerald-400' : 'text-rose-400'
+                        }`}
+                      >
+                        {isPositive ? `+${tx.amount.toLocaleString()}` : tx.amount.toLocaleString()} ℰQ
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

@@ -182,7 +182,11 @@ export const EventCard: React.FC<EventCardProps> = ({
   const canJoin = !event.isCompleted && !event.isPaused && !isJoined;
 
   return (
-    <div className="rounded-3xl bg-zinc-950 border border-zinc-800 overflow-hidden shadow-xl hover:border-zinc-700 transition">
+    <div
+      className={`rounded-3xl border overflow-hidden shadow-xl hover:border-zinc-700 transition bg-gradient-to-br ${
+        event.bgGradient || 'from-zinc-950 to-zinc-900 border-zinc-800'
+      }`}
+    >
       {/* Flat Widescreen Banner Container (approx 2:1 ratio) */}
       <div className="relative w-full h-52 sm:h-64 overflow-hidden bg-zinc-900">
         <img
@@ -278,11 +282,21 @@ export const EventCard: React.FC<EventCardProps> = ({
           className={`text-xl font-bold font-heading leading-tight ${
             isRainbow || event.hasRainbowText
               ? 'rainbow-shimmer-text'
-              : 'text-zinc-100 hover:text-amber-400 transition'
+              : event.textColor || 'text-zinc-100 hover:text-amber-400 transition'
           }`}
         >
           {event.title}
         </h3>
+
+        {/* Admin attribution for planned RP sessions */}
+        {event.type === 'planned_rp' && (
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-purple-950/50 border border-purple-500/40 text-xs font-mono-pip text-purple-300 w-fit shadow-sm">
+            <span className="text-sm">🛡️</span>
+            <span>
+              Админ: <strong className="text-purple-200">{event.authorUsername || '@MrWhitePio'}</strong>
+            </span>
+          </div>
+        )}
 
         {/* Description */}
         <p className="text-xs text-zinc-300 leading-relaxed">{event.description}</p>

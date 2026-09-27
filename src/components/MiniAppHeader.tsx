@@ -74,14 +74,20 @@ export const MiniAppHeader: React.FC<MiniAppHeaderProps> = ({
           {/* Equivaxes Balance Pill */}
           <button
             onClick={onOpenCases}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 font-mono-pip text-xs font-bold transition shadow-sm"
-            title="Открыть кейсы и потратить Эквиваксы"
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border font-mono-pip text-xs font-bold transition shadow-sm ${
+              currentUser.equivaxes < 0
+                ? 'bg-rose-950/40 hover:bg-rose-900/50 border-rose-500/60 text-rose-300'
+                : 'bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/30 text-amber-300'
+            }`}
+            title={currentUser.equivaxes < 0 ? 'У вас задолженность за пропуск РП' : 'Открыть кейсы и потратить Эквиваксы'}
           >
-            <Coins className="w-3.5 h-3.5 text-amber-400" />
+            <Coins className={`w-3.5 h-3.5 ${currentUser.equivaxes < 0 ? 'text-rose-400 animate-pulse' : 'text-amber-400'}`} />
             <span>
               {currentUser.isInfiniteEquivaxes || isOwner
-                ? '∞'
-                : currentUser.equivaxes.toLocaleString()} ℰQ
+                ? '∞ ℰQ'
+                : currentUser.equivaxes < 0
+                ? `${currentUser.equivaxes.toLocaleString()} ℰQ (Долг)`
+                : `${currentUser.equivaxes.toLocaleString()} ℰQ`}
             </span>
           </button>
 

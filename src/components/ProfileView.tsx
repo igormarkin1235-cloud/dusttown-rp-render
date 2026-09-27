@@ -1,8 +1,11 @@
 import React, { useState } from 'react';
-import { UserProfile, Award, CharacterSheet, InventoryItem, getItemPawnPrice } from '../types';
+import { UserProfile, Award, CharacterSheet, InventoryItem, getItemPawnPrice, Achievement, RPEvent } from '../types';
 import { AvatarWithFrame } from './AvatarWithFrame';
 import { ProfileAnimatedTheme } from './ProfileAnimatedTheme';
 import { ImageUploadInput } from './ImageUploadInput';
+import { TransactionHistory } from './TransactionHistory';
+import { AchievementsList } from './AchievementsList';
+import { PaletteColorSelector } from './PaletteColorSelector';
 import {
   Coins,
   Award as AwardIcon,
@@ -18,38 +21,52 @@ import {
   Sliders,
   Layers,
   ShoppingBag,
-  DollarSign
+  DollarSign,
+  AlertCircle,
+  History,
+  Receipt,
+  Trophy
 } from 'lucide-react';
 
 interface ProfileViewProps {
   currentUser: UserProfile;
   awards: Award[];
   characters: CharacterSheet[];
+  achievements?: Achievement[];
+  events?: RPEvent[];
   onUpdateProfile: (updated: UserProfile) => void;
   onSelectCharacter: (char: CharacterSheet) => void;
   onOpenCases: () => void;
   onSellItemToPawnshop: (itemId: string, payout: number) => void;
   onOpenLotteryTicket?: (item: InventoryItem) => void;
+  onClaimAchievementReward?: (ach: Achievement) => void;
 }
 
 export const ProfileView: React.FC<ProfileViewProps> = ({
   currentUser,
   awards,
   characters,
+  achievements = [],
+  events = [],
   onUpdateProfile,
   onSelectCharacter,
   onOpenCases,
   onSellItemToPawnshop,
-  onOpenLotteryTicket
+  onOpenLotteryTicket,
+  onClaimAchievementReward
 }) => {
   const [isEditing, setIsEditing] = useState(false);
-  const [activeTab, setActiveTab] = useState<'inventory' | 'customization' | 'characters' | 'awards'>('inventory');
+  const [activeTab, setActiveTab] = useState<'inventory' | 'customization' | 'characters' | 'awards' | 'transactions' | 'achievements'>('inventory');
   const [customizationCategory, setCustomizationCategory] = useState<'themes' | 'frames' | 'text' | 'bg'>('themes');
 
   const [displayName, setDisplayName] = useState(currentUser.displayName);
   const [username, setUsername] = useState(currentUser.username);
   const [bio, setBio] = useState(currentUser.bio || '');
   const [avatarUrl, setAvatarUrl] = useState(currentUser.avatarUrl);
+
+  // In-app reliable selling confirmation (avoids window.confirm iframe blockers)
+  const [confirmSellId, setConfirmSellId] = useState<string | null>(null);
+  const [soldToast, setSoldToast] = useState<string | null>(null);
 
   const userAwards = awards.filter(
     a => a.recipientUsername.toLowerCase() === currentUser.username.toLowerCase()
@@ -238,11 +255,19 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
                 {/* Balance and Quick Case Links */}
                 <div className="mt-4 flex flex-wrap items-center justify-center sm:justify-start gap-3">
-                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-300 font-mono-pip font-extrabold text-sm shadow-inner">
-                    <Coins className="w-4 h-4 text-amber-400" />
+                  <div
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border font-mono-pip font-extrabold text-sm shadow-inner ${
+                      currentUser.equivaxes < 0
+                        ? 'bg-rose-950/80 border-rose-500/80 text-rose-300'
+                        : 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+                    }`}
+                  >
+                    <Coins className={`w-4 h-4 ${currentUser.equivaxes < 0 ? 'text-rose-400 animate-pulse' : 'text-amber-400'}`} />
                     <span>
                       {currentUser.isInfiniteEquivaxes || currentUser.username === '@MrWhitePio'
                         ? '∞ БЕСКОНЕЧНО'
+                        : currentUser.equivaxes < 0
+                        ? `ДОЛГ: ${currentUser.equivaxes.toLocaleString()} ℰQ`
                         : `${currentUser.equivaxes.toLocaleString()} ℰQ`}
                     </span>
                   </div>
@@ -254,11 +279,43 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     Магазин кейсов →
                   </button>
 
+                  <button
+                    onClick={() => setActiveTab('transactions')}
+                    className="px-3 py-1.5 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-700/80 text-amber-300 font-heading font-bold text-xs uppercase tracking-wider transition shadow flex items-center gap-1.5 active:scale-95"
+                    title="Открыть историю транзакций и начислений Эквиваксов"
+                  >
+                    <History className="w-3.5 h-3.5 text-amber-400" />
+                    <span>История ℰQ</span>
+                  </button>
+
+                  <button
+                    onClick={() => setActiveTab('achievements')}
+                    className="px-3 py-1.5 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-700/80 text-amber-300 font-heading font-bold text-xs uppercase tracking-wider transition shadow flex items-center gap-1.5 active:scale-95"
+                    title="Открыть достижения Пустошей"
+                  >
+                    <Trophy className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Достижения ({achievements.length})</span>
+                  </button>
+
                   <div className="flex items-center gap-1.5 text-zinc-400 text-xs font-mono-pip">
                     <Calendar className="w-3.5 h-3.5" />
                     <span>Прибыл: {new Date(currentUser.joinedAt).toLocaleDateString()}</span>
                   </div>
                 </div>
+
+                {/* Debt Explanation Banner */}
+                {currentUser.equivaxes < 0 && (
+                  <div className="mt-3 p-3 rounded-2xl bg-rose-950/40 border border-rose-500/50 text-rose-200 text-xs flex items-start gap-2.5">
+                    <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                    <div className="leading-relaxed">
+                      <strong className="text-rose-300 font-bold">У вас непогашенный штраф (долг {currentUser.equivaxes} ℰQ):</strong>
+                      <p className="text-[11px] text-zinc-300 mt-0.5">
+                        Штраф был начислен администрацией за неявку на зарегистрированное событие или РП-сессию.
+                        Долг будет автоматически гаситься при получении новых Эквиваксов за вылазки, торговлю и активности!
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -449,6 +506,30 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <Sparkles className="w-3.5 h-3.5" />
           <span>Персонажи ({userCharacters.length})</span>
         </button>
+
+        <button
+          onClick={() => setActiveTab('transactions')}
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-heading font-bold uppercase tracking-wider transition ${
+            activeTab === 'transactions'
+              ? 'bg-amber-500 text-black shadow'
+              : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
+          }`}
+        >
+          <Receipt className="w-3.5 h-3.5 text-amber-400" />
+          <span>Транзакции ({currentUser.transactions?.length || 0})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('achievements')}
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-heading font-bold uppercase tracking-wider transition ${
+            activeTab === 'achievements'
+              ? 'bg-amber-500 text-black shadow'
+              : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
+          }`}
+        >
+          <Trophy className="w-3.5 h-3.5 text-amber-400" />
+          <span>Достижения ({achievements.length})</span>
+        </button>
       </div>
 
       {/* TAB 1: CUSTOMIZATION HUB (Frames, Animated Themes, Text Colors, Backgrounds) */}
@@ -586,67 +667,32 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </div>
           )}
 
-          {/* 3. Text Colors */}
+          {/* 3. Text Colors (20 styles: 10 standard, 5 shimmering, 5 gradients) */}
           {customizationCategory === 'text' && (
             <div className="space-y-3">
               <div className="text-xs font-mono-pip text-zinc-400">
-                Выберите стиль и неоновое свечение для вашего имени:
+                Выберите стиль и неоновое свечение для вашего имени (10 стандартных, 5 переливающихся, 5 градиентов):
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-                {PRESET_TEXT_COLORS.map(tc => {
-                  const isSelected = (currentUser.activeTextColor || '') === tc.value;
-                  return (
-                    <button
-                      key={tc.label}
-                      onClick={() => onUpdateProfile({ ...currentUser, activeTextColor: tc.value || undefined })}
-                      className={`p-3 rounded-xl border text-left flex items-center justify-between transition ${
-                        isSelected
-                          ? 'bg-amber-500/15 border-amber-400 text-amber-200 shadow'
-                          : 'bg-zinc-900/70 hover:bg-zinc-800 border-zinc-800 text-zinc-300'
-                      }`}
-                    >
-                      <span className={`text-sm ${tc.value || 'text-zinc-200'}`}>
-                        {currentUser.displayName}
-                      </span>
-                      <span className="text-[10px] text-zinc-400 font-mono-pip">
-                        {tc.label}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
+              <PaletteColorSelector
+                type="text"
+                selectedValue={currentUser.activeTextColor}
+                onSelect={(val) => onUpdateProfile({ ...currentUser, activeTextColor: val || undefined })}
+                sampleText={currentUser.displayName}
+              />
             </div>
           )}
 
-          {/* 4. Background Colors */}
+          {/* 4. Background Colors (20 styles: 10 standard, 5 shimmering, 5 gradients) */}
           {customizationCategory === 'bg' && (
             <div className="space-y-3">
               <div className="text-xs font-mono-pip text-zinc-400">
-                Выберите оттенок и градиент карточки профиля:
+                Выберите оттенок и градиент карточки профиля (10 стандартных, 5 переливающихся, 5 градиентов):
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                {PRESET_BG_COLORS.map(bg => {
-                  const isSelected = (currentUser.activeTextBg || '') === bg.value;
-                  return (
-                    <button
-                      key={bg.label}
-                      onClick={() => onUpdateProfile({ ...currentUser, activeTextBg: bg.value || undefined })}
-                      className={`p-3 rounded-xl border text-left flex flex-col justify-between h-20 transition ${
-                        isSelected
-                          ? 'border-amber-400 ring-2 ring-amber-400/40'
-                          : 'border-zinc-800 hover:border-zinc-700'
-                      } ${bg.value || 'bg-zinc-900'}`}
-                    >
-                      <span className="text-xs font-bold text-zinc-100">{bg.label}</span>
-                      {isSelected && (
-                        <span className="text-[10px] text-amber-300 font-mono-pip font-bold flex items-center gap-0.5">
-                          <Check className="w-3 h-3" /> Выбрано
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
+              <PaletteColorSelector
+                type="bg"
+                selectedValue={currentUser.activeTextBg}
+                onSelect={(val) => onUpdateProfile({ ...currentUser, activeTextBg: val || undefined })}
+              />
             </div>
           )}
         </div>
@@ -773,23 +819,50 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
                     {/* Resale to Wasteland Pawnshop */}
                     <div className="mt-2 pt-2 border-t border-white/10">
-                      <button
-                        onClick={() => {
-                          const payout = getItemPawnPrice(item.rarity);
-                          if (window.confirm(`Продать «${item.name}» скупщику Пустошей за ${payout} ℰQ?`)) {
-                            onSellItemToPawnshop(item.id, payout);
-                          }
-                        }}
-                        className="w-full py-1 rounded-lg bg-zinc-800/90 hover:bg-amber-950/80 border border-zinc-700 hover:border-amber-500/50 text-zinc-300 hover:text-amber-300 text-[10px] font-mono-pip font-bold transition flex items-center justify-center gap-1.5 shadow-sm"
-                        title="Продать скупщику за Эквиваксы"
-                      >
-                        <Coins className="w-3 h-3 text-amber-400" />
-                        <span>Продать скупщику: +{getItemPawnPrice(item.rarity)} ℰQ</span>
-                      </button>
+                      {confirmSellId === item.id ? (
+                        <div className="flex items-center gap-1.5 animate-fade-in">
+                          <button
+                            onClick={() => {
+                              const payout = getItemPawnPrice(item.rarity);
+                              onSellItemToPawnshop(item.id, payout);
+                              setConfirmSellId(null);
+                              setSoldToast(`«${item.name}» сдан скупщику за +${payout} ℰQ!`);
+                              setTimeout(() => setSoldToast(null), 3500);
+                            }}
+                            className="flex-1 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-[10px] font-mono-pip font-extrabold transition shadow flex items-center justify-center gap-1 active:scale-95"
+                          >
+                            <Coins className="w-3 h-3" />
+                            <span>Да, продать (+{getItemPawnPrice(item.rarity)} ℰQ)</span>
+                          </button>
+                          <button
+                            onClick={() => setConfirmSellId(null)}
+                            className="px-2 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-400 text-[10px] font-mono-pip"
+                          >
+                            Отмена
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setConfirmSellId(item.id)}
+                          className="w-full py-1.5 rounded-lg bg-zinc-800/90 hover:bg-amber-950/80 border border-zinc-700 hover:border-amber-500/50 text-zinc-300 hover:text-amber-300 text-[10px] font-mono-pip font-bold transition flex items-center justify-center gap-1.5 shadow-sm active:scale-95"
+                          title="Продать скупщику за Эквиваксы"
+                        >
+                          <Coins className="w-3 h-3 text-amber-400" />
+                          <span>Продать скупщику: +{getItemPawnPrice(item.rarity)} ℰQ</span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {/* Sold Toast Notification */}
+          {soldToast && (
+            <div className="p-3 rounded-2xl bg-emerald-950/90 border border-emerald-500 text-emerald-200 text-xs font-mono-pip flex items-center justify-center gap-2 animate-bounce shadow-xl">
+              <Check className="w-4 h-4 text-emerald-400" />
+              <span>{soldToast}</span>
             </div>
           )}
         </div>
@@ -893,6 +966,27 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </div>
           )}
         </div>
+      )}
+
+      {/* TAB 5: TRANSACTION HISTORY */}
+      {activeTab === 'transactions' && (
+        <TransactionHistory
+          transactions={currentUser.transactions || []}
+          currentEquivaxes={currentUser.equivaxes}
+          isInfiniteEquivaxes={Boolean(currentUser.isInfiniteEquivaxes || currentUser.username?.toLowerCase() === '@mrwhitepio')}
+        />
+      )}
+
+      {/* TAB 6: ACHIEVEMENTS */}
+      {activeTab === 'achievements' && (
+        <AchievementsList
+          achievements={achievements}
+          currentUser={currentUser}
+          events={events}
+          characters={characters}
+          awards={awards}
+          onClaimReward={ach => onClaimAchievementReward && onClaimAchievementReward(ach)}
+        />
       )}
     </div>
   );

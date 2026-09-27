@@ -23,7 +23,9 @@ import {
   Crown,
   AlertCircle,
   X,
-  Flame
+  Flame,
+  Eye,
+  CheckCircle2
 } from 'lucide-react';
 
 interface MarketViewProps {
@@ -39,6 +41,11 @@ interface MarketViewProps {
   onListItemOnAuction: (item: InventoryItem, price: number) => void;
   onCancelAuctionListing: (listingId: string) => void;
   onBuyAuctionItem: (listing: AuctionListing) => void;
+  onBuyVip?: () => void;
+  onBuyPrivilege?: (
+    privilegeKey: 'hasVip' | 'hasTraderLicense' | 'hasNeonAura' | 'hasHonoredCitizen',
+    price: number
+  ) => boolean;
 }
 
 export const MarketView: React.FC<MarketViewProps> = ({
@@ -53,11 +60,63 @@ export const MarketView: React.FC<MarketViewProps> = ({
   onRemoveWeeklyItem,
   onListItemOnAuction,
   onCancelAuctionListing,
-  onBuyAuctionItem
+  onBuyAuctionItem,
+  onBuyVip,
+  onBuyPrivilege
 }) => {
-  const [subTab, setSubTab] = useState<'weekly' | 'auction'>('weekly');
+  const [subTab, setSubTab] = useState<'weekly' | 'auction' | 'vip'>('weekly');
   const [search, setSearch] = useState('');
   const [filterRarity, setFilterRarity] = useState<string>('all');
+  const [purchasedId, setPurchasedId] = useState<string | null>(null);
+  const [privilegeToast, setPrivilegeToast] = useState<string | null>(null);
+  const [justPurchasedPrivilege, setJustPurchasedPrivilege] = useState<string | null>(null);
+
+  const isOwner = (currentUser?.username || '').toLowerCase() === '@mrwhitepio';
+  const hasVip = Boolean(currentUser?.hasVip || currentUser?.isInfiniteEquivaxes || isOwner || isAdmin);
+  const hasTraderLicense = Boolean(currentUser?.hasTraderLicense || currentUser?.isInfiniteEquivaxes || isOwner);
+  const hasNeonAura = Boolean(currentUser?.hasNeonAura || currentUser?.isInfiniteEquivaxes || isOwner);
+  const hasHonoredCitizen = Boolean(currentUser?.hasHonoredCitizen || currentUser?.isInfiniteEquivaxes || isOwner);
+
+  const handleBuyPrivilegeAction = (
+    key: 'hasVip' | 'hasTraderLicense' | 'hasNeonAura' | 'hasHonoredCitizen',
+    title: string,
+    price: number
+  ) => {
+    if (key === 'hasVip' && onBuyVip && !onBuyPrivilege) {
+      onBuyVip();
+      setJustPurchasedPrivilege(key);
+      setPrivilegeToast(`🎉 Привилегия «${title}» успешно активирована! Вкладка «Пред-релиз» теперь открыта.`);
+      setTimeout(() => setJustPurchasedPrivilege(null), 2500);
+      setTimeout(() => setPrivilegeToast(null), 5000);
+      return;
+    }
+
+    if (onBuyPrivilege) {
+      const ok = onBuyPrivilege(key, price);
+      if (ok) {
+        setJustPurchasedPrivilege(key);
+        setPrivilegeToast(
+          key === 'hasVip'
+            ? `🎉 Привилегия «${title}» успешно активирована! Вкладка «Пред-релиз» теперь открыта.`
+            : `🎉 Привилегия «${title}» успешно активирована на вашем профиле!`
+        );
+        setTimeout(() => setJustPurchasedPrivilege(null), 2500);
+        setTimeout(() => setPrivilegeToast(null), 5000);
+      }
+    }
+  };
+
+  const handleBuyWeeklyWithAnimation = (item: ShopWeeklyItem) => {
+    setPurchasedId(item.id);
+    onBuyWeeklyItem(item);
+    setTimeout(() => setPurchasedId(null), 1800);
+  };
+
+  const handleBuyAuctionWithAnimation = (listing: AuctionListing) => {
+    setPurchasedId(listing.id);
+    onBuyAuctionItem(listing);
+    setTimeout(() => setPurchasedId(null), 1800);
+  };
 
   // Modals
   const [showAddWeeklyModal, setShowAddWeeklyModal] = useState(false);
@@ -74,8 +133,6 @@ export const MarketView: React.FC<MarketViewProps> = ({
     currentUser.inventory?.[0]?.id || ''
   );
   const [auctionAskingPrice, setAuctionAskingPrice] = useState<number>(100);
-
-  const isOwner = currentUser.username.toLowerCase() === '@mrwhitepio';
 
   const handleAddWeeklySubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -157,11 +214,19 @@ export const MarketView: React.FC<MarketViewProps> = ({
         </div>
 
         {/* Balance Display */}
-        <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-2xl bg-black/60 border border-amber-500/50 text-amber-300 font-mono-pip text-sm font-bold shadow-inner">
-          <Coins className="w-4 h-4 text-amber-400" />
+        <div
+          className={`flex items-center gap-2 px-3.5 py-1.5 rounded-2xl border font-mono-pip text-sm font-bold shadow-inner ${
+            currentUser.equivaxes < 0
+              ? 'bg-rose-950/80 border-rose-500/80 text-rose-300'
+              : 'bg-black/60 border-amber-500/50 text-amber-300'
+          }`}
+        >
+          <Coins className={`w-4 h-4 ${currentUser.equivaxes < 0 ? 'text-rose-400 animate-pulse' : 'text-amber-400'}`} />
           <span>
             {currentUser.isInfiniteEquivaxes || isOwner
               ? 'Баланс: ∞ ℰQ'
+              : currentUser.equivaxes < 0
+              ? `Долг: ${currentUser.equivaxes.toLocaleString()} ℰQ`
               : `Баланс: ${currentUser.equivaxes.toLocaleString()} ℰQ`}
           </span>
         </div>
@@ -192,6 +257,18 @@ export const MarketView: React.FC<MarketViewProps> = ({
           >
             <Gavel className="w-4 h-4" />
             <span>Аукцион игроков ({auctionListings.length})</span>
+          </button>
+
+          <button
+            onClick={() => setSubTab('vip')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-heading font-black uppercase tracking-wider transition ${
+              subTab === 'vip'
+                ? 'bg-gradient-to-r from-purple-600 via-pink-600 to-amber-500 text-white shadow-lg shadow-purple-900/40'
+                : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
+            }`}
+          >
+            <Crown className="w-4 h-4 text-amber-300" />
+            <span>Привилегии & VIP</span>
           </button>
         </div>
 
@@ -235,7 +312,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {weeklyItems.map(item => {
                 const canAfford =
-                  currentUser.isInfiniteEquivaxes || isOwner || currentUser.equivaxes >= item.price;
+                  currentUser.isInfiniteEquivaxes || isOwner || (currentUser.equivaxes || 0) >= item.price;
 
                 return (
                   <div
@@ -304,16 +381,27 @@ export const MarketView: React.FC<MarketViewProps> = ({
                       </div>
 
                       <button
-                        onClick={() => onBuyWeeklyItem(item)}
-                        disabled={!canAfford}
-                        className={`px-4 py-2 rounded-xl text-xs font-heading font-black uppercase tracking-wider transition shadow-md flex items-center gap-1.5 ${
-                          canAfford
+                        onClick={() => handleBuyWeeklyWithAnimation(item)}
+                        disabled={!canAfford || purchasedId === item.id}
+                        className={`px-4 py-2 rounded-xl text-xs font-heading font-black uppercase tracking-wider transition shadow-md flex items-center gap-1.5 active:scale-95 ${
+                          purchasedId === item.id
+                            ? 'bg-emerald-500 text-black shadow-emerald-950/50 animate-pulse'
+                            : canAfford
                             ? 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black shadow-amber-950/40'
                             : 'bg-zinc-800 text-zinc-500 cursor-not-allowed border border-zinc-700'
                         }`}
                       >
-                        <ShoppingBag className="w-3.5 h-3.5" />
-                        <span>Купить</span>
+                        {purchasedId === item.id ? (
+                          <>
+                            <Sparkles className="w-3.5 h-3.5 text-black" />
+                            <span>Куплено! 🎉</span>
+                          </>
+                        ) : (
+                          <>
+                            <ShoppingBag className="w-3.5 h-3.5" />
+                            <span>Купить</span>
+                          </>
+                        )}
                       </button>
                     </div>
                   </div>
@@ -373,8 +461,8 @@ export const MarketView: React.FC<MarketViewProps> = ({
               {filteredAuction.map(listing => {
                 const isMyListing = listing.sellerId === currentUser.id;
                 const canAfford =
-                  currentUser.isInfiniteEquivaxes || isOwner || currentUser.equivaxes >= listing.price;
-                const isSellerOwner = listing.sellerUsername.toLowerCase() === '@mrwhitepio';
+                  currentUser.isInfiniteEquivaxes || isOwner || (currentUser.equivaxes || 0) >= listing.price;
+                const isSellerOwner = (listing.sellerUsername || '').toLowerCase() === '@mrwhitepio';
 
                 return (
                   <div
@@ -442,22 +530,33 @@ export const MarketView: React.FC<MarketViewProps> = ({
                       {isMyListing ? (
                         <button
                           onClick={() => onCancelAuctionListing(listing.id)}
-                          className="px-3 py-1.5 rounded-xl bg-red-950/60 hover:bg-red-900 border border-red-500/40 text-red-200 text-xs font-heading font-bold uppercase transition"
+                          className="px-3 py-1.5 rounded-xl bg-red-950/60 hover:bg-red-900 border border-red-500/40 text-red-200 text-xs font-heading font-bold uppercase transition active:scale-95"
                         >
                           Снять лот
                         </button>
                       ) : (
                         <button
-                          onClick={() => onBuyAuctionItem(listing)}
-                          disabled={!canAfford}
-                          className={`px-3.5 py-1.5 rounded-xl text-xs font-heading font-black uppercase tracking-wider transition shadow flex items-center gap-1.5 ${
-                            canAfford
+                          onClick={() => handleBuyAuctionWithAnimation(listing)}
+                          disabled={!canAfford || purchasedId === listing.id}
+                          className={`px-3.5 py-1.5 rounded-xl text-xs font-heading font-black uppercase tracking-wider transition shadow flex items-center gap-1.5 active:scale-95 ${
+                            purchasedId === listing.id
+                              ? 'bg-emerald-500 text-black shadow-emerald-950/50 animate-pulse'
+                              : canAfford
                               ? 'bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black shadow-cyan-950/40'
                               : 'bg-zinc-800 text-zinc-500 cursor-not-allowed border border-zinc-700'
                           }`}
                         >
-                          <Gavel className="w-3.5 h-3.5" />
-                          <span>Купить</span>
+                          {purchasedId === listing.id ? (
+                            <>
+                              <Sparkles className="w-3.5 h-3.5 text-black" />
+                              <span>Куплено! 🎉</span>
+                            </>
+                          ) : (
+                            <>
+                              <Gavel className="w-3.5 h-3.5" />
+                              <span>Купить</span>
+                            </>
+                          )}
                         </button>
                       )}
                     </div>
@@ -466,6 +565,281 @@ export const MarketView: React.FC<MarketViewProps> = ({
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {/* --- 3. ПРИВИЛЕГИИ И VIP-СТАТУС --- */}
+      {subTab === 'vip' && (
+        <div className="space-y-6 animate-fade-in">
+          {/* Toast feedback */}
+          {privilegeToast && (
+            <div className="p-4 rounded-2xl bg-emerald-950/90 border border-emerald-500/80 text-emerald-200 text-xs font-mono-pip flex items-center justify-between gap-3 shadow-2xl animate-bounce">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-emerald-400 shrink-0" />
+                <span>{privilegeToast}</span>
+              </div>
+              <button
+                onClick={() => setPrivilegeToast(null)}
+                className="text-emerald-400 hover:text-white p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <h2 className="text-lg font-black font-heading tracking-wide uppercase text-amber-300 flex items-center gap-2">
+                <Crown className="w-5 h-5 text-amber-400" />
+                <span>Привилегии & Премиум-Статусы</span>
+              </h2>
+              <p className="text-xs font-mono-pip text-zinc-400 mt-0.5">
+                Особые разрешения, статусы и расширенные возможности для сталкеров Даст Таун.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-xs font-mono-pip text-amber-300">
+              <Coins className="w-4 h-4 text-amber-400" />
+              <span>Баланс: {currentUser.isInfiniteEquivaxes || isOwner ? '∞ ℰQ' : `${(currentUser.equivaxes || 0).toLocaleString()} ℰQ`}</span>
+            </div>
+          </div>
+
+          {/* 1. VIP-Статус «Властелин Пустоши» (Главная привилегия) */}
+          <div className="rounded-3xl border border-purple-500/50 bg-gradient-to-br from-purple-950/60 via-zinc-950 to-amber-950/40 p-6 sm:p-8 shadow-2xl space-y-6 relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-80 h-80 rounded-full bg-purple-600/10 blur-3xl pointer-events-none" />
+
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3.5">
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-500 to-purple-600 p-0.5 shadow-xl">
+                  <div className="w-full h-full rounded-2xl bg-black flex items-center justify-center">
+                    <Crown className="w-7 h-7 text-amber-300" />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-xl font-black font-heading tracking-wide uppercase text-amber-300">
+                      VIP-Статус «Властелин Пустоши»
+                    </h3>
+                    <span className="px-2 py-0.5 rounded-full bg-purple-600/30 border border-purple-500 text-purple-300 text-[9px] font-mono-pip font-extrabold uppercase">
+                      VIP PASS
+                    </span>
+                  </div>
+                  <p className="text-xs text-zinc-300 font-mono-pip mt-1">
+                    Открывает эксклюзивный доступ к закрытой вкладке «Пред-релиз» и ранним анонсам.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 text-xl font-mono-pip font-extrabold text-amber-300">
+                <Coins className="w-5 h-5 text-amber-400" />
+                <span>500 ℰQ</span>
+              </div>
+            </div>
+
+            {/* VIP Privileges list */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs font-mono-pip">
+              <div className="p-3.5 rounded-2xl bg-zinc-900/80 border border-zinc-800 space-y-1">
+                <div className="text-purple-300 font-bold flex items-center gap-1.5">
+                  <Eye className="w-4 h-4 text-purple-400" />
+                  <span>Вкладка «Пред-релиз»</span>
+                </div>
+                <p className="text-[11px] text-zinc-400">
+                  Постоянный доступ в закрытый сектор с будущими ивентами и сессиями.
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-zinc-900/80 border border-zinc-800 space-y-1">
+                <div className="text-amber-300 font-bold flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4 text-amber-400" />
+                  <span>Девлоги и тизеры</span>
+                </div>
+                <p className="text-[11px] text-zinc-400">
+                  Чтение заметок разработчиков и администрации о будущих патчах до их релиза.
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-zinc-900/80 border border-zinc-800 space-y-1">
+                <div className="text-cyan-300 font-bold flex items-center gap-1.5">
+                  <Crown className="w-4 h-4 text-cyan-400" />
+                  <span>Золотой знак VIP</span>
+                </div>
+                <p className="text-[11px] text-zinc-400">
+                  Престижная корона в профиле сталкера и особый авторитет в Даст Таун.
+                </p>
+              </div>
+            </div>
+
+            {/* Action Bar */}
+            <div className="pt-3 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="text-xs font-mono-pip text-zinc-400">
+                {hasVip ? (
+                  <span className="text-emerald-400 font-bold flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>VIP-привилегия уже активна на вашем аккаунте! Вкладка «Пред-релиз» открыта.</span>
+                  </span>
+                ) : (
+                  <span>
+                    Требуется: 500 ℰQ (Ваш баланс: {(currentUser.equivaxes || 0).toLocaleString()} ℰQ)
+                  </span>
+                )}
+              </div>
+
+              {hasVip ? (
+                <div className="px-5 py-2.5 rounded-2xl bg-emerald-950/60 border border-emerald-500/50 text-emerald-300 text-xs font-heading font-black uppercase tracking-wider flex items-center gap-1.5 shadow">
+                  <Crown className="w-4 h-4 text-amber-300" />
+                  <span>VIP АКТИВИРОВАН</span>
+                </div>
+              ) : (
+                <button
+                  onClick={() => handleBuyPrivilegeAction('hasVip', 'VIP-Статус «Властелин Пустоши»', 500)}
+                  disabled={!currentUser.isInfiniteEquivaxes && !isOwner && (currentUser.equivaxes || 0) < 500}
+                  className={`py-3 px-8 rounded-2xl text-xs font-heading font-black uppercase tracking-wider transition shadow-xl flex items-center justify-center gap-2 active:scale-95 ${
+                    currentUser.isInfiniteEquivaxes || isOwner || (currentUser.equivaxes || 0) >= 500
+                      ? 'bg-gradient-to-r from-purple-600 via-pink-600 to-amber-500 hover:from-purple-500 hover:to-amber-400 text-white shadow-purple-950/60'
+                      : 'bg-zinc-800 text-zinc-500 border border-zinc-700 cursor-not-allowed'
+                  }`}
+                >
+                  {justPurchasedPrivilege === 'hasVip' ? (
+                    <>
+                      <Sparkles className="w-4 h-4 text-amber-300" />
+                      <span>АКТИВИРОВАНО! 🎉</span>
+                    </>
+                  ) : (
+                    <>
+                      <Crown className="w-4 h-4 text-amber-300" />
+                      <span>Купить VIP за 500 ℰQ</span>
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Additional Privileges Catalog Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Privilege 2: Караванщик */}
+            <div className="p-5 rounded-3xl bg-zinc-950 border border-zinc-800 flex flex-col justify-between space-y-4 shadow-xl hover:border-cyan-500/40 transition">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="w-10 h-10 rounded-xl bg-cyan-950/60 border border-cyan-500/40 flex items-center justify-center text-cyan-400">
+                    <ShoppingBag className="w-5 h-5" />
+                  </div>
+                  <span className="text-xs font-mono-pip font-extrabold text-cyan-300">250 ℰQ</span>
+                </div>
+
+                <div>
+                  <h4 className="font-heading font-black text-white text-sm uppercase">Лицензия Караванщика</h4>
+                  <p className="text-[11px] font-mono-pip text-zinc-400 mt-1">
+                    Снимает ограничения на аукционе: до 10 лотов одновременно и золотая отметка проверенного торговца.
+                  </p>
+                </div>
+              </div>
+
+              {hasTraderLicense ? (
+                <div className="py-2 rounded-xl bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 text-[10px] font-mono-pip font-bold text-center flex items-center justify-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> АКТИВИРОВАНО
+                </div>
+              ) : (
+                <button
+                  onClick={() => handleBuyPrivilegeAction('hasTraderLicense', 'Лицензия Караванщика', 250)}
+                  disabled={!currentUser.isInfiniteEquivaxes && !isOwner && (currentUser.equivaxes || 0) < 250}
+                  className={`w-full py-2.5 rounded-xl text-xs font-heading font-bold uppercase transition flex items-center justify-center gap-1.5 ${
+                    currentUser.isInfiniteEquivaxes || isOwner || (currentUser.equivaxes || 0) >= 250
+                      ? 'bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/50'
+                      : 'bg-zinc-900 border border-zinc-800 text-zinc-600 cursor-not-allowed'
+                  }`}
+                >
+                  <span>Купить за 250 ℰQ</span>
+                </button>
+              )}
+            </div>
+
+            {/* Privilege 3: Люминесцентная Аура */}
+            <div className="p-5 rounded-3xl bg-zinc-950 border border-zinc-800 flex flex-col justify-between space-y-4 shadow-xl hover:border-emerald-500/40 transition">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-950/60 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
+                    <Sparkles className="w-5 h-5" />
+                  </div>
+                  <span className="text-xs font-mono-pip font-extrabold text-emerald-300">150 ℰQ</span>
+                </div>
+
+                <div>
+                  <h4 className="font-heading font-black text-white text-sm uppercase">Неоновая Аура Сталкера</h4>
+                  <p className="text-[11px] font-mono-pip text-zinc-400 mt-1">
+                    Специальное неоновое свечение в списках участников РП-сессий и ивентов, выделяющее вас среди сталкеров.
+                  </p>
+                </div>
+              </div>
+
+              {hasNeonAura ? (
+                <div className="py-2 rounded-xl bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 text-[10px] font-mono-pip font-bold text-center flex items-center justify-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> АКТИВИРОВАНО
+                </div>
+              ) : (
+                <button
+                  onClick={() => handleBuyPrivilegeAction('hasNeonAura', 'Неоновая Аура Сталкера', 150)}
+                  disabled={!currentUser.isInfiniteEquivaxes && !isOwner && (currentUser.equivaxes || 0) < 150}
+                  className={`w-full py-2.5 rounded-xl text-xs font-heading font-bold uppercase transition flex items-center justify-center gap-1.5 ${
+                    currentUser.isInfiniteEquivaxes || isOwner || (currentUser.equivaxes || 0) >= 150
+                      ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/50'
+                      : 'bg-zinc-900 border border-zinc-800 text-zinc-600 cursor-not-allowed'
+                  }`}
+                >
+                  <span>Купить за 150 ℰQ</span>
+                </button>
+              )}
+            </div>
+
+            {/* Privilege 4: Почётный Гражданин */}
+            <div className="p-5 rounded-3xl bg-zinc-950 border border-zinc-800 flex flex-col justify-between space-y-4 shadow-xl hover:border-amber-500/40 transition">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="w-10 h-10 rounded-xl bg-amber-950/60 border border-amber-500/40 flex items-center justify-center text-amber-400">
+                    <Shield className="w-5 h-5" />
+                  </div>
+                  <span className="text-xs font-mono-pip font-extrabold text-amber-300">350 ℰQ</span>
+                </div>
+
+                <div>
+                  <h4 className="font-heading font-black text-white text-sm uppercase">Почётный Гражданин</h4>
+                  <p className="text-[11px] font-mono-pip text-zinc-400 mt-1">
+                    Постоянная скидка 15% на открытие любых геометрических кейсов и лотерейных билетов Пустошей.
+                  </p>
+                </div>
+              </div>
+
+              {hasHonoredCitizen ? (
+                <div className="py-2 rounded-xl bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 text-[10px] font-mono-pip font-bold text-center flex items-center justify-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> АКТИВИРОВАНО
+                </div>
+              ) : (
+                <button
+                  onClick={() => handleBuyPrivilegeAction('hasHonoredCitizen', 'Почётный Гражданин Даст Таун', 350)}
+                  disabled={!currentUser.isInfiniteEquivaxes && !isOwner && (currentUser.equivaxes || 0) < 350}
+                  className={`w-full py-2.5 rounded-xl text-xs font-heading font-bold uppercase transition flex items-center justify-center gap-1.5 ${
+                    currentUser.isInfiniteEquivaxes || isOwner || (currentUser.equivaxes || 0) >= 350
+                      ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/50'
+                      : 'bg-zinc-900 border border-zinc-800 text-zinc-600 cursor-not-allowed'
+                  }`}
+                >
+                  <span>Купить за 350 ℰQ</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Equivaxes Help Banner */}
+          <div className="p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800 text-xs font-mono-pip text-zinc-400 flex items-start gap-3">
+            <Coins className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <span className="text-zinc-200 font-bold">Как заработать Эквиваксы (ℰQ) для привилегий?</span>
+              <p className="text-[11px] text-zinc-400 leading-relaxed">
+                Участвуйте в запланированных РП-сессиях и ивентах, сдавайте ненужные косметические предметы и дроп скупщику в инвентаре (вкладка «Профиль») или стирайте лотерейные билеты Пустошей!
+              </p>
+            </div>
+          </div>
         </div>
       )}
 

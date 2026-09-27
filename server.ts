@@ -1,4 +1,3 @@
-import 'dotenv/config';
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
@@ -12,7 +11,7 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const APP_URL = process.env.APP_URL || process.env.RENDER_EXTERNAL_URL || 'https://t.me/DustTown_RP_bot/app';
+const APP_URL = process.env.APP_URL || process.env.RENDER_EXTERNAL_URL || 'https://dusttown-rp-render-6.onrender.com/?view=miniapp';
 
 app.use(express.json({ limit: '10mb' }));
 
@@ -21,27 +20,31 @@ const DATA_FILE = path.join(__dirname, '.dusttown_data.json');
 
 function getDefaultData() {
   return {
-    profiles: [{
-      id: 'owner_mrwhitepio',
-      username: '@MrWhitePio',
-      displayName: 'MrWhitePio [Создатель]',
-      avatarUrl: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=300&q=80',
-      bio: 'Главный Архитектор и Создатель DustTown RP. Магитех-инженер довоенных времен.',
-      equivaxes: 9999999,
-      isInfiniteEquivaxes: true,
-      joinedAt: '2026-01-01T00:00:00Z',
-      eventsAttended: 12,
-      plannedRpsAttended: 8,
-      activeThemeId: 'black_tree',
-      activeAvatarFrame: 'frame_rad_pulse',
-      inventory: []
-    }],
-    admins: [{
-      username: '@MrWhitePio',
-      tags: ['Главный Создатель', 'Архитектор DustTown', 'Supreme GM'],
-      addedAt: '2026-01-01T00:00:00Z',
-      isMainCreator: true
-    }],
+    profiles: [
+      {
+        id: 'owner_mrwhitepio',
+        username: '@MrWhitePio',
+        displayName: 'MrWhitePio [Создатель]',
+        avatarUrl: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=300&q=80',
+        bio: 'Главный Архитектор и Создатель DustTown RP. Магитех-инженер довоенных времен.',
+        equivaxes: 9999999,
+        isInfiniteEquivaxes: true,
+        joinedAt: '2026-01-01T00:00:00Z',
+        eventsAttended: 12,
+        plannedRpsAttended: 8,
+        activeThemeId: 'black_tree',
+        activeAvatarFrame: 'frame_rad_pulse',
+        inventory: []
+      }
+    ],
+    admins: [
+      {
+        username: '@MrWhitePio',
+        tags: ['Главный Создатель', 'Архитектор DustTown', 'Supreme GM'],
+        addedAt: '2026-01-01T00:00:00Z',
+        isMainCreator: true
+      }
+    ],
     characters: [],
     events: [],
     awards: [],
@@ -86,58 +89,71 @@ function getDefaultData() {
   };
 }
 
-function saveData(data: any) {
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf-8');
-}
-
 function getOrInitData() {
-  const defaults = getDefaultData();
   if (fs.existsSync(DATA_FILE)) {
     try {
       const parsed = JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8'));
       if (parsed && Array.isArray(parsed.profiles)) {
-        const data = { ...defaults, ...parsed };
-        data.admins = Array.isArray(data.admins) ? data.admins : defaults.admins;
-        if (!data.profiles.some((profile: any) => profile.username?.toLowerCase() === '@mrwhitepio')) {
-          data.profiles.unshift(defaults.profiles[0]);
+        // Ensure owner exists
+        if (!parsed.profiles.some((p: any) => p.username?.toLowerCase() === '@mrwhitepio')) {
+          parsed.profiles.unshift(getDefaultData().profiles[0]);
         }
-        if (!data.admins.some((admin: any) => admin.username?.toLowerCase() === '@mrwhitepio')) {
-          data.admins.unshift(defaults.admins[0]);
+        if (!parsed.admins?.some((a: any) => a.username?.toLowerCase() === '@mrwhitepio')) {
+          parsed.admins = parsed.admins || [];
+          parsed.admins.unshift(getDefaultData().admins[0]);
         }
-        return data;
+        if (!Array.isArray(parsed.weeklyShopItems)) {
+          parsed.weeklyShopItems = getDefaultData().weeklyShopItems;
+        }
+        if (!Array.isArray(parsed.auctionListings)) {
+          parsed.auctionListings = [];
+        }
+        return parsed;
       }
-    } catch (error) {
-      console.error('Error reading DATA_FILE:', error);
+    } catch (e) {
+      console.error('Error reading DATA_FILE:', e);
     }
   }
 
-  saveData(defaults);
-  return defaults;
+  const initial = getDefaultData();
+  saveData(initial);
+  return initial;
+}
+
+function saveData(data: any) {
+  try {
+    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf-8');
+  } catch (e) {
+    console.error('Failed to write DATA_FILE:', e);
+  }
 }
 
 function registerOrUpdateUser(user: { id: number | string; first_name?: string; last_name?: string; username?: string; photo_url?: string }) {
-  if (!user?.id) return null;
-
+  if (!user || !user.id) return null;
   const data = getOrInitData();
-  const userId = String(user.id);
-  const username = user.username ? `@${user.username}` : `@id${userId}`;
-  const isOwner = username.toLowerCase() === '@mrwhitepio';
-  const displayName = [user.first_name, user.last_name].filter(Boolean).join(' ')
-    || user.username
-    || `Сталкер #${userId.slice(-4)}`;
-  let profile = data.profiles.find((item: any) =>
-    item.id === `tg_user_${userId}` || item.username?.toLowerCase() === username.toLowerCase()
+  const userIdStr = String(user.id);
+  const formattedUsername = user.username ? `@${user.username}` : `@id${userIdStr}`;
+  const isOwner = formattedUsername.toLowerCase() === '@mrwhitepio';
+  const displayName = [user.first_name, user.last_name].filter(Boolean).join(' ') || (user.username ? `@${user.username}` : `Сталкер #${userIdStr.slice(-4)}`);
+
+  let profile = data.profiles.find((p: any) =>
+    p.id === 'tg_user_' + userIdStr ||
+    (p.username && p.username.toLowerCase() === formattedUsername.toLowerCase())
   );
 
   if (profile) {
-    if (user.first_name || user.last_name) profile.displayName = displayName;
+    if (displayName && (!profile.displayName || profile.displayName.startsWith('Сталкер #'))) {
+      profile.displayName = displayName;
+    }
     if (user.photo_url) profile.avatarUrl = user.photo_url;
-    if (user.username) profile.username = username;
-    if (isOwner) profile.isInfiniteEquivaxes = true;
+    if (user.username) profile.username = `@${user.username}`;
+    if (isOwner) {
+      profile.isInfiniteEquivaxes = true;
+    }
   } else {
     profile = {
-      id: `tg_user_${userId}`,
-      username,
+      id: 'tg_user_' + userIdStr,
+      username: formattedUsername,
       displayName,
       avatarUrl: user.photo_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80',
       bio: isOwner ? 'Главный Архитектор и Создатель DustTown RP.' : 'Выживший в Пустоши DustTown.',
@@ -268,44 +284,40 @@ async function handleTelegramUpdate(update: any) {
 
   const chatId = msg.chat.id;
   const user = msg.from;
-  const userTag = user?.username ? `@${user.username}` : user?.first_name || 'unknown';
+  const userTag = user.username ? `@${user.username}` : user.first_name;
   const text = msg.text.trim();
 
-  if (user) registerOrUpdateUser(user);
+  // Automatic registration of Telegram user in the shared database
+  if (user) {
+    registerOrUpdateUser(user);
+  }
 
   addBotLog('message', `[${userTag}]: ${text}`);
 
   const appUrl = APP_URL;
 
   if (text.startsWith('/start')) {
-    const welcomeText = `👋 Добро пожаловать в **DustTown RP** (Fallout: Equestria)!
+    const welcomeText = `👋 Добро пожаловать в **Даст Таун Колектив** (DustTown Collective RP)!
     
 🏛️ **DustTown** — это укреплённый город на перепутье выжженных пустошей Эквестрии. Здесь сталкеры, единороги-магитехи, пегасы-разведчики и стальные рейнджеры находят убежище, делятся довоенными тайнами и выходят на опасные вылазки.
 
-🎮 Нажмите **«Открыть приложение»**, чтобы войти в Mini App:
+🎮 **Возможности нашего Mini App:**
 • Создание и просмотр анкет персонажей
 • События и ивенты с отсчётом времени и наградами
-• Запланированные РП-сессии
+• Запланированные РП-сессии и пред-релизы
 • Профиль сталкера, заслуги и награды
-• Геометрические кейсы с косметикой для профиля`;
+• Торговый пост и свободный аукцион
+• Кейсы с косметикой и лотерея Пустошей`;
 
     const replyMarkup = {
       inline_keyboard: [
         [
           {
-            text: '🎮 Открыть приложение',
-            web_app: { url: appUrl }
-          }
-        ],
-        [
-          {
             text: '⚠️ Сообщить о проблеме',
             url: 'https://t.me/MrWhitePio'
-          }
-        ],
-        [
+          },
           {
-            text: '👥 Присоединиться к комьюнити',
+            text: '👥 Комьюнити проекта',
             url: 'https://t.me/DustTownCollective'
           }
         ]
@@ -326,7 +338,7 @@ async function handleTelegramUpdate(update: any) {
   } else if (text.startsWith('/help')) {
     await tgApi('sendMessage', {
       chat_id: chatId,
-      text: `Команды бота DustTown RP:
+      text: `Команды бота группы Даст Таун Колектив:
 /start — Главное меню и запуск Mini App
 По всем вопросам и проблемам обращайтесь к основателю: @MrWhitePio
 Группа проекта: https://t.me/DustTownCollective`
@@ -361,56 +373,139 @@ app.post('/api/bot/stop', (req, res) => {
   res.json({ success: true, isPolling: false });
 });
 
+// Automatic announcement to community group when an event/collab/RP is published
 app.post('/api/notify-group', async (req, res) => {
-  const event = req.body?.event;
-  if (!event || typeof event.title !== 'string') {
-    return res.status(400).json({ error: 'A valid event is required' });
-  }
-  if (!TELEGRAM_BOT_TOKEN) {
-    return res.status(503).json({ error: 'TELEGRAM_BOT_TOKEN is not configured' });
-  }
-
-  const targetChat = process.env.TELEGRAM_GROUP_ID || '@DustTownCollective';
-  const startTime = new Date(event.startTime);
-  const formattedTime = Number.isNaN(startTime.getTime())
-    ? 'Час не вказано'
-    : startTime.toLocaleString('ru-RU', { dateStyle: 'medium', timeStyle: 'short' });
-  const details = [
-    `🏷 **Назва:** ${event.title}`,
-    event.collabClanName && `👥 **Клан-партнер:** ${event.collabClanName}`,
-    event.location && `📍 **Локація:** ${event.location}`,
-    event.faction && `⚔️ **Фракція:** ${event.faction}`,
-    `⏰ **Час:** ${formattedTime}`,
-    event.description && `\n📝 **Опис:**\n${event.description}`
-  ].filter(Boolean).join('\n');
-  const title = event.type === 'collab'
-    ? '🤝 НОВА КОЛАБОРАЦІЯ'
-    : event.type === 'planned_rp'
-      ? '🌸 НОВА RP-СЕСІЯ'
-      : '🔥 НОВА ПОДІЯ DUSTTOWN';
-  const inlineKeyboard: any[] = [[{ text: '🎮 Відкрити Mini App', web_app: { url: APP_URL } }]];
-  if (typeof event.collabClanUrl === 'string' && event.collabClanUrl.startsWith('https://')) {
-    inlineKeyboard.push([{ text: '🤝 Група клану', url: event.collabClanUrl }]);
-  }
-
   try {
-    const body = {
-      chat_id: targetChat,
-      caption: `${title}\n\n${details}`,
-      text: `${title}\n\n${details}`,
-      parse_mode: 'Markdown',
-      reply_markup: { inline_keyboard: inlineKeyboard }
-    };
-    let result = event.bannerUrl?.startsWith('https://')
-      ? await tgApi('sendPhoto', { ...body, photo: event.bannerUrl })
-      : null;
-    if (!result?.ok) result = await tgApi('sendMessage', body);
-    if (!result?.ok) throw new Error(result?.description || 'Telegram rejected the notification');
-    addBotLog('info', `Опубліковано подію «${event.title}» у ${targetChat}`);
+    const event = req.body?.event;
+    if (!event) {
+      return res.status(400).json({ error: 'Event object required' });
+    }
+
+    const appUrl = APP_URL;
+    const targetChat = process.env.TELEGRAM_GROUP_ID || '@DustTownCollective';
+
+    let text = '';
+    const inlineKeyboard: any[] = [];
+
+    const formattedTime = new Date(event.startTime).toLocaleString('ru-RU', {
+      dateStyle: 'medium',
+      timeStyle: 'short'
+    });
+
+    if (event.type === 'collab') {
+      text = `🤝 **НОВОЕ СОБЫТИЕ: КОЛЛАБОРАЦИЯ С КЛАНОМ!**\n\n` +
+        `🏷 **Название:** ${event.title}\n` +
+        `👥 **Клан-партнёр:** ${event.collabClanName || 'Дружественный клан'}\n` +
+        `📍 **Локация:** ${event.location}\n` +
+        `💰 **Награда сталкерам:** +${event.rewardEquivaxes} ℰQ\n` +
+        `⏰ **Время сбора:** ${formattedTime}\n\n` +
+        `📝 **Описание:**\n${event.description}`;
+
+      inlineKeyboard.push([{ text: '🎮 Открыть событие в Mini App', web_app: { url: appUrl } }]);
+      if (event.collabClanUrl) {
+        inlineKeyboard.push([{ text: `🤝 Группа клана ${event.collabClanName || 'партнёра'}`, url: event.collabClanUrl }]);
+      }
+    } else if (event.type === 'planned_rp') {
+      text = `🌸 **НОВАЯ ЗАПЛАНИРОВАННАЯ РП-СЕССИЯ!**\n\n` +
+        `🏷 **Сессия:** ${event.title}\n` +
+        `📍 **Место действия:** ${event.location}\n` +
+        `🎭 **GM (Ведущий):** ${event.hasGM ? 'Есть GM' : 'Свободная игра'}\n` +
+        `💰 **Награда за участие:** +${event.rewardEquivaxes} ℰQ\n` +
+        `⏰ **Старт:** ${formattedTime}\n\n` +
+        `📝 **Сюжет:**\n${event.description}`;
+
+      inlineKeyboard.push([{ text: '🎮 Записаться на РП в Mini App', web_app: { url: appUrl } }]);
+    } else {
+      text = `🔥 **НОВЫЙ ИВЕНТ В ДАСТ ТАУН КОЛЕКТИВ!**\n\n` +
+        `🏷 **Ивент:** ${event.title}\n` +
+        `📍 **Локация:** ${event.location}\n` +
+        `⚔️ **Фракция:** ${event.faction}\n` +
+        `💰 **Награда:** +${event.rewardEquivaxes} ℰQ\n` +
+        `⏰ **Старт:** ${formattedTime}\n\n` +
+        `📝 **Подробности:**\n${event.description}`;
+
+      inlineKeyboard.push([{ text: '🎮 Участвовать в ивенте', web_app: { url: appUrl } }]);
+    }
+
+    let sent = false;
+    if (event.bannerUrl && event.bannerUrl.startsWith('http')) {
+      try {
+        await tgApi('sendPhoto', {
+          chat_id: targetChat,
+          photo: event.bannerUrl,
+          caption: text,
+          parse_mode: 'Markdown',
+          reply_markup: { inline_keyboard: inlineKeyboard }
+        });
+        sent = true;
+      } catch (err: any) {
+        console.warn('sendPhoto failed, falling back to sendMessage:', err.message);
+      }
+    }
+
+    if (!sent) {
+      await tgApi('sendMessage', {
+        chat_id: targetChat,
+        text,
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: inlineKeyboard }
+      });
+    }
+
+    addBotLog(
+      'info',
+      `Оповещение о ${event.type === 'collab' ? 'событии-коллаборации' : event.type === 'planned_rp' ? 'РП-сессии' : 'ивенте'} «${event.title}» отправлено в группу ${targetChat}`
+    );
     res.json({ success: true });
-  } catch (error: any) {
-    addBotLog('error', `Помилка сповіщення Telegram: ${error.message}`);
-    res.status(502).json({ error: error.message });
+  } catch (err: any) {
+    addBotLog('error', `Ошибка отправки оповещения в группу: ${err.message}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Automatic announcement of attendance review & penalties to community group
+app.post('/api/notify-completion', async (req, res) => {
+  try {
+    const { eventTitle, eventType, attendedUsernames, absentUsernames, rewardAmount, penaltyAmount } = req.body;
+    const targetChat = process.env.TELEGRAM_GROUP_ID || '@DustTownCollective';
+    const appUrl = APP_URL;
+
+    const typeLabel = eventType === 'collab'
+      ? 'СОБЫТИЯ-КОЛЛАБОРАЦИИ'
+      : eventType === 'planned_rp'
+      ? 'РП-СЕССИИ'
+      : 'ИВЕНТА';
+
+    let text = `🏁 **ИТОГИ ${typeLabel}**\n\n` +
+      `🏷 **Название:** ${eventTitle}\n\n`;
+
+    if (attendedUsernames && attendedUsernames.length > 0) {
+      text += `🎖 **Присутствовали (награда +${rewardAmount} ℰQ):**\n` +
+        attendedUsernames.map((u: string) => `• ${u}`).join('\n') + '\n\n';
+    } else {
+      text += `🎖 **Присутствовали:** Никто не явился\n\n`;
+    }
+
+    if (absentUsernames && absentUsernames.length > 0) {
+      text += `⚠️ **Не явились (ШТРАФ -${penaltyAmount} ℰQ):**\n` +
+        absentUsernames.map((u: string) => `• ${u} (задолженность записана)`).join('\n') + '\n\n';
+      text += `💡 *Напоминание: долг автоматически списывается/погашается при поступлении новых Эквиваксов на счёт.*`;
+    }
+
+    await tgApi('sendMessage', {
+      chat_id: targetChat,
+      text,
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [[{ text: '🎮 Открыть Mini App', web_app: { url: appUrl } }]]
+      }
+    });
+
+    addBotLog('info', `Итоги и штрафы по «${eventTitle}» отправлены в группу ${targetChat}`);
+    res.json({ success: true });
+  } catch (err: any) {
+    addBotLog('error', `Ошибка отправки итогов в группу: ${err.message}`);
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -425,7 +520,9 @@ app.get('/api/download-render-zip', (req, res) => {
       return res.status(500).json({ error: 'Failed to generate zip file' });
     }
 
-    res.setHeader('Content-Type', 'application/zip');
+    const stat = fs.statSync(zipPath);
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Length', stat.size);
     res.setHeader('Content-Disposition', 'attachment; filename="dusttown-rp-render.zip"');
     const fileStream = fs.createReadStream(zipPath);
     fileStream.pipe(res);
@@ -442,63 +539,97 @@ app.get('/api/get-zip-base64', (req, res) => {
       return res.status(500).json({ error: 'Failed to generate zip file' });
     }
 
-    const buffer = fs.readFileSync(zipPath);
-    res.json({ success: true, filename: 'dusttown-rp-render.zip', size: buffer.length, base64: buffer.toString('base64') });
+    try {
+      const buffer = fs.readFileSync(zipPath);
+      res.json({
+        success: true,
+        filename: 'dusttown-rp-render.zip',
+        size: buffer.length,
+        base64: buffer.toString('base64')
+      });
+    } catch (readErr) {
+      console.error('Error reading zip:', readErr);
+      res.status(500).json({ error: 'Error reading zip file' });
+    }
   });
 });
 
-app.post('/api/user/sync', (req, res) => {
-  const result = registerOrUpdateUser(req.body?.tgUser);
-  const data = result?.data || getOrInitData();
-  res.json({ success: true, profile: result?.profile || null, fullData: data });
+app.get('/api/data', (req, res) => {
+  const data = getOrInitData();
+  res.json(data);
 });
 
-app.post('/api/admin/toggle', (req, res) => {
-  const { requesterUsername, targetUsername, action, tags } = req.body || {};
-  if (typeof requesterUsername !== 'string' || requesterUsername.toLowerCase() !== '@mrwhitepio') {
-    return res.status(403).json({ error: 'Only the project owner can manage admins' });
+// Sync or auto-register Mini App user from Telegram WebApp initData
+app.post('/api/user/sync', (req, res) => {
+  const tgUser = req.body?.tgUser;
+  if (!tgUser || !tgUser.id) {
+    const data = getOrInitData();
+    return res.json({ success: true, profile: null, fullData: data });
   }
-  if (typeof targetUsername !== 'string' || !targetUsername.trim()) {
-    return res.status(400).json({ error: 'A target username is required' });
+
+  const result = registerOrUpdateUser(tgUser);
+  res.json({
+    success: true,
+    profile: result?.profile,
+    fullData: result?.data || getOrInitData()
+  });
+});
+
+// Owner only: Toggle or assign Admin rights
+app.post('/api/admin/toggle', (req, res) => {
+  const { requesterUsername, targetUsername, action, tags } = req.body;
+  if (!requesterUsername || requesterUsername.toLowerCase() !== '@mrwhitepio') {
+    return res.status(403).json({ error: 'Только Создатель (@MrWhitePio) может назначать администраторов' });
   }
 
   const data = getOrInitData();
-  const username = targetUsername.startsWith('@') ? targetUsername : `@${targetUsername}`;
-  if (username.toLowerCase() === '@mrwhitepio' && action === 'remove') {
-    return res.status(400).json({ error: 'The project owner cannot be removed' });
-  }
-  const existing = data.admins.find((admin: any) => admin.username.toLowerCase() === username.toLowerCase());
+  data.admins = data.admins || [];
+  const formattedTarget = targetUsername.startsWith('@') ? targetUsername : `@${targetUsername}`;
+
   if (action === 'remove') {
-    data.admins = data.admins.filter((admin: any) => admin.username.toLowerCase() !== username.toLowerCase());
-  } else if (existing) {
-    existing.tags = Array.isArray(tags) ? tags : existing.tags;
+    if (formattedTarget.toLowerCase() === '@mrwhitepio') {
+      return res.status(400).json({ error: 'Нельзя снять права у Главного Создателя' });
+    }
+    data.admins = data.admins.filter((a: any) => a.username.toLowerCase() !== formattedTarget.toLowerCase());
   } else {
-    data.admins.push({ username, tags: Array.isArray(tags) ? tags : ['Адміністратор'], addedAt: new Date().toISOString() });
+    const existing = data.admins.find((a: any) => a.username.toLowerCase() === formattedTarget.toLowerCase());
+    if (existing) {
+      existing.tags = tags || existing.tags || ['Администратор'];
+    } else {
+      data.admins.push({
+        username: formattedTarget,
+        tags: tags || ['Администратор'],
+        addedAt: new Date().toISOString(),
+        isMainCreator: formattedTarget.toLowerCase() === '@mrwhitepio'
+      });
+    }
   }
+
   saveData(data);
   res.json({ success: true, admins: data.admins });
 });
 
-app.get('/api/data', (req, res) => {
-  res.json(getOrInitData());
-});
-
 app.post('/api/data', (req, res) => {
   try {
-    const incoming = req.body;
-    if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) {
-      return res.status(400).json({ error: 'Invalid state body' });
-    }
     const current = getOrInitData();
-    const profiles = new Map((current.profiles || []).map((profile: any) => [profile.id, profile]));
-    if (Array.isArray(incoming.profiles)) {
-      for (const profile of incoming.profiles) {
-        if (profile?.id) profiles.set(profile.id, profile);
-      }
+    const incoming = req.body;
+
+    if (incoming && typeof incoming === 'object') {
+      // Merge profiles safely to never lose registered users
+      const profileMap = new Map();
+      (current.profiles || []).forEach((p: any) => profileMap.set(p.id, p));
+      (incoming.profiles || []).forEach((p: any) => profileMap.set(p.id, p));
+
+      const mergedData = {
+        ...current,
+        ...incoming,
+        profiles: Array.from(profileMap.values())
+      };
+
+      saveData(mergedData);
+      return res.json({ success: true, count: mergedData.profiles.length });
     }
-    const data = { ...current, ...incoming, profiles: Array.from(profiles.values()) };
-    saveData(data);
-    res.json({ success: true, count: data.profiles.length });
+    res.status(400).json({ error: 'Invalid state body' });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -511,17 +642,54 @@ startTelegramPolling().catch(err => {
 
 // Mount Vite or serve static
 async function startServer() {
-  if (process.env.NODE_ENV === 'production' || fs.existsSync(path.join(__dirname, 'dist'))) {
-    app.use(express.static(path.join(__dirname, 'dist')));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+  const distDir = path.join(__dirname, 'dist');
+  const indexHtmlPath = path.join(distDir, 'index.html');
+  const hasBuiltDist = fs.existsSync(indexHtmlPath);
+
+  // If in production and built static assets exist, serve from dist/
+  if (process.env.NODE_ENV === 'production' && hasBuiltDist) {
+    app.use(express.static(distDir));
+    app.get('*', (req, res, next) => {
+      if (req.path.startsWith('/api')) {
+        return next();
+      }
+      res.sendFile(indexHtmlPath, (err) => {
+        if (err) {
+          next(err);
+        }
+      });
     });
   } else {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa'
-    });
-    app.use(vite.middlewares);
+    // Development or missing dist: mount Vite dev server in middleware mode
+    try {
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: 'spa'
+      });
+      app.use(vite.middlewares);
+    } catch (err) {
+      console.error('Failed to create Vite server, checking for dist fallback:', err);
+      if (hasBuiltDist) {
+        app.use(express.static(distDir));
+        app.get('*', (req, res, next) => {
+          if (req.path.startsWith('/api')) return next();
+          res.sendFile(indexHtmlPath, (sendErr) => {
+            if (sendErr) next(sendErr);
+          });
+        });
+      } else {
+        // Fallback root HTML response if neither is available
+        app.get('*', (req, res, next) => {
+          if (req.path.startsWith('/api')) return next();
+          const devIndex = path.join(__dirname, 'index.html');
+          if (fs.existsSync(devIndex)) {
+            res.sendFile(devIndex);
+          } else {
+            res.status(500).send('Building application, please refresh in a few seconds...');
+          }
+        });
+      }
+    }
   }
 
   app.listen(PORT, () => {

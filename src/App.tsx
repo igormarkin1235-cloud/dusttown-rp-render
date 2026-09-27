@@ -10,7 +10,11 @@ import {
   InventoryItem,
   AdminInfo,
   ShopWeeklyItem,
-  AuctionListing
+  AuctionListing,
+  CompletionOutcome,
+  PreReleasePost,
+  Transaction,
+  TransactionType
 } from './types';
 import {
   loadAppState,
@@ -18,13 +22,15 @@ import {
   fetchServerState,
   syncUserWithServer,
   toggleAdminRoleOnServer,
-  notifyTelegramGroupAboutEvent
+  notifyTelegramGroupAboutEvent,
+  notifyTelegramGroupAboutCompletion
 } from './services/storage';
 import { ProfilesTopBar } from './components/ProfilesTopBar';
 import { MiniAppHeader } from './components/MiniAppHeader';
 import { NavigationDock, TabType } from './components/NavigationDock';
 import { EventsView } from './components/EventsView';
 import { PlannedRPView } from './components/PlannedRPView';
+import { PreReleaseView } from './components/PreReleaseView';
 import { MarketView } from './components/MarketView';
 import { CharactersView } from './components/CharactersView';
 import { ProfileView } from './components/ProfileView';
@@ -44,7 +50,7 @@ import {
 
 export default function App() {
   const [appState, setAppState] = useState<AppStateData>(loadAppState());
-
+  
   // By default in clean browser, use a visitor profile or first registered profile
   // If Telegram WebApp is present, it binds directly to the real Telegram user
   const [currentUserId, setCurrentUserId] = useState<string>(() => {
@@ -173,6 +179,33 @@ export default function App() {
     });
   };
 
+  // Financial Transaction Recorder Helper
+  const applyTx = (
+    profile: UserProfile,
+    amount: number,
+    type: TransactionType,
+    title: string,
+    description?: string
+  ): UserProfile => {
+    const isInf = profile.isInfiniteEquivaxes || profile.username.toLowerCase() === '@mrwhitepio';
+    const newBal = isInf ? profile.equivaxes : profile.equivaxes + amount;
+    const tx: Transaction = {
+      id: 'tx_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+      userId: profile.id,
+      amount,
+      type,
+      title,
+      description,
+      timestamp: new Date().toISOString(),
+      balanceAfter: newBal
+    };
+    return {
+      ...profile,
+      equivaxes: newBal,
+      transactions: [tx, ...(profile.transactions || [])].slice(0, 100)
+    };
+  };
+
   // Owner Admin Rights Toggle
   const handleToggleAdmin = async (targetUsername: string, makeAdmin: boolean) => {
     if (!isOwner) return;
@@ -227,9 +260,15 @@ export default function App() {
 
       const updatedProfiles = prev.profiles.map(p => {
         if (p.id === currentUser.id) {
+          const profileWithTx = applyTx(
+            p,
+            -item.price,
+            'expense_market',
+            `Покупка: ${item.name}`,
+            'Торговый пост Даст Таун'
+          );
           return {
-            ...p,
-            equivaxes: isInfinite ? p.equivaxes : p.equivaxes - item.price,
+            ...profileWithTx,
             inventory: [invItem, ...(p.inventory || [])]
           };
         }
@@ -330,17 +369,26 @@ export default function App() {
       // Transfer money to seller, deduct from buyer, transfer item to buyer
       const updatedProfiles = prev.profiles.map(p => {
         if (p.id === currentUser.id) {
+          const profileWithTx = applyTx(
+            p,
+            -listing.price,
+            'expense_auction',
+            `Покупка: ${listing.item.name}`,
+            `Торговец аукциона: ${listing.sellerDisplayName}`
+          );
           return {
-            ...p,
-            equivaxes: isInfinite ? p.equivaxes : p.equivaxes - listing.price,
+            ...profileWithTx,
             inventory: [listing.item, ...(p.inventory || [])]
           };
         }
         if (p.id === listing.sellerId) {
-          return {
-            ...p,
-            equivaxes: p.equivaxes + listing.price
-          };
+          return applyTx(
+            p,
+            listing.price,
+            'income_auction',
+            `Продажа: ${listing.item.name}`,
+            `Покупатель: ${currentUser.displayName}`
+          );
         }
         return p;
       });
@@ -356,11 +404,18 @@ export default function App() {
   // Sell item to pawnshop directly from profile
   const handleSellItemToPawnshop = (itemId: string, payout: number) => {
     updateState(prev => {
+      const targetItem = currentUser.inventory?.find(i => i.id === itemId);
       const updatedProfiles = prev.profiles.map(p => {
         if (p.id === currentUser.id) {
+          const profileWithTx = applyTx(
+            p,
+            payout,
+            'income_pawnshop',
+            `Скупщик: ${targetItem?.name || 'Предмет'}`,
+            'Сдача снаряжения на металлолом в Пустошах'
+          );
           return {
-            ...p,
-            equivaxes: p.equivaxes + payout,
+            ...profileWithTx,
             inventory: (p.inventory || []).filter(i => i.id !== itemId)
           };
         }
@@ -397,12 +452,20 @@ export default function App() {
   // Claim Lottery Prize when scratched
   const handleClaimLotteryPrize = (ticketId: string, prizeEquivaxes: number) => {
     updateState(prev => {
-      const isInfinite = currentUser.isInfiniteEquivaxes || isOwner;
       const updatedProfiles = prev.profiles.map(p => {
         if (p.id === currentUser.id) {
+          const profileWithTx =
+            prizeEquivaxes > 0
+              ? applyTx(
+                  p,
+                  prizeEquivaxes,
+                  'income_lottery',
+                  'Выигрыш в Лотерее Пустошей',
+                  `Стёрт защитный слой билета (+${prizeEquivaxes} ℰQ)`
+                )
+              : p;
           return {
-            ...p,
-            equivaxes: isInfinite ? p.equivaxes : p.equivaxes + prizeEquivaxes,
+            ...profileWithTx,
             inventory: (p.inventory || []).filter(i => i.id !== ticketId)
           };
         }
@@ -418,6 +481,72 @@ export default function App() {
     setTimeout(() => {
       setActiveLotteryTicket(null);
     }, 1200);
+  };
+
+  // Buy Privilege Pass or Perk
+  const handleBuyPrivilege = (
+    privilegeKey: 'hasVip' | 'hasTraderLicense' | 'hasNeonAura' | 'hasHonoredCitizen',
+    price: number
+  ): boolean => {
+    const isInf = currentUser.isInfiniteEquivaxes || isOwner;
+    const userBal = currentUser.equivaxes || 0;
+    if (!isInf && userBal < price) {
+      return false;
+    }
+
+    const privilegeTitles: Record<string, string> = {
+      hasVip: 'VIP-Статус «Властелин Пустоши»',
+      hasTraderLicense: 'Лицензия Караванщика',
+      hasNeonAura: 'Неоновая Аура Сталкера',
+      hasHonoredCitizen: 'Почётный Гражданин Даст Таун'
+    };
+    const title = privilegeTitles[privilegeKey] || 'Премиум Привилегия';
+
+    updateState(prev => {
+      const updatedProfiles = prev.profiles.map(p => {
+        if (p.id === currentUser.id) {
+          const profileWithTx = applyTx(
+            p,
+            -price,
+            'expense_privilege',
+            `Привилегия: ${title}`,
+            'Активация статуса в Даст Таун'
+          );
+          return {
+            ...profileWithTx,
+            [privilegeKey]: true
+          };
+        }
+        return p;
+      });
+
+      return {
+        ...prev,
+        profiles: updatedProfiles
+      };
+    });
+    return true;
+  };
+
+  // Buy VIP Privilege Pass (unlocks Pre-Release tab)
+  const handleBuyVip = () => {
+    handleBuyPrivilege('hasVip', 500);
+  };
+
+  // Create Pre-Release Post / Teaser
+  const handleCreatePreReleasePost = (post: PreReleasePost) => {
+    updateState(prev => ({
+      ...prev,
+      preReleasePosts: [post, ...(prev.preReleasePosts || [])]
+    }));
+  };
+
+  // Delete Pre-Release Post
+  const handleDeletePreReleasePost = (postId: string) => {
+    updateState(prev => ({
+      ...prev,
+      preReleasePosts: (prev.preReleasePosts || []).filter(p => p.id !== postId)
+    }));
   };
 
   // Event Handlers
@@ -439,9 +568,18 @@ export default function App() {
 
       const updatedProfiles = prev.profiles.map(p => {
         if (p.id === currentUser.id) {
+          const profileWithTx =
+            reward > 0
+              ? applyTx(
+                  p,
+                  reward,
+                  targetEvent.type === 'planned_rp' ? 'income_rp' : 'income_event',
+                  `Регистрация: ${targetEvent.title}`,
+                  'Стартовое довольствие за запись на вылазку'
+                )
+              : p;
           return {
-            ...p,
-            equivaxes: p.isInfiniteEquivaxes || isOwner ? p.equivaxes : p.equivaxes + reward,
+            ...profileWithTx,
             eventsAttended: targetEvent.type === 'event' ? p.eventsAttended + 1 : p.eventsAttended,
             plannedRpsAttended: targetEvent.type === 'planned_rp' ? p.plannedRpsAttended + 1 : p.plannedRpsAttended
           };
@@ -491,11 +629,15 @@ export default function App() {
 
       const updatedProfiles = prev.profiles.map(p => {
         if (p.id === currentUser.id) {
-          const isInfinite = p.isInfiniteEquivaxes || isOwner;
-          const newBalance = isInfinite ? p.equivaxes : Math.max(0, p.equivaxes - box.price);
+          const profileWithTx = applyTx(
+            p,
+            -box.price,
+            'expense_case',
+            `Кейс: ${box.name}`,
+            `Получен предмет «${wonDef.name}» (${wonDef.rarity})`
+          );
           return {
-            ...p,
-            equivaxes: newBalance,
+            ...profileWithTx,
             inventory: [invItem, ...(p.inventory || [])]
           };
         }
@@ -546,19 +688,97 @@ export default function App() {
     }));
   };
 
-  const handleCompleteEvent = (eventId: string) => {
-    updateState(prev => ({
-      ...prev,
-      events: prev.events.map(e =>
-        e.id === eventId
+  const handleCompleteEvent = (outcome: CompletionOutcome) => {
+    const targetEvent = appState.events.find(e => e.id === outcome.eventId);
+    if (!targetEvent) return;
+
+    const attendedSet = new Set(outcome.attendedUserIds);
+    const absentSet = new Set(outcome.absentUserIds);
+
+    updateState(prev => {
+      const updatedProfiles = prev.profiles.map(p => {
+        const isAttended = attendedSet.has(p.id);
+        const isAbsent = absentSet.has(p.id);
+
+        if (!isAttended && !isAbsent) return p;
+
+        const isInfinite = p.isInfiniteEquivaxes || p.username.toLowerCase() === '@mrwhitepio';
+        let newEquivaxes = p.equivaxes;
+
+        if (!isInfinite) {
+          if (isAttended) {
+            newEquivaxes += outcome.rewardAmount;
+          } else if (isAbsent) {
+            // Deduct penalty; balance can go negative into debt (e.g. -150)
+            newEquivaxes -= outcome.penaltyAmount;
+          }
+        }
+
+        const isPlannedRp = targetEvent.type === 'planned_rp';
+        let profileWithTx = p;
+        if (isAttended && outcome.rewardAmount > 0) {
+          profileWithTx = applyTx(
+            p,
+            outcome.rewardAmount,
+            isPlannedRp ? 'income_rp' : 'income_event',
+            `Завершение: ${targetEvent.title}`,
+            'Успешное участие в миссии Даст Таун'
+          );
+        } else if (isAbsent && outcome.penaltyAmount > 0) {
+          profileWithTx = applyTx(
+            p,
+            -outcome.penaltyAmount,
+            'expense_penalty',
+            `Штраф за неявку: ${targetEvent.title}`,
+            'Неявка на зарегистрированное мероприятие'
+          );
+        }
+
+        return {
+          ...profileWithTx,
+          eventsAttended: isAttended && !isPlannedRp ? (p.eventsAttended || 0) + 1 : p.eventsAttended,
+          plannedRpsAttended: isAttended && isPlannedRp ? (p.plannedRpsAttended || 0) + 1 : p.plannedRpsAttended
+        };
+      });
+
+      const updatedEvents = prev.events.map(e =>
+        e.id === outcome.eventId
           ? {
               ...e,
               isCompleted: true,
               completedAt: new Date().toISOString()
             }
           : e
-      )
-    }));
+      );
+
+      return {
+        ...prev,
+        profiles: updatedProfiles,
+        events: updatedEvents
+      };
+    });
+
+    // Notify Telegram group if requested
+    if (outcome.sendGroupReport) {
+      const attendedUsernames = appState.profiles
+        .filter(p => attendedSet.has(p.id))
+        .map(p => `${p.displayName} (${p.username})`);
+
+      const absentUsernames = appState.profiles
+        .filter(p => absentSet.has(p.id))
+        .map(p => `${p.displayName} (${p.username})`);
+
+      notifyTelegramGroupAboutCompletion({
+        eventTitle: targetEvent.title,
+        eventType: targetEvent.type,
+        attendedUsernames,
+        absentUsernames,
+        rewardAmount: outcome.rewardAmount,
+        penaltyAmount: outcome.penaltyAmount
+      }).catch(err => {
+        console.warn('Failed to send group completion report:', err);
+      });
+    }
   };
 
   const handleDeleteEvent = (eventId: string) => {
@@ -596,7 +816,15 @@ export default function App() {
     updateState(prev => ({
       ...prev,
       profiles: prev.profiles.map(p =>
-        p.id === userId ? { ...p, equivaxes: Math.max(0, p.equivaxes + amount) } : p
+        p.id === userId
+          ? applyTx(
+              p,
+              amount,
+              'income_admin',
+              amount >= 0 ? 'Начисление от администрации' : 'Списание администрацией',
+              `Коррекция баланса администратором @MrWhitePio (${amount >= 0 ? '+' : ''}${amount} ℰQ)`
+            )
+          : p
       )
     }));
   };
@@ -769,6 +997,19 @@ export default function App() {
                     isAdmin={isAdmin}
                   />
                 )}
+                {activeTab === 'prerelease' && (
+                  <PreReleaseView
+                    currentUser={currentUser}
+                    events={appState.events}
+                    profiles={appState.profiles}
+                    preReleasePosts={appState.preReleasePosts || []}
+                    isAdmin={isAdmin}
+                    onBuyVip={handleBuyVip}
+                    onOpenProfile={p => setInspectedProfile(p)}
+                    onCreatePost={handleCreatePreReleasePost}
+                    onDeletePost={handleDeletePreReleasePost}
+                  />
+                )}
                 {activeTab === 'market' && (
                   <MarketView
                     currentUser={currentUser}
@@ -783,6 +1024,8 @@ export default function App() {
                     onListItemOnAuction={handleListItemOnAuction}
                     onCancelAuctionListing={handleCancelAuctionListing}
                     onBuyAuctionItem={handleBuyAuctionItem}
+                    onBuyVip={handleBuyVip}
+                    onBuyPrivilege={handleBuyPrivilege}
                   />
                 )}
                 {activeTab === 'characters' && (
@@ -908,6 +1151,19 @@ export default function App() {
                   isAdmin={isAdmin}
                 />
               )}
+              {activeTab === 'prerelease' && (
+                <PreReleaseView
+                  currentUser={currentUser}
+                  events={appState.events}
+                  profiles={appState.profiles}
+                  preReleasePosts={appState.preReleasePosts || []}
+                  isAdmin={isAdmin}
+                  onBuyVip={handleBuyVip}
+                  onOpenProfile={p => setInspectedProfile(p)}
+                  onCreatePost={handleCreatePreReleasePost}
+                  onDeletePost={handleDeletePreReleasePost}
+                />
+              )}
               {activeTab === 'market' && (
                 <MarketView
                   currentUser={currentUser}
@@ -922,6 +1178,8 @@ export default function App() {
                   onListItemOnAuction={handleListItemOnAuction}
                   onCancelAuctionListing={handleCancelAuctionListing}
                   onBuyAuctionItem={handleBuyAuctionItem}
+                  onBuyVip={handleBuyVip}
+                  onBuyPrivilege={handleBuyPrivilege}
                 />
               )}
               {activeTab === 'characters' && (

@@ -7,10 +7,12 @@ import {
   Shield,
   ShoppingBag,
   ChevronRight,
-  Menu
+  Menu,
+  Eye,
+  Crown
 } from 'lucide-react';
 
-export type TabType = 'events' | 'planned_rp' | 'market' | 'characters' | 'profile' | 'cases' | 'admin';
+export type TabType = 'events' | 'planned_rp' | 'prerelease' | 'market' | 'characters' | 'profile' | 'cases' | 'admin';
 
 interface NavigationDockProps {
   activeTab: TabType;
@@ -51,6 +53,12 @@ export const NavigationDock: React.FC<NavigationDockProps> = ({
       label: 'РП-Сессии',
       icon: <Sparkles className="w-4 h-4 text-pink-400" />,
       badge: plannedRpsCount > 0 ? plannedRpsCount : undefined
+    },
+    {
+      id: 'prerelease',
+      label: 'Пред-релиз',
+      icon: <Eye className="w-4 h-4 text-purple-400" />,
+      badge: 'VIP'
     },
     {
       id: 'market',

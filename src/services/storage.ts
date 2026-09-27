@@ -1,4 +1,4 @@
-import { AppStateData, UserProfile, RPEvent, CharacterSheet, Award, CaseBox, CaseItemDefinition } from '../types';
+import { AppStateData, UserProfile, RPEvent, CharacterSheet, Award, CaseBox, CaseItemDefinition, Achievement } from '../types';
 
 const STORAGE_KEY = 'dusttown_rp_app_state_v3_clean';
 
@@ -352,6 +352,58 @@ export const INITIAL_PROFILES: UserProfile[] = [
         appliedValue: 'frame_rad_pulse',
         acquiredAt: '2026-01-01T00:00:00Z'
       }
+    ],
+    transactions: [
+      {
+        id: 'tx_seed_1',
+        userId: 'user_mrwhite',
+        amount: 5000,
+        type: 'income_admin',
+        title: 'Основание города Даст Таун',
+        description: 'Стартовый капитал основателя и архитектора поселения',
+        timestamp: '2026-01-01T12:00:00Z',
+        balanceAfter: 5000
+      },
+      {
+        id: 'tx_seed_2',
+        userId: 'user_mrwhite',
+        amount: 1500,
+        type: 'income_event',
+        title: 'Экспедиция «Древнее убежище Магитехов»',
+        description: 'Успешная вылазка и возвращение с довоенными чертежами',
+        timestamp: '2026-01-10T18:30:00Z',
+        balanceAfter: 6500
+      },
+      {
+        id: 'tx_seed_3',
+        userId: 'user_mrwhite',
+        amount: -500,
+        type: 'expense_privilege',
+        title: 'VIP-Статус «Властелин Пустоши»',
+        description: 'Пожизненный доступ к закрытой вкладке «Пред-релиз»',
+        timestamp: '2026-01-12T14:15:00Z',
+        balanceAfter: 6000
+      },
+      {
+        id: 'tx_seed_4',
+        userId: 'user_mrwhite',
+        amount: 850,
+        type: 'income_auction',
+        title: 'Продажа на аукционе: Тяжёлая броня Рейнджера',
+        description: 'Лот успешно выкуплен сталкером каравана',
+        timestamp: '2026-01-18T20:45:00Z',
+        balanceAfter: 6850
+      },
+      {
+        id: 'tx_seed_5',
+        userId: 'user_mrwhite',
+        amount: -250,
+        type: 'expense_case',
+        title: 'Открытие: Квантовый Реликвий',
+        description: 'Получена легендарная анимированная тема «Реактор Радиации»',
+        timestamp: '2026-01-22T16:00:00Z',
+        balanceAfter: 6600
+      }
     ]
   }
 ];
@@ -370,6 +422,88 @@ export const INITIAL_AWARDS: Award[] = [];
 export const INITIAL_EVENTS: RPEvent[] = [];
 export const INITIAL_CASES: CaseBox[] = [];
 export const INITIAL_CHARACTERS: CharacterSheet[] = [];
+
+export const INITIAL_ACHIEVEMENTS: Achievement[] = [
+  {
+    id: 'ach_first_steps',
+    title: 'Первые шаги по Пустоши',
+    description: 'Успешно примите участие в первой РП-сессии или ивенте Даст Таун.',
+    type: 'any_event_count',
+    targetValue: 1,
+    iconUrl: 'https://cdn-icons-png.flaticon.com/512/1828/1828884.png',
+    rewardType: 'equivaxes',
+    rewardAmount: 150,
+    createdAt: '2026-01-01T00:00:00Z',
+    createdBy: '@MrWhitePio'
+  },
+  {
+    id: 'ach_veteran_stalker',
+    title: 'Опытный Сталкер Пустошей',
+    description: 'Пройдите через 5 официальных ивентов или вылазок сообщества.',
+    type: 'any_event_count',
+    targetValue: 5,
+    iconUrl: 'https://cdn-icons-png.flaticon.com/512/564/564445.png',
+    rewardType: 'both',
+    rewardAmount: 350,
+    rewardCosmeticId: 'text-emerald-400 font-extrabold drop-shadow-[0_0_10px_#10b981]',
+    rewardCosmeticName: 'Цвет «Токсичный Рад ☢️»',
+    createdAt: '2026-01-01T00:00:00Z',
+    createdBy: '@MrWhitePio'
+  },
+  {
+    id: 'ach_days_survivor',
+    title: 'Старожил Даст Таун',
+    description: 'Проведите в поселении Даст Таун от 7 дней с момента прибытия.',
+    type: 'time_in_bot_days',
+    targetValue: 7,
+    iconUrl: 'https://cdn-icons-png.flaticon.com/512/3524/3524659.png',
+    rewardType: 'equivaxes',
+    rewardAmount: 250,
+    createdAt: '2026-01-01T00:00:00Z',
+    createdBy: '@MrWhitePio'
+  },
+  {
+    id: 'ach_case_hunter',
+    title: 'Охотник за Реликвиями',
+    description: 'Получите хотя бы 1 редкий, эпический или легендарный предмет из кейса.',
+    type: 'rare_cases_count',
+    targetValue: 1,
+    iconUrl: 'https://cdn-icons-png.flaticon.com/512/3132/3132693.png',
+    rewardType: 'both',
+    rewardAmount: 200,
+    rewardCosmeticId: 'golden-shimmer-text font-black',
+    rewardCosmeticName: 'Шиммер «Золотой Блик Рейнджера ✨»',
+    createdAt: '2026-01-01T00:00:00Z',
+    createdBy: '@MrWhitePio'
+  },
+  {
+    id: 'ach_character_creator',
+    title: 'Летописец Эквестрии',
+    description: 'Создайте свою первую подробную анкету персонажа в гильдии.',
+    type: 'characters_count',
+    targetValue: 1,
+    iconUrl: 'https://cdn-icons-png.flaticon.com/512/2618/2618068.png',
+    rewardType: 'both',
+    rewardAmount: 150,
+    rewardCosmeticId: 'text-amber-400 font-extrabold drop-shadow-[0_0_8px_#f59e0b]',
+    rewardCosmeticName: 'Цвет «Пип-Бой Янтарный ⚡»',
+    createdAt: '2026-01-01T00:00:00Z',
+    createdBy: '@MrWhitePio'
+  },
+  {
+    id: 'ach_capitalist',
+    title: 'Магнат Пустошей',
+    description: 'Накопите на личном счёте от 1,000 Эквиваксов (ℰQ).',
+    type: 'equivaxes_balance',
+    targetValue: 1000,
+    iconUrl: 'https://cdn-icons-png.flaticon.com/512/2933/2933116.png',
+    rewardType: 'profile_bg',
+    rewardCosmeticId: 'shimmer-gold-bg border-amber-400/60 shadow-lg shadow-amber-950/50',
+    rewardCosmeticName: 'Фон «Золотой Зал Рейнджера ⭐»',
+    createdAt: '2026-01-01T00:00:00Z',
+    createdBy: '@MrWhitePio'
+  }
+];
 
 export const INITIAL_WEEKLY_SHOP_ITEMS = [
   {
@@ -429,8 +563,34 @@ export function loadAppState(): AppStateData {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && Array.isArray(parsed.profiles)) {
+        const enrichedProfiles = parsed.profiles.map((p: UserProfile) => {
+          if (!p.transactions || p.transactions.length === 0) {
+            if (p.username?.toLowerCase() === '@mrwhitepio') {
+              return { ...p, transactions: INITIAL_PROFILES[0].transactions || [] };
+            }
+            return {
+              ...p,
+              transactions: [
+                {
+                  id: 'tx_init_' + p.id,
+                  userId: p.id,
+                  amount: p.equivaxes || 500,
+                  type: 'income_admin',
+                  title: 'Стартовый баланс сталкера',
+                  description: 'Приветственное довоенное пособие Даст Таун',
+                  timestamp: p.joinedAt || new Date().toISOString(),
+                  balanceAfter: p.equivaxes || 500
+                }
+              ]
+            };
+          }
+          return p;
+        });
+
         return {
           ...parsed,
+          profiles: enrichedProfiles,
+          achievements: Array.isArray(parsed.achievements) && parsed.achievements.length > 0 ? parsed.achievements : INITIAL_ACHIEVEMENTS,
           weeklyShopItems: Array.isArray(parsed.weeklyShopItems) ? parsed.weeklyShopItems : INITIAL_WEEKLY_SHOP_ITEMS,
           auctionListings: Array.isArray(parsed.auctionListings) ? parsed.auctionListings : INITIAL_AUCTION_LISTINGS
         };
@@ -448,6 +608,7 @@ export function loadAppState(): AppStateData {
     awards: INITIAL_AWARDS,
     cases: INITIAL_CASES,
     caseItems: INITIAL_CASE_ITEMS,
+    achievements: INITIAL_ACHIEVEMENTS,
     weeklyShopItems: INITIAL_WEEKLY_SHOP_ITEMS,
     auctionListings: INITIAL_AUCTION_LISTINGS
   };
@@ -535,6 +696,27 @@ export async function notifyTelegramGroupAboutEvent(event: RPEvent): Promise<boo
     return res.ok;
   } catch (e) {
     console.error('Failed to notify group about event:', e);
+    return false;
+  }
+}
+
+export async function notifyTelegramGroupAboutCompletion(reportData: {
+  eventTitle: string;
+  eventType: string;
+  attendedUsernames: string[];
+  absentUsernames: string[];
+  rewardAmount: number;
+  penaltyAmount: number;
+}): Promise<boolean> {
+  try {
+    const res = await fetch('/api/notify-completion', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(reportData)
+    });
+    return res.ok;
+  } catch (e) {
+    console.error('Failed to notify group about completion:', e);
     return false;
   }
 }

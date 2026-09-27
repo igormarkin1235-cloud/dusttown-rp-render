@@ -5,14 +5,17 @@ import {
   AdminInfo,
   Award,
   CaseBox,
-  CaseItemDefinition
+  CaseItemDefinition,
+  CompletionOutcome,
+  Achievement
 } from '../types';
 import { AdminEventsManager } from './AdminEventsManager';
 import { AdminAdminsManager } from './AdminAdminsManager';
 import { AdminUsersManager } from './AdminUsersManager';
 import { AdminAwardsManager } from './AdminAwardsManager';
 import { AdminCasesManager } from './AdminCasesManager';
-import { Shield, Calendar, Users, Award as AwardIcon, Package, Lock } from 'lucide-react';
+import { AdminAchievementsManager } from './AdminAchievementsManager';
+import { Shield, Calendar, Users, Award as AwardIcon, Package, Lock, Trophy } from 'lucide-react';
 
 interface AdminPanelProps {
   currentUser: UserProfile;
@@ -22,9 +25,10 @@ interface AdminPanelProps {
   awards: Award[];
   cases: CaseBox[];
   caseItems: CaseItemDefinition[];
+  achievements?: Achievement[];
   onCreateEvent: (event: RPEvent) => void;
   onTogglePauseEvent: (eventId: string) => void;
-  onCompleteEvent: (eventId: string) => void;
+  onCompleteEvent: (outcome: CompletionOutcome) => void;
   onDeleteEvent: (eventId: string) => void;
   onAddAdmin: (admin: AdminInfo) => void;
   onRemoveAdmin: (username: string) => void;
@@ -38,6 +42,8 @@ interface AdminPanelProps {
   onCreateItem: (newItem: CaseItemDefinition) => void;
   onSelectProfile: (profile: UserProfile) => void;
   onIssueLotteryTicket: (userId: string, ticketItem: any) => void;
+  onCreateAchievement?: (achievement: Achievement) => void;
+  onDeleteAchievement?: (achievementId: string) => void;
 }
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({
@@ -48,6 +54,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   awards,
   cases,
   caseItems,
+  achievements = [],
   onCreateEvent,
   onTogglePauseEvent,
   onCompleteEvent,
@@ -63,9 +70,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onDeleteCase,
   onCreateItem,
   onSelectProfile,
-  onIssueLotteryTicket
+  onIssueLotteryTicket,
+  onCreateAchievement,
+  onDeleteAchievement
 }) => {
-  const [activeTab, setActiveTab] = useState<'events' | 'admins' | 'users' | 'awards' | 'cases'>('events');
+  const [activeTab, setActiveTab] = useState<'events' | 'admins' | 'users' | 'awards' | 'cases' | 'achievements'>('events');
 
   const isAdmin =
     admins.some(a => a.username.toLowerCase() === currentUser.username.toLowerCase()) ||
@@ -167,11 +176,24 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           <Package className="w-3.5 h-3.5" />
           <span>Кейсы и Лут</span>
         </button>
+
+        <button
+          onClick={() => setActiveTab('achievements')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-heading font-bold whitespace-nowrap transition ${
+            activeTab === 'achievements'
+              ? 'bg-amber-500 text-black shadow'
+              : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
+          }`}
+        >
+          <Trophy className="w-3.5 h-3.5" />
+          <span>Достижения ({achievements.length})</span>
+        </button>
       </div>
 
       {/* Tab Panels */}
       {activeTab === 'events' && (
         <AdminEventsManager
+          currentUser={currentUser}
           events={events}
           profiles={profiles}
           onCreateEvent={onCreateEvent}
@@ -217,6 +239,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           onCreateCase={onCreateCase}
           onDeleteCase={onDeleteCase}
           onCreateItem={onCreateItem}
+        />
+      )}
+
+      {activeTab === 'achievements' && (
+        <AdminAchievementsManager
+          achievements={achievements}
+          profiles={profiles}
+          currentAdminUsername={currentUser.username}
+          onCreateAchievement={ach => onCreateAchievement && onCreateAchievement(ach)}
+          onDeleteAchievement={id => onDeleteAchievement && onDeleteAchievement(id)}
         />
       )}
     </div>

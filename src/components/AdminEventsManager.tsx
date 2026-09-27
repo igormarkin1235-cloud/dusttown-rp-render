@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { RPEvent, UserProfile, EventCategory } from '../types';
+import { RPEvent, UserProfile, EventCategory, CompletionOutcome } from '../types';
 import { ImageUploadInput } from './ImageUploadInput';
+import { EventCompletionModal } from './EventCompletionModal';
+import { PaletteColorSelector } from './PaletteColorSelector';
 import {
   Play,
   Pause,
@@ -18,11 +20,12 @@ import {
 } from 'lucide-react';
 
 interface AdminEventsManagerProps {
+  currentUser: UserProfile;
   events: RPEvent[];
   profiles: UserProfile[];
   onCreateEvent: (event: RPEvent) => void;
   onTogglePauseEvent: (eventId: string) => void;
-  onCompleteEvent: (eventId: string) => void;
+  onCompleteEvent: (outcome: CompletionOutcome) => void;
   onDeleteEvent: (eventId: string) => void;
 }
 
@@ -34,7 +37,24 @@ const PRESET_BANNERS = [
   'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1200&q=80'
 ];
 
+const TEXT_COLOR_PRESETS = [
+  { label: 'Стандартный', value: 'text-zinc-100' },
+  { label: 'Янтарный Неон', value: 'text-amber-300 drop-shadow-[0_0_8px_#f59e0b]' },
+  { label: 'Радиационный Зелёный', value: 'text-emerald-400 drop-shadow-[0_0_8px_#10b981]' },
+  { label: 'Квантовый Голубой', value: 'text-cyan-300 drop-shadow-[0_0_8px_#06b6d4]' },
+  { label: 'Розовый Шиммер', value: 'text-pink-400 drop-shadow-[0_0_8px_#ec4899]' }
+];
+
+const BG_GRADIENT_PRESETS = [
+  { label: 'Стандартная Тёмная Пустошь', value: 'from-zinc-950 to-zinc-900 border-zinc-800' },
+  { label: 'Радиационный Сектор', value: 'from-emerald-950/40 via-zinc-950 to-zinc-950 border-emerald-500/40' },
+  { label: 'Кибернетический Шлюз', value: 'from-cyan-950/40 via-zinc-950 to-zinc-950 border-cyan-500/40' },
+  { label: 'Пурпурная Аномалия', value: 'from-purple-950/40 via-zinc-950 to-zinc-950 border-purple-500/40' },
+  { label: 'Золотой Альянс', value: 'from-amber-950/50 via-zinc-950 to-yellow-950/40 border-amber-500/50' }
+];
+
 export const AdminEventsManager: React.FC<AdminEventsManagerProps> = ({
+  currentUser,
   events,
   profiles,
   onCreateEvent,
@@ -53,10 +73,16 @@ export const AdminEventsManager: React.FC<AdminEventsManagerProps> = ({
   const [bannerUrl, setBannerUrl] = useState(PRESET_BANNERS[0]);
   const [hasRainbowText, setHasRainbowText] = useState(false);
   const [hoursFromNow, setHoursFromNow] = useState(24);
+  const [isPreRelease, setIsPreRelease] = useState(false);
+  const [textColor, setTextColor] = useState(TEXT_COLOR_PRESETS[0].value);
+  const [bgGradient, setBgGradient] = useState(BG_GRADIENT_PRESETS[0].value);
 
   // Collab fields
   const [collabClanName, setCollabClanName] = useState('');
   const [collabClanUrl, setCollabClanUrl] = useState('');
+
+  // Event completion modal state (review attendance and issue penalties)
+  const [completingEvent, setCompletingEvent] = useState<RPEvent | null>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,7 +104,12 @@ export const AdminEventsManager: React.FC<AdminEventsManagerProps> = ({
       hasRainbowText: type === 'planned_rp' ? true : hasRainbowText,
       participants: [],
       collabClanName: type === 'collab' ? collabClanName.trim() : undefined,
-      collabClanUrl: type === 'collab' ? collabClanUrl.trim() : undefined
+      collabClanUrl: type === 'collab' ? collabClanUrl.trim() : undefined,
+      isPreRelease,
+      authorUsername: type === 'planned_rp' ? currentUser.username : undefined,
+      authorDisplayName: type === 'planned_rp' ? currentUser.displayName : undefined,
+      textColor,
+      bgGradient
     };
 
     onCreateEvent(newEvent);
@@ -304,6 +335,50 @@ export const AdminEventsManager: React.FC<AdminEventsManagerProps> = ({
             helperText="Поддерживается выбор любой фотографии с телефона/ПК через кнопку «Из галереи»."
           />
 
+          {/* Color & Gradient Styling Customization (Full 20-color & 20-bg palette) */}
+          <div className="space-y-3 p-4 rounded-2xl bg-zinc-950 border border-zinc-800">
+            <div>
+              <label className="block text-xs font-mono-pip text-zinc-300 mb-1.5 font-bold">
+                Цвет заголовка / текста (10 стандартных, 5 переливающихся, 5 градиентов):
+              </label>
+              <PaletteColorSelector
+                type="text"
+                selectedValue={textColor}
+                onSelect={val => setTextColor(val)}
+                sampleText={title || 'Название события'}
+              />
+            </div>
+
+            <div className="pt-2 border-t border-zinc-800">
+              <label className="block text-xs font-mono-pip text-zinc-300 mb-1.5 font-bold">
+                Фон и рамка карточки (10 стандартных, 5 переливающихся, 5 градиентов):
+              </label>
+              <PaletteColorSelector
+                type="bg"
+                selectedValue={bgGradient}
+                onSelect={val => setBgGradient(val)}
+              />
+            </div>
+          </div>
+
+          {/* Pre-Release VIP Checkbox */}
+          <label className="flex items-center gap-2.5 p-3 rounded-xl bg-purple-950/30 border border-purple-500/40 cursor-pointer hover:border-purple-400 transition">
+            <input
+              type="checkbox"
+              checked={isPreRelease}
+              onChange={e => setIsPreRelease(e.target.checked)}
+              className="w-4 h-4 rounded text-purple-600 bg-zinc-950 border-zinc-700 focus:ring-purple-500 focus:ring-offset-zinc-950"
+            />
+            <div className="text-xs">
+              <span className="font-bold text-purple-300 flex items-center gap-1.5">
+                👑 Опубликовать во вкладку «Пред-релиз» (только для VIP-игроков)
+              </span>
+              <p className="text-[10px] text-zinc-400 mt-0.5">
+                Игроки с VIP смогут увидеть анонс и детали заранее, но запись будет закрыта до официального релиза.
+              </p>
+            </div>
+          </label>
+
           <button
             type="submit"
             className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-heading font-black text-xs uppercase tracking-wider transition shadow-lg flex items-center justify-center gap-1.5"
@@ -400,14 +475,14 @@ export const AdminEventsManager: React.FC<AdminEventsManagerProps> = ({
                   </button>
 
                   <button
-                    onClick={() => onCompleteEvent(event.id)}
+                    onClick={() => setCompletingEvent(event)}
                     disabled={event.isCompleted}
                     className={`p-2 rounded-xl border transition ${
                       event.isCompleted
                         ? 'bg-zinc-900 border-zinc-800 text-zinc-600 cursor-not-allowed'
                         : 'bg-emerald-950/60 hover:bg-emerald-900 border-emerald-500/40 text-emerald-300'
                     }`}
-                    title="Завершить ивент (будет виден с плашкой ЗАКРЫТО 24 часа)"
+                    title="Завершить ивент / РП: отметить присутствовавших и оштрафовать прогульщиков"
                   >
                     <CheckCircle2 className="w-4 h-4" />
                   </button>
@@ -429,6 +504,19 @@ export const AdminEventsManager: React.FC<AdminEventsManagerProps> = ({
           </div>
         )}
       </div>
+
+      {/* Completion & Attendance Review Modal */}
+      {completingEvent && (
+        <EventCompletionModal
+          event={completingEvent}
+          profiles={profiles}
+          onConfirm={outcome => {
+            onCompleteEvent(outcome);
+            setCompletingEvent(null);
+          }}
+          onClose={() => setCompletingEvent(null)}
+        />
+      )}
     </div>
   );
 };

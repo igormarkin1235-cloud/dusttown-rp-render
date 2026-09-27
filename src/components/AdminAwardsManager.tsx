@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { Award, UserProfile } from '../types';
+import { PaletteColorSelector } from './PaletteColorSelector';
+import { ALL_TEXT_COLORS, ALL_BG_COLORS } from '../services/palette';
 import { Award as AwardIcon, Plus, Trash2, Sparkles, Check } from 'lucide-react';
 
 interface AdminAwardsManagerProps {
@@ -170,50 +172,29 @@ export const AdminAwardsManager: React.FC<AdminAwardsManagerProps> = ({
           />
         </div>
 
-        {/* Color Settings */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {/* Color Settings (20 Text Colors & 20 Backgrounds) */}
+        <div className="space-y-4">
           <div>
-            <label className="block text-xs font-mono-pip text-zinc-300 mb-1.5">
-              Цвет заголовка:
+            <label className="block text-xs font-mono-pip text-zinc-300 mb-1.5 font-bold">
+              Цвет заголовка награды (10 стандартных, 5 переливающихся, 5 градиентов):
             </label>
-            <div className="flex flex-wrap gap-1.5">
-              {TITLE_COLORS.map(c => (
-                <button
-                  key={c.label}
-                  type="button"
-                  onClick={() => setTitleColor(c.class)}
-                  className={`px-2 py-1 rounded-lg text-[11px] font-mono-pip border transition ${
-                    titleColor === c.class
-                      ? 'bg-zinc-800 border-amber-400'
-                      : 'bg-zinc-950 border-zinc-800'
-                  } ${c.class}`}
-                >
-                  {c.label}
-                </button>
-              ))}
-            </div>
+            <PaletteColorSelector
+              type="text"
+              selectedValue={titleColor}
+              onSelect={val => setTitleColor(val)}
+              sampleText={title || 'Название награды'}
+            />
           </div>
 
           <div>
-            <label className="block text-xs font-mono-pip text-zinc-300 mb-1.5">
-              Фон карточки награды:
+            <label className="block text-xs font-mono-pip text-zinc-300 mb-1.5 font-bold">
+              Фон карточки награды (10 стандартных, 5 переливающихся, 5 градиентов):
             </label>
-            <div className="flex flex-wrap gap-1.5">
-              {CARD_BACKGROUNDS.map(bg => (
-                <button
-                  key={bg.label}
-                  type="button"
-                  onClick={() => setCardBg(bg.class)}
-                  className={`px-2 py-1 rounded-lg text-[11px] font-mono-pip border transition ${
-                    cardBg === bg.class
-                      ? 'bg-zinc-800 border-amber-400 text-amber-300'
-                      : 'bg-zinc-950 border-zinc-800 text-zinc-400'
-                  }`}
-                >
-                  {bg.label}
-                </button>
-              ))}
-            </div>
+            <PaletteColorSelector
+              type="bg"
+              selectedValue={cardBg}
+              onSelect={val => setCardBg(val)}
+            />
           </div>
         </div>
 

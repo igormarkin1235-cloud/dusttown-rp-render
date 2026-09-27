@@ -64,6 +64,75 @@ export interface UserProfile {
   eventsAttended: number;
   plannedRpsAttended: number;
   inventory: InventoryItem[];
+  // VIP & Privileges (unlocks Pre-Release tab, trader perks & cosmetics)
+  hasVip?: boolean;
+  vipExpiresAt?: string;
+  hasTraderLicense?: boolean;
+  hasNeonAura?: boolean;
+  hasHonoredCitizen?: boolean;
+  // Transactions log
+  transactions?: Transaction[];
+  // Completed & claimed achievements
+  claimedAchievementIds?: string[];
+}
+
+export type AchievementType =
+  | 'events_count'       // Поучаствовать в N ивентах/событиях
+  | 'rp_count'           // Поучаствовать в N запланированных РП
+  | 'any_event_count'    // Общее число участий в ивентах и РП
+  | 'time_in_bot_days'   // Провести N дней в боте/городе
+  | 'rare_cases_count'   // Получить N редких/эпических/легендарных предметов с кейсов
+  | 'cases_opened_count' // Открыть N кейсов
+  | 'characters_count'   // Создать N анкет персонажей
+  | 'equivaxes_balance'  // Накопить баланс от N Эквиваксов (ℰQ)
+  | 'auction_deals'      // Совершить N покупок или продаж на аукционе
+  | 'lottery_tickets'    // Стереть N лотерейных билетов
+  | 'awards_count';      // Заслужить N орденов/заслуг
+
+export type AchievementRewardType =
+  | 'equivaxes'
+  | 'text_color'
+  | 'profile_bg'
+  | 'both';
+
+export interface Achievement {
+  id: string;
+  title: string;
+  description: string;
+  type: AchievementType;
+  targetValue: number;
+  iconUrl: string; // PNG icon (uploaded or chosen PNG)
+  rewardType: AchievementRewardType;
+  rewardAmount?: number; // Equivaxes amount
+  rewardCosmeticId?: string; // cosmetic value / style class
+  rewardCosmeticName?: string; // e.g. "Неоновый Лазурный 💎"
+  createdAt: string;
+  createdBy: string;
+}
+
+export type TransactionType =
+  | 'income_event'
+  | 'income_rp'
+  | 'income_auction'
+  | 'income_pawnshop'
+  | 'income_lottery'
+  | 'income_admin'
+  | 'expense_market'
+  | 'expense_auction'
+  | 'expense_case'
+  | 'expense_lottery'
+  | 'expense_privilege'
+  | 'expense_penalty';
+
+export interface Transaction {
+  id: string;
+  userId: string;
+  amount: number; // Positive for credit (+), negative for debit (-)
+  type: TransactionType;
+  title: string;
+  description?: string;
+  timestamp: string; // ISO string
+  balanceAfter?: number;
 }
 
 export interface LotteryTicketData {
@@ -143,6 +212,33 @@ export interface RPEvent {
   participants: string[]; // usernames or profile IDs
   collabClanName?: string; // Название клана-партнёра (для событий-коллабораций)
   collabClanUrl?: string; // Ссылка на группу/канал клана-партнёра
+  isPreRelease?: boolean; // Выставлено в закрытую вкладку «Пред-релиз»
+  authorUsername?: string; // Ник администратора, создавшего РП-сессию
+  authorDisplayName?: string; // Отображаемое имя администратора
+  textColor?: string; // Настройка цвета обычного текста
+  bgGradient?: string; // Настройка фона карточки/текста
+}
+
+export interface PreReleasePost {
+  id: string;
+  title: string;
+  content: string;
+  bannerUrl?: string;
+  textColor?: string;
+  bgGradient?: string;
+  createdAt: string;
+  authorUsername: string;
+  authorDisplayName: string;
+}
+
+export interface CompletionOutcome {
+  eventId: string;
+  attendedUserIds: string[];
+  absentUserIds: string[];
+  excusedUserIds?: string[];
+  rewardAmount: number;
+  penaltyAmount: number;
+  sendGroupReport?: boolean;
 }
 
 export interface Award {
@@ -189,4 +285,6 @@ export interface AppStateData {
   caseItems: CaseItemDefinition[];
   weeklyShopItems: ShopWeeklyItem[];
   auctionListings: AuctionListing[];
+  preReleasePosts?: PreReleasePost[];
+  achievements?: Achievement[];
 }

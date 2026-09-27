@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { CaseBox, CaseItemDefinition, Rarity } from '../types';
 import { CaseGeometricSkin } from './CaseGeometricSkin';
 import { ImageUploadInput } from './ImageUploadInput';
+import { PaletteColorSelector } from './PaletteColorSelector';
 import { Package, Plus, Trash2, Sparkles, Eye, Palette } from 'lucide-react';
 
 interface AdminCasesManagerProps {
@@ -376,6 +377,39 @@ export const AdminCasesManager: React.FC<AdminCasesManagerProps> = ({
               onChange={setItemPhotoUrl}
               helperText="Нажмите «Из галереи», чтобы загрузить своё фото с телефона или ПК."
             />
+
+            {itemType === 'profile_text_color' && (
+              <div className="space-y-2 p-3 rounded-2xl bg-zinc-950 border border-purple-500/40">
+                <label className="block text-xs font-mono-pip text-purple-300 font-bold">
+                  Выберите стиль текста из палитры (20 вариантов: 10 стандартных, 5 шиммеров, 5 градиентов):
+                </label>
+                <PaletteColorSelector
+                  type="text"
+                  selectedValue={itemAppliedValue}
+                  onSelect={(val, label) => {
+                    setItemAppliedValue(val);
+                    if (!itemName) setItemName(`Цвет: ${label}`);
+                  }}
+                  sampleText={itemName || 'Пример текста'}
+                />
+              </div>
+            )}
+
+            {itemType === 'profile_text_bg' && (
+              <div className="space-y-2 p-3 rounded-2xl bg-zinc-950 border border-cyan-500/40">
+                <label className="block text-xs font-mono-pip text-cyan-300 font-bold">
+                  Выберите фон профиля из палитры (20 вариантов: 10 стандартных, 5 шиммеров, 5 градиентов):
+                </label>
+                <PaletteColorSelector
+                  type="bg"
+                  selectedValue={itemAppliedValue}
+                  onSelect={(val, label) => {
+                    setItemAppliedValue(val);
+                    if (!itemName) setItemName(`Фон: ${label}`);
+                  }}
+                />
+              </div>
+            )}
 
             <div>
               <label className="block text-xs font-mono-pip text-zinc-300 mb-1">Применяемый CSS-класс / Значение:</label>
