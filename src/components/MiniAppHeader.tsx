@@ -1,28 +1,42 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { UserProfile, AdminInfo } from '../types';
 import { AvatarWithFrame } from './AvatarWithFrame';
-import { Shield, Coins, Sparkles, ChevronDown } from 'lucide-react';
+import { Shield, Coins, Crown, KeyRound, X } from 'lucide-react';
 
 interface MiniAppHeaderProps {
   currentUser: UserProfile;
-  profiles: UserProfile[];
   admins: AdminInfo[];
-  onSwitchUser: (userId: string) => void;
   onOpenMyProfile: () => void;
   onOpenCases: () => void;
+  onUnlockOwner?: (pin: string) => boolean;
 }
 
 export const MiniAppHeader: React.FC<MiniAppHeaderProps> = ({
   currentUser,
-  profiles,
   admins,
-  onSwitchUser,
   onOpenMyProfile,
-  onOpenCases
+  onOpenCases,
+  onUnlockOwner
 }) => {
-  const isAdmin = admins.some(
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [pinInput, setPinInput] = useState('');
+  const [pinError, setPinError] = useState(false);
+
+  const isOwner = currentUser.username.toLowerCase() === '@mrwhitepio';
+  const isAdmin = isOwner || admins.some(
     a => a.username.toLowerCase() === currentUser.username.toLowerCase()
-  ) || currentUser.username.toLowerCase() === '@mrwhitepio';
+  );
+
+  const handlePinSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (onUnlockOwner && onUnlockOwner(pinInput.trim())) {
+      setShowPinModal(false);
+      setPinInput('');
+      setPinError(false);
+    } else {
+      setPinError(true);
+    }
+  };
 
   return (
     <header className="w-full bg-zinc-950/95 border-b border-zinc-800/80 sticky top-0 z-30 backdrop-blur-md px-3 py-2.5">
@@ -36,22 +50,26 @@ export const MiniAppHeader: React.FC<MiniAppHeaderProps> = ({
           </div>
           <div>
             <div className="flex items-center gap-1.5">
-              <h1 className="font-heading font-black text-base tracking-wider text-amber-400 uppercase leading-none">
-                DustTown RP
+              <h1 className="font-heading font-black text-sm sm:text-base tracking-wider text-amber-400 uppercase leading-none">
+                Даст Таун Колектив
               </h1>
-              {isAdmin && (
-                <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[9px] font-mono font-bold flex items-center gap-0.5">
-                  <Shield className="w-2.5 h-2.5" /> ADMIN
+              {isOwner ? (
+                <span className="badge-owner-shimmer text-black text-[9px] font-black uppercase px-2 py-0.5 rounded-full flex items-center gap-1 shadow">
+                  <Crown className="w-2.5 h-2.5 text-black" /> СОЗДАТЕЛЬ
                 </span>
-              )}
+              ) : isAdmin ? (
+                <span className="badge-admin-shimmer text-white text-[9px] font-black uppercase px-2 py-0.5 rounded-full flex items-center gap-1 shadow">
+                  <Shield className="w-2.5 h-2.5 text-white" /> АДМИН
+                </span>
+              ) : null}
             </div>
             <p className="text-[10px] text-zinc-400 font-mono-pip leading-none mt-1">
-              Fallout: Equestria Telegram Mini App
+              Fallout: Equestria • Группа Колектива
             </p>
           </div>
         </div>
 
-        {/* Right Controls: Balance + User Selector */}
+        {/* Right Controls: Balance + User Profile Trigger */}
         <div className="flex items-center gap-2">
           {/* Equivaxes Balance Pill */}
           <button
@@ -61,58 +79,98 @@ export const MiniAppHeader: React.FC<MiniAppHeaderProps> = ({
           >
             <Coins className="w-3.5 h-3.5 text-amber-400" />
             <span>
-              {currentUser.isInfiniteEquivaxes || currentUser.username === '@MrWhitePio'
+              {currentUser.isInfiniteEquivaxes || isOwner
                 ? '∞'
                 : currentUser.equivaxes.toLocaleString()} ℰQ
             </span>
           </button>
 
-          {/* User Profile Trigger with Switcher dropdown */}
-          <div className="relative group">
-            <button
-              onClick={onOpenMyProfile}
-              className="flex items-center gap-2 px-2 py-1 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/80 transition"
-              title="Открыть мой профиль"
-            >
-              <AvatarWithFrame
-                avatarUrl={currentUser.avatarUrl}
-                frameId={currentUser.activeAvatarFrame}
-                size="sm"
-              />
-              <span className="hidden sm:inline text-xs font-bold text-zinc-200 font-heading max-w-[100px] truncate">
+          {/* User Profile Button */}
+          <button
+            onClick={onOpenMyProfile}
+            className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/80 transition"
+            title="Открыть мой профиль"
+          >
+            <AvatarWithFrame
+              avatarUrl={currentUser.avatarUrl}
+              frameId={currentUser.activeAvatarFrame}
+              size="sm"
+            />
+            <div className="hidden sm:flex flex-col text-left">
+              <span className={`text-xs font-bold line-clamp-1 font-heading ${currentUser.activeTextColor || 'text-zinc-200'}`}>
                 {currentUser.displayName}
               </span>
-              <ChevronDown className="w-3 h-3 text-zinc-400" />
-            </button>
-
-            {/* Quick User Switcher Menu */}
-            <div className="absolute right-0 top-full mt-1.5 w-60 rounded-2xl bg-zinc-900 border border-zinc-700 shadow-2xl p-2 hidden group-hover:block hover:block z-40">
-              <div className="text-[10px] font-mono-pip text-zinc-400 uppercase px-2 py-1 font-bold">
-                Сменить игрока (Симуляция ТГ):
-              </div>
-              <div className="space-y-1 max-h-56 overflow-y-auto">
-                {profiles.map(p => (
-                  <button
-                    key={p.id}
-                    onClick={() => onSwitchUser(p.id)}
-                    className={`w-full flex items-center gap-2.5 p-1.5 rounded-xl text-left text-xs transition ${
-                      p.id === currentUser.id
-                        ? 'bg-amber-500/20 text-amber-200 font-bold border border-amber-500/40'
-                        : 'hover:bg-zinc-800 text-zinc-300'
-                    }`}
-                  >
-                    <img src={p.avatarUrl} alt={p.displayName} className="w-6 h-6 rounded-md object-cover" />
-                    <div className="flex-1 min-w-0">
-                      <div className="truncate font-heading">{p.displayName}</div>
-                      <div className="text-[10px] text-zinc-400 font-mono-pip">{p.username}</div>
-                    </div>
-                  </button>
-                ))}
-              </div>
+              <span className="text-[9px] text-zinc-400 font-mono-pip -mt-0.5">
+                {currentUser.username}
+              </span>
             </div>
-          </div>
+          </button>
+
+          {/* Discreet Owner Pin Unlock button if in desktop browser */}
+          {!isOwner && onUnlockOwner && (
+            <button
+              onClick={() => setShowPinModal(true)}
+              className="p-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-500 hover:text-amber-400 transition"
+              title="Вход для Создателя (PIN)"
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Secret Owner PIN Unlock Modal */}
+      {showPinModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-xs rounded-2xl bg-zinc-900 border border-amber-500/50 p-5 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-amber-400 font-heading font-bold text-sm">
+                <Crown className="w-4 h-4 text-amber-400" />
+                <span>Авторизация Создателя</span>
+              </div>
+              <button
+                onClick={() => setShowPinModal(false)}
+                className="text-zinc-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-zinc-300">
+              Введите мастер-PIN владельца группы Даст Таун Колектив (@MrWhitePio):
+            </p>
+
+            <form onSubmit={handlePinSubmit} className="space-y-3">
+              <input
+                type="password"
+                placeholder="Мастер-PIN"
+                value={pinInput}
+                onChange={e => {
+                  setPinInput(e.target.value);
+                  setPinError(false);
+                }}
+                className={`w-full px-3 py-2 text-center text-sm tracking-widest rounded-xl bg-zinc-950 border font-mono ${
+                  pinError ? 'border-red-500 text-red-300' : 'border-zinc-700 text-zinc-100 focus:border-amber-400'
+                } focus:outline-none`}
+                autoFocus
+              />
+
+              {pinError && (
+                <p className="text-[11px] text-red-400 text-center font-mono">
+                  Неверный PIN-код!
+                </p>
+              )}
+
+              <button
+                type="submit"
+                className="w-full py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-heading font-bold text-xs uppercase tracking-wider transition shadow"
+              >
+                Подтвердить
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </header>
   );
 };

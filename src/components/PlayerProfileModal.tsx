@@ -1,18 +1,21 @@
 import React from 'react';
-import { UserProfile, Award, CharacterSheet } from '../types';
+import { UserProfile, Award, CharacterSheet, AdminInfo } from '../types';
 import { AvatarWithFrame } from './AvatarWithFrame';
 import { ProfileAnimatedTheme } from './ProfileAnimatedTheme';
-import { Award as AwardIcon, Sparkles, Shield, Coins, Calendar, X, ExternalLink } from 'lucide-react';
+import { Award as AwardIcon, Sparkles, Shield, Coins, Calendar, X, ExternalLink, Crown, UserCheck, UserX } from 'lucide-react';
 
 interface PlayerProfileModalProps {
   user: UserProfile | null;
   awards: Award[];
   characters: CharacterSheet[];
   currentUser: UserProfile;
+  admins: AdminInfo[];
   isAdmin: boolean;
   onClose: () => void;
   onSelectCharacter?: (char: CharacterSheet) => void;
   onQuickGrantMoney?: (userId: string, amount: number) => void;
+  onToggleAdmin?: (username: string, makeAdmin: boolean) => void;
+  onIssueLotteryTicket?: (userId: string, ticketItem: any) => void;
 }
 
 export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
@@ -20,12 +23,19 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
   awards,
   characters,
   currentUser,
+  admins,
   isAdmin,
   onClose,
   onSelectCharacter,
-  onQuickGrantMoney
+  onQuickGrantMoney,
+  onToggleAdmin,
+  onIssueLotteryTicket
 }) => {
   if (!user) return null;
+
+  const isOwner = user.username.toLowerCase() === '@mrwhitepio';
+  const isTargetAdmin = !isOwner && admins.some(a => a.username.toLowerCase() === user.username.toLowerCase());
+  const amIOwner = currentUser.username.toLowerCase() === '@mrwhitepio';
 
   const userAwards = awards.filter(a => a.recipientUsername.toLowerCase() === user.username.toLowerCase());
   const userCharacters = characters.filter(c => c.creatorTelegram.toLowerCase() === user.username.toLowerCase());
@@ -47,16 +57,23 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
           <ProfileAnimatedTheme themeId={user.activeThemeId || 'default'} />
 
           <div className="relative z-10 flex flex-col sm:flex-row items-center sm:items-start gap-4">
-            {/* Avatar */}
-            <div className="relative">
+            {/* Avatar & Badges */}
+            <div className="relative flex flex-col items-center">
               <AvatarWithFrame
                 avatarUrl={user.avatarUrl}
                 frameId={user.activeAvatarFrame}
                 size="lg"
               />
-              {user.username === '@MrWhitePio' && (
-                <div className="absolute -bottom-2 -right-2 px-1.5 py-0.5 rounded-md bg-amber-500 text-black font-extrabold text-[10px] tracking-wide shadow flex items-center gap-1 z-20">
-                  <Shield className="w-2.5 h-2.5" /> OWNER
+              {isOwner && (
+                <div className="mt-2 badge-owner-shimmer text-black font-black text-[10px] tracking-wider uppercase px-2 py-0.5 rounded-full shadow-lg flex items-center gap-1 z-20">
+                  <Crown className="w-3 h-3 text-black" />
+                  <span>Создатель</span>
+                </div>
+              )}
+              {isTargetAdmin && (
+                <div className="mt-2 badge-admin-shimmer text-white font-black text-[10px] tracking-wider uppercase px-2 py-0.5 rounded-full shadow-lg flex items-center gap-1 z-20">
+                  <Shield className="w-3 h-3 text-white" />
+                  <span>Админ</span>
                 </div>
               )}
             </div>
@@ -83,7 +100,7 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                 <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 font-mono-pip font-bold">
                   <Coins className="w-3.5 h-3.5 text-amber-400" />
                   <span>
-                    {user.isInfiniteEquivaxes || user.username === '@MrWhitePio' ? '∞' : user.equivaxes.toLocaleString()} ℰQ
+                    {user.isInfiniteEquivaxes || isOwner ? '∞' : user.equivaxes.toLocaleString()} ℰQ
                   </span>
                 </div>
                 <div className="flex items-center gap-1 text-zinc-400 text-[11px]">
@@ -91,35 +108,153 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                   <span>В Пустоши с {new Date(user.joinedAt).toLocaleDateString()}</span>
                 </div>
               </div>
+
+              {/* Owner Management Controls: Grant/Revoke Admin Rights */}
+              {amIOwner && !isOwner && onToggleAdmin && (
+                <div className="mt-3.5 pt-3 border-t border-zinc-700/60 flex items-center justify-center sm:justify-start gap-2">
+                  {isTargetAdmin ? (
+                    <button
+                      onClick={() => onToggleAdmin(user.username, false)}
+                      className="px-3 py-1.5 rounded-xl bg-red-950/80 hover:bg-red-900 border border-red-500/50 text-red-200 text-xs font-bold font-heading flex items-center gap-1.5 transition shadow"
+                    >
+                      <UserX className="w-3.5 h-3.5 text-red-400" />
+                      <span>Снять права Администратора</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => onToggleAdmin(user.username, true)}
+                      className="px-3 py-1.5 rounded-xl bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/50 text-emerald-200 text-xs font-bold font-heading flex items-center gap-1.5 transition shadow"
+                    >
+                      <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Выдать права Администратора</span>
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Quick Admin Money Buttons */}
-          {isAdmin && onQuickGrantMoney && (
-            <div className="relative z-10 mt-4 pt-3 border-t border-zinc-700/50 flex flex-wrap items-center justify-between gap-2">
-              <span className="text-[11px] font-mono-pip text-amber-400 font-semibold">
-                ⚙️ Панель управления сталкером:
-              </span>
-              <div className="flex items-center gap-1.5">
-                <button
-                  onClick={() => onQuickGrantMoney(user.id, 50)}
-                  className="px-2 py-1 rounded bg-amber-600/30 hover:bg-amber-600/50 text-amber-300 text-xs font-mono font-bold border border-amber-500/40"
-                >
-                  +50 ℰQ
-                </button>
-                <button
-                  onClick={() => onQuickGrantMoney(user.id, 200)}
-                  className="px-2 py-1 rounded bg-amber-600/30 hover:bg-amber-600/50 text-amber-300 text-xs font-mono font-bold border border-amber-500/40"
-                >
-                  +200 ℰQ
-                </button>
-                <button
-                  onClick={() => onQuickGrantMoney(user.id, 1000)}
-                  className="px-2 py-1 rounded bg-amber-500 hover:bg-amber-400 text-black text-xs font-mono font-bold shadow"
-                >
-                  +1,000 ℰQ
-                </button>
+          {/* Quick Admin Money & Lottery Buttons */}
+          {isAdmin && (
+            <div className="relative z-10 mt-4 pt-3 border-t border-zinc-700/50 space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-[11px] font-mono-pip text-amber-400 font-semibold">
+                  ⚙️ Начисление Эквиваксов:
+                </span>
+                {onQuickGrantMoney && (
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => onQuickGrantMoney(user.id, 50)}
+                      className="px-2 py-1 rounded bg-amber-600/30 hover:bg-amber-600/50 text-amber-300 text-xs font-mono font-bold border border-amber-500/40"
+                    >
+                      +50 ℰQ
+                    </button>
+                    <button
+                      onClick={() => onQuickGrantMoney(user.id, 200)}
+                      className="px-2 py-1 rounded bg-amber-600/30 hover:bg-amber-600/50 text-amber-300 text-xs font-mono font-bold border border-amber-500/40"
+                    >
+                      +200 ℰQ
+                    </button>
+                    <button
+                      onClick={() => onQuickGrantMoney(user.id, 1000)}
+                      className="px-2 py-1 rounded bg-amber-500 hover:bg-amber-400 text-black text-xs font-mono font-bold shadow"
+                    >
+                      +1,000 ℰQ
+                    </button>
+                  </div>
+                )}
               </div>
+
+              {onIssueLotteryTicket && (
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-zinc-700/40">
+                  <span className="text-[11px] font-mono-pip text-cyan-400 font-semibold">
+                    🎰 Выдать билет удачи:
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => {
+                        const ticket = {
+                          id: 'inv_ticket_' + Date.now(),
+                          itemId: 'lotto_' + Date.now(),
+                          name: '🍀 Билет Удачи Сталкера',
+                          photoUrl: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=200&q=80',
+                          bgStyle: 'from-emerald-950 via-zinc-950 to-green-950 border-emerald-500',
+                          textStyle: 'text-emerald-300 font-bold',
+                          rarity: 'common',
+                          type: 'lottery_ticket',
+                          acquiredAt: new Date().toISOString(),
+                          lotteryData: {
+                            prizeEquivaxes: 100,
+                            numbers: [3, 3, 3],
+                            isWinner: true,
+                            ticketSerial: 'DT-' + Math.floor(100000 + Math.random() * 900000),
+                            themeTitle: '🍀 Билет Удачи Сталкера'
+                          }
+                        };
+                        onIssueLotteryTicket(user.id, ticket);
+                        alert(`Билет удачи на 100 ℰQ выдан сталкеру ${user.displayName}!`);
+                      }}
+                      className="px-2 py-1 rounded bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/40 text-emerald-300 text-[11px] font-mono font-bold"
+                    >
+                      🍀 100 ℰQ
+                    </button>
+                    <button
+                      onClick={() => {
+                        const ticket = {
+                          id: 'inv_ticket_' + Date.now(),
+                          itemId: 'lotto_' + Date.now(),
+                          name: '💎 Джекпот Сьерра-Мадре 777',
+                          photoUrl: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=200&q=80',
+                          bgStyle: 'from-purple-950 via-zinc-950 to-fuchsia-950 border-fuchsia-500',
+                          textStyle: 'text-fuchsia-300 font-bold',
+                          rarity: 'epic',
+                          type: 'lottery_ticket',
+                          acquiredAt: new Date().toISOString(),
+                          lotteryData: {
+                            prizeEquivaxes: 777,
+                            numbers: [7, 7, 7],
+                            isWinner: true,
+                            ticketSerial: 'DT-' + Math.floor(100000 + Math.random() * 900000),
+                            themeTitle: '💎 Джекпот Сьерра-Мадре 777'
+                          }
+                        };
+                        onIssueLotteryTicket(user.id, ticket);
+                        alert(`Билет «Джекпот 777» на 777 ℰQ выдан сталкеру ${user.displayName}!`);
+                      }}
+                      className="px-2 py-1 rounded bg-fuchsia-950/80 hover:bg-fuchsia-900 border border-fuchsia-500/40 text-fuchsia-300 text-[11px] font-mono font-bold"
+                    >
+                      💎 777 ℰQ
+                    </button>
+                    <button
+                      onClick={() => {
+                        const ticket = {
+                          id: 'inv_ticket_' + Date.now(),
+                          itemId: 'lotto_' + Date.now(),
+                          name: '👑 Золотой Реактор 999',
+                          photoUrl: 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=200&q=80',
+                          bgStyle: 'from-amber-950 via-zinc-950 to-yellow-950 border-amber-500',
+                          textStyle: 'text-amber-300 font-bold',
+                          rarity: 'legendary',
+                          type: 'lottery_ticket',
+                          acquiredAt: new Date().toISOString(),
+                          lotteryData: {
+                            prizeEquivaxes: 2500,
+                            numbers: [9, 9, 9],
+                            isWinner: true,
+                            ticketSerial: 'DT-' + Math.floor(100000 + Math.random() * 900000),
+                            themeTitle: '👑 Золотой Реактор 999'
+                          }
+                        };
+                        onIssueLotteryTicket(user.id, ticket);
+                        alert(`Легендарный билет на 2,500 ℰQ выдан сталкеру ${user.displayName}!`);
+                      }}
+                      className="px-2 py-1 rounded bg-amber-500 hover:bg-amber-400 text-black text-[11px] font-mono font-black shadow"
+                    >
+                      👑 2500 ℰQ
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

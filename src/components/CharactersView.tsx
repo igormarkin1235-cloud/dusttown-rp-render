@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { CharacterSheet, UserProfile } from '../types';
+import { ImageUploadInput } from './ImageUploadInput';
 import { Sparkles, Plus, Search, Filter, User, HelpCircle, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface CharactersViewProps {
@@ -339,30 +340,18 @@ export const CharactersView: React.FC<CharactersViewProps> = ({
 
           {/* Section: Audio & Media & Avatar */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-mono-pip text-zinc-300 mb-1">
-                Иконка-аватар персонажа (URL):
-              </label>
-              <input
-                type="text"
-                placeholder="https://..."
-                value={formData.avatarIcon}
-                onChange={e => setFormData({ ...formData, avatarIcon: e.target.value })}
-                className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-xs text-zinc-200 focus:outline-none focus:border-amber-500"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-mono-pip text-zinc-300 mb-1">
-                Фото / Скриншот персонажа (URL):
-              </label>
-              <input
-                type="text"
-                placeholder="https://..."
-                value={formData.photoUrl}
-                onChange={e => setFormData({ ...formData, photoUrl: e.target.value })}
-                className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-xs text-zinc-200 focus:outline-none focus:border-amber-500"
-              />
-            </div>
+            <ImageUploadInput
+              label="Иконка-аватар персонажа (из галереи или URL):"
+              value={formData.avatarIcon}
+              onChange={url => setFormData({ ...formData, avatarIcon: url })}
+              placeholder="Загрузите из галереи или вставьте URL..."
+            />
+            <ImageUploadInput
+              label="Фото / Скриншот персонажа (из галереи или URL):"
+              value={formData.photoUrl}
+              onChange={url => setFormData({ ...formData, photoUrl: url })}
+              placeholder="Загрузите арт или фото персонажа..."
+            />
           </div>
 
           {/* Section: Plus Custom */}

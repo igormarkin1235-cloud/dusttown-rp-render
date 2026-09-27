@@ -371,13 +371,69 @@ export const INITIAL_EVENTS: RPEvent[] = [];
 export const INITIAL_CASES: CaseBox[] = [];
 export const INITIAL_CHARACTERS: CharacterSheet[] = [];
 
+export const INITIAL_WEEKLY_SHOP_ITEMS = [
+  {
+    id: 'weekly_item_rad_core',
+    name: 'Анимированная Тема: Реактор Радиации ☢️',
+    description: 'Эпический довоенный экран с пульсирующей радиацией и частицами.',
+    photoUrl: 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=400&q=80',
+    bgStyle: 'from-emerald-950 via-zinc-950 to-green-950 border-emerald-500/70',
+    textStyle: 'text-emerald-400 font-bold drop-shadow-[0_0_8px_#34d399]',
+    rarity: 'legendary' as const,
+    type: 'profile_theme' as const,
+    appliedValue: 'rad_core',
+    price: 320,
+    oldPrice: 450,
+    badge: 'ХИТ НЕДЕЛИ 🔥',
+    stock: 5,
+    addedBy: '@MrWhitePio',
+    addedAt: '2026-01-01T00:00:00Z'
+  },
+  {
+    id: 'weekly_item_frame_gold',
+    name: '3D Рамка: Золото Рейнджера 🏆',
+    description: 'Массивная золотая 3D-окантовка с гравировкой орла НКР Эквестрии.',
+    photoUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=400&q=80',
+    bgStyle: 'from-amber-950 via-zinc-950 to-yellow-950 border-amber-500',
+    textStyle: 'text-amber-300 font-bold',
+    rarity: 'epic' as const,
+    type: 'avatar_frame' as const,
+    appliedValue: 'frame_gold_3d',
+    price: 190,
+    oldPrice: 250,
+    badge: 'СКИДКА -24%',
+    addedBy: '@MrWhitePio',
+    addedAt: '2026-01-01T00:00:00Z'
+  },
+  {
+    id: 'weekly_item_stealthboy',
+    name: 'Довоенный Стелс-Бой MK.II 📟',
+    description: 'Полевой маскировочный модуль для разведки Пустошей.',
+    photoUrl: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=400&q=80',
+    bgStyle: 'from-cyan-950 via-zinc-950 to-slate-950 border-cyan-500/60',
+    textStyle: 'text-cyan-300 font-bold',
+    rarity: 'rare' as const,
+    type: 'item' as const,
+    price: 110,
+    badge: 'ДОВОЕННЫЙ',
+    addedBy: '@MrWhitePio',
+    addedAt: '2026-01-01T00:00:00Z'
+  }
+];
+
+export const INITIAL_AUCTION_LISTINGS = [];
+
 export function loadAppState(): AppStateData {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && Array.isArray(parsed.profiles)) {
-        return parsed;
+        return {
+          ...parsed,
+          weeklyShopItems: Array.isArray(parsed.weeklyShopItems) ? parsed.weeklyShopItems : INITIAL_WEEKLY_SHOP_ITEMS,
+          auctionListings: Array.isArray(parsed.auctionListings) ? parsed.auctionListings : INITIAL_AUCTION_LISTINGS
+        };
       }
     }
   } catch (e) {
@@ -391,8 +447,66 @@ export function loadAppState(): AppStateData {
     events: INITIAL_EVENTS,
     awards: INITIAL_AWARDS,
     cases: INITIAL_CASES,
-    caseItems: INITIAL_CASE_ITEMS
+    caseItems: INITIAL_CASE_ITEMS,
+    weeklyShopItems: INITIAL_WEEKLY_SHOP_ITEMS,
+    auctionListings: INITIAL_AUCTION_LISTINGS
   };
+}
+
+export async function fetchServerState(): Promise<AppStateData | null> {
+  try {
+    const res = await fetch('/api/data');
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data && Array.isArray(data.profiles) && data.profiles.length > 0) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      return data;
+    }
+  } catch (e) {
+    // offline
+  }
+  return null;
+}
+
+export async function syncUserWithServer(tgUser: any): Promise<{ profile: UserProfile | null; fullData: AppStateData | null }> {
+  try {
+    const res = await fetch('/api/user/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tgUser })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.fullData) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data.fullData));
+        return { profile: data.profile, fullData: data.fullData };
+      }
+    }
+  } catch (e) {
+    // offline
+  }
+  return { profile: null, fullData: null };
+}
+
+export async function toggleAdminRoleOnServer(
+  requesterUsername: string,
+  targetUsername: string,
+  action: 'add' | 'remove',
+  tags?: string[]
+): Promise<any> {
+  try {
+    const res = await fetch('/api/admin/toggle', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requesterUsername, targetUsername, action, tags })
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (e) {
+    console.error('Failed to toggle admin role:', e);
+  }
+  return null;
 }
 
 export function saveAppState(state: AppStateData): void {
@@ -408,5 +522,19 @@ export function saveAppState(state: AppStateData): void {
     });
   } catch (e) {
     console.error('Failed to save app state', e);
+  }
+}
+
+export async function notifyTelegramGroupAboutEvent(event: RPEvent): Promise<boolean> {
+  try {
+    const res = await fetch('/api/notify-group', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ event })
+    });
+    return res.ok;
+  } catch (e) {
+    console.error('Failed to notify group about event:', e);
+    return false;
   }
 }

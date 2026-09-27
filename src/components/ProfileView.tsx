@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { UserProfile, Award, CharacterSheet, InventoryItem } from '../types';
+import { UserProfile, Award, CharacterSheet, InventoryItem, getItemPawnPrice } from '../types';
 import { AvatarWithFrame } from './AvatarWithFrame';
 import { ProfileAnimatedTheme } from './ProfileAnimatedTheme';
+import { ImageUploadInput } from './ImageUploadInput';
 import {
   Coins,
   Award as AwardIcon,
@@ -15,7 +16,9 @@ import {
   Palette,
   Radio,
   Sliders,
-  Layers
+  Layers,
+  ShoppingBag,
+  DollarSign
 } from 'lucide-react';
 
 interface ProfileViewProps {
@@ -25,6 +28,8 @@ interface ProfileViewProps {
   onUpdateProfile: (updated: UserProfile) => void;
   onSelectCharacter: (char: CharacterSheet) => void;
   onOpenCases: () => void;
+  onSellItemToPawnshop: (itemId: string, payout: number) => void;
+  onOpenLotteryTicket?: (item: InventoryItem) => void;
 }
 
 export const ProfileView: React.FC<ProfileViewProps> = ({
@@ -33,7 +38,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   characters,
   onUpdateProfile,
   onSelectCharacter,
-  onOpenCases
+  onOpenCases,
+  onSellItemToPawnshop,
+  onOpenLotteryTicket
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [activeTab, setActiveTab] = useState<'inventory' | 'customization' | 'characters' | 'awards'>('inventory');
@@ -309,14 +316,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-mono-pip text-amber-300 mb-1">URL Фотографии аватара:</label>
-                <input
-                  type="text"
-                  required
+              <div className="sm:col-span-2">
+                <ImageUploadInput
+                  label="Фотография аватара (загрузите из галереи или URL):"
                   value={avatarUrl}
-                  onChange={e => setAvatarUrl(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-xs text-zinc-200 focus:outline-none focus:border-amber-500"
+                  onChange={setAvatarUrl}
+                  helperText="Вы можете загрузить любое фото из галереи телефона или выбрать файл с ПК."
                 />
               </div>
 
@@ -679,12 +684,51 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
               {currentUser.inventory.map(item => {
-                const isCosmetic = item.type !== 'item';
+                const isLottery = item.type === 'lottery_ticket';
+                const isCosmetic = !isLottery && item.type !== 'item';
                 const isApplied =
                   (item.type === 'profile_theme' && currentUser.activeThemeId === item.appliedValue) ||
                   (item.type === 'profile_text_color' && currentUser.activeTextColor === item.appliedValue) ||
                   (item.type === 'profile_text_bg' && currentUser.activeTextBg === item.appliedValue) ||
                   (item.type === 'avatar_frame' && currentUser.activeAvatarFrame === item.appliedValue);
+
+                if (isLottery) {
+                  return (
+                    <div
+                      key={item.id}
+                      className="p-3.5 rounded-2xl border-2 border-amber-500/80 bg-gradient-to-b from-amber-950/80 via-zinc-950 to-zinc-900 flex flex-col justify-between shadow-xl ring-1 ring-amber-500/30 transition-all hover:scale-[1.02] relative overflow-hidden"
+                    >
+                      <div className="absolute top-2 right-2 px-1.5 py-0.2 rounded-md bg-amber-500 text-black text-[8px] font-mono-pip font-black uppercase tracking-wider">
+                        ЛОТЕРЕЯ
+                      </div>
+
+                      <div className="text-center pt-2">
+                        <div className="w-16 h-16 mx-auto my-1.5 rounded-xl bg-black/60 p-2 flex items-center justify-center border border-amber-500/40 shadow-inner">
+                          <img
+                            src={item.photoUrl}
+                            alt={item.name}
+                            className="w-full h-full object-contain filter drop-shadow animate-pulse"
+                          />
+                        </div>
+                        <span className="block text-xs font-bold font-heading text-amber-300 line-clamp-1">
+                          {item.name}
+                        </span>
+                        <div className="text-[10px] text-zinc-400 font-mono-pip mt-0.5">
+                          Куш: <strong className="text-amber-400">{item.lotteryData?.prizeEquivaxes || 100} ℰQ</strong>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 pt-2 border-t border-amber-500/30">
+                        <button
+                          onClick={() => onOpenLotteryTicket && onOpenLotteryTicket(item)}
+                          className="w-full py-1.5 rounded-xl bg-gradient-to-r from-amber-500 via-rose-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black text-[10px] font-heading font-black uppercase tracking-wider transition shadow-lg animate-pulse flex items-center justify-center gap-1"
+                        >
+                          <span>🎰 Стереть билет</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
 
                 return (
                   <div
@@ -726,6 +770,23 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                         )}
                       </div>
                     )}
+
+                    {/* Resale to Wasteland Pawnshop */}
+                    <div className="mt-2 pt-2 border-t border-white/10">
+                      <button
+                        onClick={() => {
+                          const payout = getItemPawnPrice(item.rarity);
+                          if (window.confirm(`Продать «${item.name}» скупщику Пустошей за ${payout} ℰQ?`)) {
+                            onSellItemToPawnshop(item.id, payout);
+                          }
+                        }}
+                        className="w-full py-1 rounded-lg bg-zinc-800/90 hover:bg-amber-950/80 border border-zinc-700 hover:border-amber-500/50 text-zinc-300 hover:text-amber-300 text-[10px] font-mono-pip font-bold transition flex items-center justify-center gap-1.5 shadow-sm"
+                        title="Продать скупщику за Эквиваксы"
+                      >
+                        <Coins className="w-3 h-3 text-amber-400" />
+                        <span>Продать скупщику: +{getItemPawnPrice(item.rarity)} ℰQ</span>
+                      </button>
+                    </div>
                   </div>
                 );
               })}

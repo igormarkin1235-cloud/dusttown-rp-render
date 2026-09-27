@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { CaseBox, CaseItemDefinition, Rarity } from '../types';
 import { CaseGeometricSkin } from './CaseGeometricSkin';
+import { ImageUploadInput } from './ImageUploadInput';
 import { Package, Plus, Trash2, Sparkles, Eye, Palette } from 'lucide-react';
 
 interface AdminCasesManagerProps {
@@ -368,16 +369,13 @@ export const AdminCasesManager: React.FC<AdminCasesManagerProps> = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-mono-pip text-zinc-300 mb-1">Фото (PNG URL):</label>
-              <input
-                type="text"
-                value={itemPhotoUrl}
-                onChange={e => setItemPhotoUrl(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-xs text-zinc-200 focus:outline-none focus:border-purple-500"
-              />
-            </div>
+          <div className="space-y-3">
+            <ImageUploadInput
+              label="Фотография / Иконка предмета (из галереи или URL):"
+              value={itemPhotoUrl}
+              onChange={setItemPhotoUrl}
+              helperText="Нажмите «Из галереи», чтобы загрузить своё фото с телефона или ПК."
+            />
 
             <div>
               <label className="block text-xs font-mono-pip text-zinc-300 mb-1">Применяемый CSS-класс / Значение:</label>
@@ -386,7 +384,7 @@ export const AdminCasesManager: React.FC<AdminCasesManagerProps> = ({
                 value={itemAppliedValue}
                 onChange={e => setItemAppliedValue(e.target.value)}
                 placeholder="text-cyan-400 font-bold"
-                className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-xs text-zinc-200 focus:outline-none focus:border-purple-500"
+                className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-xs text-zinc-200 focus:outline-none focus:border-purple-500 font-mono"
               />
             </div>
           </div>

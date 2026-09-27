@@ -37,6 +37,7 @@ interface AdminPanelProps {
   onDeleteCase: (caseId: string) => void;
   onCreateItem: (newItem: CaseItemDefinition) => void;
   onSelectProfile: (profile: UserProfile) => void;
+  onIssueLotteryTicket: (userId: string, ticketItem: any) => void;
 }
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({
@@ -61,7 +62,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onCreateCase,
   onDeleteCase,
   onCreateItem,
-  onSelectProfile
+  onSelectProfile,
+  onIssueLotteryTicket
 }) => {
   const [activeTab, setActiveTab] = useState<'events' | 'admins' | 'users' | 'awards' | 'cases'>('events');
 
@@ -91,7 +93,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           <div className="flex items-center gap-2">
             <Shield className="w-5 h-5 text-amber-400" />
             <h2 className="text-xl font-bold font-heading text-amber-400 uppercase tracking-wide">
-              Центр управления DustTown RP
+              Центр управления Даст Таун Колектив
             </h2>
           </div>
           <p className="mt-1 text-xs text-zinc-300">
@@ -115,17 +117,20 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           <span>События и РП</span>
         </button>
 
-        <button
-          onClick={() => setActiveTab('admins')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-heading font-bold whitespace-nowrap transition ${
-            activeTab === 'admins'
-              ? 'bg-amber-500 text-black shadow'
-              : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
-          }`}
-        >
-          <Shield className="w-3.5 h-3.5" />
-          <span>Администраторы и Теги</span>
-        </button>
+        {/* Admins manager is strictly visible to the Owner (@MrWhitePio) */}
+        {currentUser.username.toLowerCase() === '@mrwhitepio' && (
+          <button
+            onClick={() => setActiveTab('admins')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-heading font-bold whitespace-nowrap transition ${
+              activeTab === 'admins'
+                ? 'badge-owner-shimmer text-black shadow'
+                : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
+            }`}
+          >
+            <Shield className="w-3.5 h-3.5" />
+            <span>Назначение Админов (Создатель)</span>
+          </button>
+        )}
 
         <button
           onClick={() => setActiveTab('users')}
@@ -191,6 +196,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           onGrantMoney={onGrantMoney}
           onSetInfiniteMoney={onSetInfiniteMoney}
           onSelectProfile={onSelectProfile}
+          onIssueLotteryTicket={onIssueLotteryTicket}
         />
       )}
 

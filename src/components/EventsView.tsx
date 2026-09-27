@@ -49,11 +49,11 @@ export const EventsView: React.FC<EventsViewProps> = ({
           <div className="flex items-center gap-2">
             <span className="text-xl">🔥</span>
             <h2 className="text-xl font-bold font-heading text-amber-400 uppercase tracking-wide">
-              События и Ивенты Пустоши
+              Ивенты Пустоши
             </h2>
           </div>
           <p className="mt-1 text-xs text-zinc-300 max-w-xl leading-relaxed">
-            Глобальные вылазки, оборона периметра DustTown и стычки с рейдерами. Участвуйте в ивентах, чтобы зарабатывать Эквиваксы и уникальные награды.
+            Внутренние мероприятия комьюнити Даст Таун Колектив: глобальные вылазки, оборона шлюзов и сражения с рейдерами. Участвуйте, чтобы зарабатывать Эквиваксы!
           </p>
         </div>
 

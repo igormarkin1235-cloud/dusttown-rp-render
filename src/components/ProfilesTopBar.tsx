@@ -1,16 +1,18 @@
 import React, { useState } from 'react';
-import { UserProfile } from '../types';
+import { UserProfile, AdminInfo } from '../types';
 import { AvatarWithFrame } from './AvatarWithFrame';
-import { Users, Search, Shield, ChevronRight } from 'lucide-react';
+import { Users, Search, Shield, Crown } from 'lucide-react';
 
 interface ProfilesTopBarProps {
   profiles: UserProfile[];
+  admins: AdminInfo[];
   currentUserId: string;
   onSelectProfile: (profile: UserProfile) => void;
 }
 
 export const ProfilesTopBar: React.FC<ProfilesTopBarProps> = ({
   profiles,
+  admins,
   currentUserId,
   onSelectProfile
 }) => {
@@ -29,7 +31,7 @@ export const ProfilesTopBar: React.FC<ProfilesTopBarProps> = ({
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 text-xs font-heading font-bold uppercase tracking-wider text-amber-400">
             <Users className="w-4 h-4 text-amber-400" />
-            <span>Сталкеры DustTown</span>
+            <span>Сталкеры Даст Таун Колектив</span>
             <span className="px-1.5 py-0.2 rounded-full bg-zinc-800 text-[10px] text-zinc-300 font-mono-pip border border-zinc-700">
               {profiles.length}
             </span>
@@ -52,7 +54,8 @@ export const ProfilesTopBar: React.FC<ProfilesTopBarProps> = ({
         <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
           {filtered.map(profile => {
             const isMe = profile.id === currentUserId;
-            const isOwner = profile.username === '@MrWhitePio';
+            const isOwner = profile.username.toLowerCase() === '@mrwhitepio';
+            const isAdmin = !isOwner && admins.some(a => a.username.toLowerCase() === profile.username.toLowerCase());
 
             return (
               <button
@@ -65,17 +68,35 @@ export const ProfilesTopBar: React.FC<ProfilesTopBarProps> = ({
                 }`}
                 title={`Открыть профиль: ${profile.displayName} (${profile.username})`}
               >
-                <div className="relative">
-                  <AvatarWithFrame
-                    avatarUrl={profile.avatarUrl}
-                    frameId={profile.activeAvatarFrame}
-                    size="sm"
-                  />
+                <div className="relative flex flex-col items-center">
+                  <div className="relative">
+                    <AvatarWithFrame
+                      avatarUrl={profile.avatarUrl}
+                      frameId={profile.activeAvatarFrame}
+                      size="sm"
+                    />
+                    {isOwner && (
+                      <Crown className="w-3.5 h-3.5 text-amber-400 absolute -top-2 -right-1 drop-shadow z-20 animate-bounce" />
+                    )}
+                    {isAdmin && (
+                      <Shield className="w-3 h-3 text-red-500 absolute -top-1.5 -right-1 drop-shadow z-20" />
+                    )}
+                  </div>
+
+                  {/* Badges directly under the avatar */}
                   {isOwner && (
-                    <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-400 border border-black shadow z-20" />
+                    <span className="badge-owner-shimmer text-black text-[8px] font-black uppercase px-1.5 py-0.2 rounded-full tracking-wider mt-1 scale-95 shadow">
+                      Создатель
+                    </span>
+                  )}
+                  {isAdmin && (
+                    <span className="badge-admin-shimmer text-white text-[8px] font-black uppercase px-1.5 py-0.2 rounded-full tracking-wider mt-1 scale-95 shadow">
+                      Админ
+                    </span>
                   )}
                 </div>
-                <div className="text-left flex flex-col">
+
+                <div className="text-left flex flex-col justify-center">
                   <span className={`text-[11px] font-bold line-clamp-1 font-heading ${profile.activeTextColor || ''}`}>
                     {profile.displayName.split(' ')[0]}
                   </span>

@@ -1,5 +1,51 @@
 export type Rarity = 'common' | 'rare' | 'epic' | 'legendary';
 
+export function getItemPawnPrice(rarity: Rarity): number {
+  switch (rarity) {
+    case 'common':
+      return 20; // 20% от средней награды за 1 РП (100 EQ)
+    case 'rare':
+      return 60; // 60% от РП
+    case 'epic':
+      return 180; // ~1.8 РП
+    case 'legendary':
+      return 450; // ~4.5 РП
+    default:
+      return 25;
+  }
+}
+
+export interface ShopWeeklyItem {
+  id: string;
+  itemId?: string;
+  name: string;
+  description: string;
+  photoUrl: string;
+  bgStyle?: string;
+  textStyle?: string;
+  rarity: Rarity;
+  type: 'item' | 'profile_theme' | 'profile_text_color' | 'profile_text_bg' | 'avatar_frame';
+  appliedValue?: string;
+  price: number; // in Equivaxes
+  oldPrice?: number;
+  badge?: string; // e.g. "ХИТ НЕДЕЛИ", "ЛИМИТИРОВАННЫЙ"
+  stock?: number;
+  addedBy: string;
+  addedAt: string;
+}
+
+export interface AuctionListing {
+  id: string;
+  sellerId: string;
+  sellerUsername: string;
+  sellerDisplayName: string;
+  sellerAvatarUrl: string;
+  sellerThemeBg?: string;
+  item: InventoryItem;
+  price: number; // in Equivaxes
+  listedAt: string;
+}
+
 export interface UserProfile {
   id: string;
   username: string; // e.g. @MrWhitePio
@@ -20,6 +66,14 @@ export interface UserProfile {
   inventory: InventoryItem[];
 }
 
+export interface LotteryTicketData {
+  prizeEquivaxes: number;
+  numbers: [number, number, number];
+  isWinner: boolean;
+  ticketSerial: string;
+  themeTitle?: string;
+}
+
 export interface InventoryItem {
   id: string;
   itemId: string;
@@ -28,9 +82,10 @@ export interface InventoryItem {
   bgStyle: string;
   textStyle: string;
   rarity: Rarity;
-  type: 'item' | 'profile_theme' | 'profile_text_color' | 'profile_text_bg' | 'avatar_frame';
+  type: 'item' | 'profile_theme' | 'profile_text_color' | 'profile_text_bg' | 'avatar_frame' | 'lottery_ticket';
   appliedValue?: string;
   acquiredAt: string;
+  lotteryData?: LotteryTicketData;
 }
 
 export interface AdminInfo {
@@ -68,9 +123,11 @@ export interface CharacterSheet {
   status: 'approved' | 'pending';
 }
 
+export type EventCategory = 'event' | 'collab' | 'planned_rp';
+
 export interface RPEvent {
   id: string;
-  type: 'event' | 'planned_rp';
+  type: EventCategory;
   title: string;
   description: string;
   location: string;
@@ -84,6 +141,8 @@ export interface RPEvent {
   completedAt?: string;
   hasRainbowText?: boolean;
   participants: string[]; // usernames or profile IDs
+  collabClanName?: string; // Название клана-партнёра (для событий-коллабораций)
+  collabClanUrl?: string; // Ссылка на группу/канал клана-партнёра
 }
 
 export interface Award {
@@ -128,4 +187,6 @@ export interface AppStateData {
   awards: Award[];
   cases: CaseBox[];
   caseItems: CaseItemDefinition[];
+  weeklyShopItems: ShopWeeklyItem[];
+  auctionListings: AuctionListing[];
 }

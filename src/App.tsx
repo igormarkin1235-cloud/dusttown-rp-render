@@ -8,13 +8,24 @@ import {
   CaseBox,
   CaseItemDefinition,
   InventoryItem,
-  AdminInfo
+  AdminInfo,
+  ShopWeeklyItem,
+  AuctionListing
 } from './types';
-import { loadAppState, saveAppState } from './services/storage';
+import {
+  loadAppState,
+  saveAppState,
+  fetchServerState,
+  syncUserWithServer,
+  toggleAdminRoleOnServer,
+  notifyTelegramGroupAboutEvent
+} from './services/storage';
 import { ProfilesTopBar } from './components/ProfilesTopBar';
 import { MiniAppHeader } from './components/MiniAppHeader';
+import { NavigationDock, TabType } from './components/NavigationDock';
 import { EventsView } from './components/EventsView';
 import { PlannedRPView } from './components/PlannedRPView';
+import { MarketView } from './components/MarketView';
 import { CharactersView } from './components/CharactersView';
 import { ProfileView } from './components/ProfileView';
 import { CasesView } from './components/CasesView';
@@ -22,84 +33,136 @@ import { AdminPanel } from './components/AdminPanel';
 import { BotControlPanel } from './components/BotControlPanel';
 import { PlayerProfileModal } from './components/PlayerProfileModal';
 import { CharacterDetailModal } from './components/CharacterDetailModal';
+import { LotteryScratchModal } from './components/LotteryScratchModal';
+import { CollabTickerBanner } from './components/CollabTickerBanner';
+import { CollabDetailModal } from './components/CollabDetailModal';
 import {
-  Calendar,
-  Sparkles,
-  User,
-  Package,
-  Shield,
-  Bot,
   Smartphone,
+  Bot,
   Columns
 } from 'lucide-react';
 
 export default function App() {
   const [appState, setAppState] = useState<AppStateData>(loadAppState());
-  const [currentUserId, setCurrentUserId] = useState<string>(
-    appState.profiles.find(p => p.username.toLowerCase() === '@mrwhitepio')?.id || appState.profiles[0]?.id
-  );
-  const [activeTab, setActiveTab] = useState<'events' | 'planned_rp' | 'characters' | 'profile' | 'cases' | 'admin'>('events');
+
+  // By default in clean browser, use a visitor profile or first registered profile
+  // If Telegram WebApp is present, it binds directly to the real Telegram user
+  const [currentUserId, setCurrentUserId] = useState<string>(() => {
+    const saved = localStorage.getItem('dt_current_user_id');
+    if (saved && appState.profiles.some(p => p.id === saved)) return saved;
+    return appState.profiles[0]?.id || 'owner_mrwhitepio';
+  });
+
+  const [activeTab, setActiveTab] = useState<TabType>('events');
   const [viewMode, setViewMode] = useState<'miniapp' | 'bot_panel' | 'split'>('miniapp');
 
   // Modals
   const [inspectedProfile, setInspectedProfile] = useState<UserProfile | null>(null);
   const [inspectedCharacter, setInspectedCharacter] = useState<CharacterSheet | null>(null);
+  const [activeLotteryTicket, setActiveLotteryTicket] = useState<InventoryItem | null>(null);
+  const [selectedCollab, setSelectedCollab] = useState<RPEvent | null>(null);
 
-  // Check Telegram WebApp environment for automatic zero-login profile binding
+  // Initial Sync + Background Polling of shared server state
   useEffect(() => {
-    try {
-      const tg = (window as any).Telegram?.WebApp;
-      if (tg) {
-        tg.ready();
-        tg.expand();
+    let isMounted = true;
 
-        const tgUser = tg.initDataUnsafe?.user;
+    async function init() {
+      try {
+        const tg = (window as any).Telegram?.WebApp;
+        if (tg) {
+          tg.ready();
+          tg.expand();
+        }
+
+        const tgUser = tg?.initDataUnsafe?.user;
         if (tgUser) {
-          const formattedUsername = tgUser.username ? `@${tgUser.username}` : `@id${tgUser.id}`;
-          
-          setAppState(prev => {
-            const existing = prev.profiles.find(
-              p => p.username.toLowerCase() === formattedUsername.toLowerCase()
-            );
-
-            if (existing) {
-              setCurrentUserId(existing.id);
-              return prev;
+          // Auto-register and sync this Telegram user with server
+          const { profile, fullData } = await syncUserWithServer(tgUser);
+          if (isMounted) {
+            if (fullData) {
+              setAppState(fullData);
             }
+            if (profile) {
+              setCurrentUserId(profile.id);
+              localStorage.setItem('dt_current_user_id', profile.id);
+            }
+          }
+        } else {
+          // Regular browser environment: load shared database from server
+          const serverData = await fetchServerState();
+          if (isMounted && serverData) {
+            setAppState(serverData);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to init/sync with server:', err);
+      }
+    }
 
-            // Automatically create profile for Telegram user without asking for registration
-            const isOwner = formattedUsername.toLowerCase() === '@mrwhitepio';
-            const newProfile: UserProfile = {
-              id: 'tg_user_' + tgUser.id,
-              username: formattedUsername,
-              displayName: tgUser.first_name + (tgUser.last_name ? ` ${tgUser.last_name}` : ''),
-              avatarUrl: tgUser.photo_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80',
-              bio: 'Выживший в Пустоши DustTown.',
-              equivaxes: isOwner ? 9999999 : 150,
-              isInfiniteEquivaxes: isOwner,
-              joinedAt: new Date().toISOString(),
-              eventsAttended: 0,
-              plannedRpsAttended: 0,
-              inventory: []
-            };
+    init();
 
-            const updatedProfiles = [...prev.profiles, newProfile];
-            setCurrentUserId(newProfile.id);
-            const newState = { ...prev, profiles: updatedProfiles };
-            saveAppState(newState);
-            return newState;
+    // Background polling every 6 seconds so all players see newly registered participants & events in real-time
+    const interval = setInterval(async () => {
+      try {
+        const fresh = await fetchServerState();
+        if (isMounted && fresh) {
+          setAppState(prev => {
+            if (
+              fresh.profiles.length !== prev.profiles.length ||
+              fresh.characters.length !== prev.characters.length ||
+              fresh.events.length !== prev.events.length ||
+              fresh.admins.length !== prev.admins.length ||
+              (fresh.auctionListings?.length || 0) !== (prev.auctionListings?.length || 0) ||
+              (fresh.weeklyShopItems?.length || 0) !== (prev.weeklyShopItems?.length || 0)
+            ) {
+              return fresh;
+            }
+            return prev;
           });
         }
+      } catch (e) {
+        // silent
       }
-    } catch (e) {
-      console.warn('Telegram WebApp init check:', e);
-    }
+    }, 6000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, []);
 
   const currentUser = appState.profiles.find(p => p.id === currentUserId) || appState.profiles[0];
+  const isOwner = currentUser?.username?.toLowerCase() === '@mrwhitepio';
   const isAdmin =
-    appState.admins.some(a => a.username.toLowerCase() === currentUser?.username.toLowerCase()) ||
-    currentUser?.username.toLowerCase() === '@mrwhitepio';
+    isOwner ||
+    appState.admins.some(a => a.username.toLowerCase() === currentUser?.username?.toLowerCase());
+
+  // Security: If not admin, redirect away from admin tab
+  useEffect(() => {
+    if (!isAdmin && activeTab === 'admin') {
+      setActiveTab('events');
+    }
+  }, [isAdmin, activeTab]);
+
+  // Security: If not owner, force miniapp viewMode
+  useEffect(() => {
+    if (!isOwner && viewMode !== 'miniapp') {
+      setViewMode('miniapp');
+    }
+  }, [isOwner, viewMode]);
+
+  // Owner Secret PIN Unlock
+  const handleUnlockOwner = (pin: string): boolean => {
+    if (pin === '1235' || pin.toLowerCase() === 'dusttown') {
+      const owner = appState.profiles.find(p => p.username.toLowerCase() === '@mrwhitepio');
+      if (owner) {
+        setCurrentUserId(owner.id);
+        localStorage.setItem('dt_current_user_id', owner.id);
+        return true;
+      }
+    }
+    return false;
+  };
 
   // Persistence Helper
   const updateState = (updater: (prev: AppStateData) => AppStateData) => {
@@ -108,6 +171,253 @@ export default function App() {
       saveAppState(next);
       return next;
     });
+  };
+
+  // Owner Admin Rights Toggle
+  const handleToggleAdmin = async (targetUsername: string, makeAdmin: boolean) => {
+    if (!isOwner) return;
+
+    await toggleAdminRoleOnServer('@MrWhitePio', targetUsername, makeAdmin ? 'add' : 'remove', ['Администратор']);
+
+    updateState(prev => {
+      const formatted = targetUsername.startsWith('@') ? targetUsername : `@${targetUsername}`;
+      let updatedAdmins = [...prev.admins];
+      if (makeAdmin) {
+        if (!updatedAdmins.some(a => a.username.toLowerCase() === formatted.toLowerCase())) {
+          updatedAdmins.push({
+            username: formatted,
+            tags: ['Администратор', 'Мастер'],
+            addedAt: new Date().toISOString(),
+            isMainCreator: formatted.toLowerCase() === '@mrwhitepio'
+          });
+        }
+      } else {
+        if (formatted.toLowerCase() !== '@mrwhitepio') {
+          updatedAdmins = updatedAdmins.filter(a => a.username.toLowerCase() !== formatted.toLowerCase());
+        }
+      }
+      return {
+        ...prev,
+        admins: updatedAdmins
+      };
+    });
+  };
+
+  // Market: Buy Weekly Item
+  const handleBuyWeeklyItem = (item: ShopWeeklyItem) => {
+    updateState(prev => {
+      const isInfinite = currentUser.isInfiniteEquivaxes || isOwner;
+      if (!isInfinite && currentUser.equivaxes < item.price) {
+        alert('Недостаточно Эквиваксов для покупки!');
+        return prev;
+      }
+
+      const invItem: InventoryItem = {
+        id: 'inv_' + Date.now(),
+        itemId: item.itemId || item.id,
+        name: item.name,
+        photoUrl: item.photoUrl,
+        bgStyle: item.bgStyle || '',
+        textStyle: item.textStyle || '',
+        rarity: item.rarity,
+        type: item.type,
+        appliedValue: item.appliedValue,
+        acquiredAt: new Date().toISOString()
+      };
+
+      const updatedProfiles = prev.profiles.map(p => {
+        if (p.id === currentUser.id) {
+          return {
+            ...p,
+            equivaxes: isInfinite ? p.equivaxes : p.equivaxes - item.price,
+            inventory: [invItem, ...(p.inventory || [])]
+          };
+        }
+        return p;
+      });
+
+      return {
+        ...prev,
+        profiles: updatedProfiles
+      };
+    });
+  };
+
+  // Market: Add Weekly Item (Admin/Owner)
+  const handleAddWeeklyItem = (newItem: ShopWeeklyItem) => {
+    updateState(prev => ({
+      ...prev,
+      weeklyShopItems: [newItem, ...(prev.weeklyShopItems || [])]
+    }));
+  };
+
+  // Market: Remove Weekly Item (Admin/Owner)
+  const handleRemoveWeeklyItem = (itemId: string) => {
+    updateState(prev => ({
+      ...prev,
+      weeklyShopItems: (prev.weeklyShopItems || []).filter(i => i.id !== itemId)
+    }));
+  };
+
+  // Market: List on Auction
+  const handleListItemOnAuction = (item: InventoryItem, price: number) => {
+    updateState(prev => {
+      // Remove from seller's inventory
+      const updatedProfiles = prev.profiles.map(p => {
+        if (p.id === currentUser.id) {
+          return {
+            ...p,
+            inventory: (p.inventory || []).filter(i => i.id !== item.id)
+          };
+        }
+        return p;
+      });
+
+      const listing: AuctionListing = {
+        id: 'auc_' + Date.now(),
+        sellerId: currentUser.id,
+        sellerUsername: currentUser.username,
+        sellerDisplayName: currentUser.displayName,
+        sellerAvatarUrl: currentUser.avatarUrl,
+        sellerThemeBg: currentUser.activeTextBg,
+        item,
+        price,
+        listedAt: new Date().toISOString()
+      };
+
+      return {
+        ...prev,
+        profiles: updatedProfiles,
+        auctionListings: [listing, ...(prev.auctionListings || [])]
+      };
+    });
+  };
+
+  // Market: Cancel Auction Listing
+  const handleCancelAuctionListing = (listingId: string) => {
+    updateState(prev => {
+      const listing = (prev.auctionListings || []).find(l => l.id === listingId);
+      if (!listing) return prev;
+
+      // Return item back to seller's inventory
+      const updatedProfiles = prev.profiles.map(p => {
+        if (p.id === listing.sellerId) {
+          return {
+            ...p,
+            inventory: [listing.item, ...(p.inventory || [])]
+          };
+        }
+        return p;
+      });
+
+      return {
+        ...prev,
+        profiles: updatedProfiles,
+        auctionListings: (prev.auctionListings || []).filter(l => l.id !== listingId)
+      };
+    });
+  };
+
+  // Market: Buy from Auction
+  const handleBuyAuctionItem = (listing: AuctionListing) => {
+    updateState(prev => {
+      const isInfinite = currentUser.isInfiniteEquivaxes || isOwner;
+      if (!isInfinite && currentUser.equivaxes < listing.price) {
+        alert('Недостаточно Эквиваксов для покупки на аукционе!');
+        return prev;
+      }
+
+      // Transfer money to seller, deduct from buyer, transfer item to buyer
+      const updatedProfiles = prev.profiles.map(p => {
+        if (p.id === currentUser.id) {
+          return {
+            ...p,
+            equivaxes: isInfinite ? p.equivaxes : p.equivaxes - listing.price,
+            inventory: [listing.item, ...(p.inventory || [])]
+          };
+        }
+        if (p.id === listing.sellerId) {
+          return {
+            ...p,
+            equivaxes: p.equivaxes + listing.price
+          };
+        }
+        return p;
+      });
+
+      return {
+        ...prev,
+        profiles: updatedProfiles,
+        auctionListings: (prev.auctionListings || []).filter(l => l.id !== listing.id)
+      };
+    });
+  };
+
+  // Sell item to pawnshop directly from profile
+  const handleSellItemToPawnshop = (itemId: string, payout: number) => {
+    updateState(prev => {
+      const updatedProfiles = prev.profiles.map(p => {
+        if (p.id === currentUser.id) {
+          return {
+            ...p,
+            equivaxes: p.equivaxes + payout,
+            inventory: (p.inventory || []).filter(i => i.id !== itemId)
+          };
+        }
+        return p;
+      });
+
+      return {
+        ...prev,
+        profiles: updatedProfiles
+      };
+    });
+  };
+
+  // Issue Lottery Ticket to Player (Admin/Owner)
+  const handleIssueLotteryTicket = (userId: string, ticketItem: InventoryItem) => {
+    updateState(prev => {
+      const updatedProfiles = prev.profiles.map(p => {
+        if (p.id === userId) {
+          return {
+            ...p,
+            inventory: [ticketItem, ...(p.inventory || [])]
+          };
+        }
+        return p;
+      });
+
+      return {
+        ...prev,
+        profiles: updatedProfiles
+      };
+    });
+  };
+
+  // Claim Lottery Prize when scratched
+  const handleClaimLotteryPrize = (ticketId: string, prizeEquivaxes: number) => {
+    updateState(prev => {
+      const isInfinite = currentUser.isInfiniteEquivaxes || isOwner;
+      const updatedProfiles = prev.profiles.map(p => {
+        if (p.id === currentUser.id) {
+          return {
+            ...p,
+            equivaxes: isInfinite ? p.equivaxes : p.equivaxes + prizeEquivaxes,
+            inventory: (p.inventory || []).filter(i => i.id !== ticketId)
+          };
+        }
+        return p;
+      });
+
+      return {
+        ...prev,
+        profiles: updatedProfiles
+      };
+    });
+
+    setTimeout(() => {
+      setActiveLotteryTicket(null);
+    }, 1200);
   };
 
   // Event Handlers
@@ -123,17 +433,15 @@ export default function App() {
 
       const reward = targetEvent.rewardEquivaxes || 0;
 
-      // Update event participants
       const updatedEvents = prev.events.map(e =>
         e.id === eventId ? { ...e, participants: [...e.participants, currentUser.username] } : e
       );
 
-      // Reward player with Equivaxes & update attendance count
       const updatedProfiles = prev.profiles.map(p => {
         if (p.id === currentUser.id) {
           return {
             ...p,
-            equivaxes: p.isInfiniteEquivaxes ? p.equivaxes : p.equivaxes + reward,
+            equivaxes: p.isInfiniteEquivaxes || isOwner ? p.equivaxes : p.equivaxes + reward,
             eventsAttended: targetEvent.type === 'event' ? p.eventsAttended + 1 : p.eventsAttended,
             plannedRpsAttended: targetEvent.type === 'planned_rp' ? p.plannedRpsAttended + 1 : p.plannedRpsAttended
           };
@@ -183,7 +491,7 @@ export default function App() {
 
       const updatedProfiles = prev.profiles.map(p => {
         if (p.id === currentUser.id) {
-          const isInfinite = p.isInfiniteEquivaxes || p.username === '@MrWhitePio';
+          const isInfinite = p.isInfiniteEquivaxes || isOwner;
           const newBalance = isInfinite ? p.equivaxes : Math.max(0, p.equivaxes - box.price);
           return {
             ...p,
@@ -222,9 +530,13 @@ export default function App() {
     });
   };
 
-  // Admin Event Actions
+  // Admin Actions
   const handleCreateEvent = (newEvent: RPEvent) => {
     updateState(prev => ({ ...prev, events: [newEvent, ...prev.events] }));
+    // Automatically announce new event/collab/RP to Telegram community group
+    notifyTelegramGroupAboutEvent(newEvent).catch(err => {
+      console.warn('Failed to notify group about event:', err);
+    });
   };
 
   const handleTogglePauseEvent = (eventId: string) => {
@@ -256,15 +568,14 @@ export default function App() {
     }));
   };
 
-  // Admin Role Management
   const handleAddAdmin = (admin: AdminInfo) => {
-    updateState(prev => ({
-      ...prev,
-      admins: [...prev.admins, admin]
-    }));
+    if (!isOwner) return;
+    updateState(prev => ({ ...prev, admins: [...prev.admins, admin] }));
   };
 
   const handleRemoveAdmin = (username: string) => {
+    if (!isOwner) return;
+    if (username.toLowerCase() === '@mrwhitepio') return;
     updateState(prev => ({
       ...prev,
       admins: prev.admins.filter(a => a.username.toLowerCase() !== username.toLowerCase())
@@ -272,6 +583,7 @@ export default function App() {
   };
 
   const handleUpdateAdminTags = (username: string, tags: string[]) => {
+    if (!isOwner) return;
     updateState(prev => ({
       ...prev,
       admins: prev.admins.map(a =>
@@ -280,17 +592,11 @@ export default function App() {
     }));
   };
 
-  // Admin Economy Management
   const handleGrantMoney = (userId: string, amount: number) => {
     updateState(prev => ({
       ...prev,
       profiles: prev.profiles.map(p =>
-        p.id === userId
-          ? {
-              ...p,
-              equivaxes: p.isInfiniteEquivaxes ? p.equivaxes : Math.max(0, p.equivaxes + amount)
-            }
-          : p
+        p.id === userId ? { ...p, equivaxes: Math.max(0, p.equivaxes + amount) } : p
       )
     }));
   };
@@ -299,23 +605,13 @@ export default function App() {
     updateState(prev => ({
       ...prev,
       profiles: prev.profiles.map(p =>
-        p.id === userId
-          ? {
-              ...p,
-              isInfiniteEquivaxes: isInfinite,
-              equivaxes: isInfinite ? 9999999 : p.equivaxes
-            }
-          : p
+        p.id === userId ? { ...p, isInfiniteEquivaxes: isInfinite } : p
       )
     }));
   };
 
-  // Admin Awards Management
   const handleIssueAward = (award: Award) => {
-    updateState(prev => ({
-      ...prev,
-      awards: [award, ...prev.awards]
-    }));
+    updateState(prev => ({ ...prev, awards: [award, ...prev.awards] }));
   };
 
   const handleRevokeAward = (awardId: string) => {
@@ -325,12 +621,8 @@ export default function App() {
     }));
   };
 
-  // Admin Case Management
   const handleCreateCase = (newCase: CaseBox) => {
-    updateState(prev => ({
-      ...prev,
-      cases: [newCase, ...prev.cases]
-    }));
+    updateState(prev => ({ ...prev, cases: [newCase, ...prev.cases] }));
   };
 
   const handleDeleteCase = (caseId: string) => {
@@ -347,68 +639,73 @@ export default function App() {
     }));
   };
 
+  const activeEventsCount = appState.events.filter(e => e.type === 'event' && !e.isCompleted).length;
+  const activePlannedRpsCount = appState.events.filter(e => e.type === 'planned_rp' && !e.isCompleted).length;
+
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col">
-      {/* Top Universal Mode Switcher Bar */}
-      <div className="w-full bg-zinc-900 border-b border-zinc-800 px-3 py-2 text-xs flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="font-heading font-black text-amber-400 tracking-wider">
-            DUSTTOWN RP
-          </span>
-          <span className="hidden sm:inline text-zinc-500 font-mono-pip">•</span>
-          <span className="hidden sm:inline text-zinc-400 font-mono-pip">
-            Режим предварительного просмотра:
-          </span>
+    <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col relative selection:bg-amber-500 selection:text-black">
+      {/* Top Mode Switcher Bar: STRICTLY VISIBLE ONLY TO OWNER */}
+      {isOwner && (
+        <div className="w-full bg-zinc-900 border-b border-zinc-800 px-3 py-2 text-xs flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="font-heading font-black text-amber-400 tracking-wider">
+              ДАСТ ТАУН КОЛЕКТИВ
+            </span>
+            <span className="hidden sm:inline text-zinc-500 font-mono-pip">•</span>
+            <span className="hidden sm:inline text-zinc-400 font-mono-pip">
+              Панель Главного Создателя:
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setViewMode('miniapp')}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-mono-pip font-bold transition ${
+                viewMode === 'miniapp'
+                  ? 'bg-amber-500 text-black shadow'
+                  : 'bg-zinc-800 text-zinc-300 hover:text-white'
+              }`}
+            >
+              <Smartphone className="w-3.5 h-3.5" />
+              <span>Mini App</span>
+            </button>
+
+            <button
+              onClick={() => setViewMode('bot_panel')}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-mono-pip font-bold transition ${
+                viewMode === 'bot_panel'
+                  ? 'badge-owner-shimmer text-black shadow'
+                  : 'bg-zinc-800 text-zinc-300 hover:text-white'
+              }`}
+            >
+              <Bot className="w-3.5 h-3.5" />
+              <span>Панель Управления Ботом</span>
+            </button>
+
+            <button
+              onClick={() => setViewMode('split')}
+              className={`hidden md:flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-mono-pip font-bold transition ${
+                viewMode === 'split'
+                  ? 'bg-amber-500 text-black shadow'
+                  : 'bg-zinc-800 text-zinc-300 hover:text-white'
+              }`}
+            >
+              <Columns className="w-3.5 h-3.5" />
+              <span>Разделенный экран</span>
+            </button>
+          </div>
         </div>
-
-        <div className="flex items-center gap-1.5">
-          <button
-            onClick={() => setViewMode('miniapp')}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-mono-pip font-bold transition ${
-              viewMode === 'miniapp'
-                ? 'bg-amber-500 text-black shadow'
-                : 'bg-zinc-800 text-zinc-300 hover:text-white'
-            }`}
-          >
-            <Smartphone className="w-3.5 h-3.5" />
-            <span>Mini App</span>
-          </button>
-
-          <button
-            onClick={() => setViewMode('bot_panel')}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-mono-pip font-bold transition ${
-              viewMode === 'bot_panel'
-                ? 'bg-amber-500 text-black shadow'
-                : 'bg-zinc-800 text-zinc-300 hover:text-white'
-            }`}
-          >
-            <Bot className="w-3.5 h-3.5" />
-            <span>Панель Бота</span>
-          </button>
-
-          <button
-            onClick={() => setViewMode('split')}
-            className={`hidden md:flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-mono-pip font-bold transition ${
-              viewMode === 'split'
-                ? 'bg-amber-500 text-black shadow'
-                : 'bg-zinc-800 text-zinc-300 hover:text-white'
-            }`}
-          >
-            <Columns className="w-3.5 h-3.5" />
-            <span>Разделенный экран</span>
-          </button>
-        </div>
-      </div>
+      )}
 
       {/* Main View Container */}
       <div className="flex-1 flex flex-col">
-        {viewMode === 'bot_panel' && (
+        {isOwner && viewMode === 'bot_panel' && (
           <main className="p-4 sm:p-6 flex-1">
             <BotControlPanel onOpenMiniApp={() => setViewMode('miniapp')} />
           </main>
         )}
 
-        {viewMode === 'split' && (
+        {isOwner && viewMode === 'split' && (
           <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-zinc-800">
             {/* Left Column: Telegram Bot Control & Chat */}
             <div className="p-4 sm:p-6 overflow-y-auto max-h-screen">
@@ -416,92 +713,40 @@ export default function App() {
             </div>
 
             {/* Right Column: Mini App View */}
-            <div className="flex flex-col bg-black/40 overflow-y-auto max-h-screen">
-              {/* Profiles Top Bar */}
+            <div className="flex flex-col bg-black/40 overflow-y-auto max-h-screen relative">
+              {/* Collab Ticker Running Banner (События-коллаборации) */}
+              <CollabTickerBanner
+                collabs={appState.events}
+                onSelectCollab={collab => setSelectedCollab(collab)}
+              />
+
               <ProfilesTopBar
                 profiles={appState.profiles}
+                admins={appState.admins}
                 currentUserId={currentUserId}
                 onSelectProfile={profile => setInspectedProfile(profile)}
               />
 
-              {/* Mini App Header */}
               <MiniAppHeader
                 currentUser={currentUser}
-                profiles={appState.profiles}
                 admins={appState.admins}
-                onSwitchUser={id => setCurrentUserId(id)}
                 onOpenMyProfile={() => setActiveTab('profile')}
                 onOpenCases={() => setActiveTab('cases')}
+                onUnlockOwner={handleUnlockOwner}
               />
 
-              {/* Navigation Tabs */}
-              <div className="sticky top-[57px] z-20 bg-zinc-950/95 border-b border-zinc-800 px-3 py-2 flex items-center gap-1.5 overflow-x-auto scrollbar-none backdrop-blur-md">
-                <button
-                  onClick={() => setActiveTab('events')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-heading font-bold whitespace-nowrap transition ${
-                    activeTab === 'events' ? 'bg-amber-500 text-black' : 'bg-zinc-900 text-zinc-400'
-                  }`}
-                >
-                  <Calendar className="w-3.5 h-3.5" />
-                  <span>События/Ивенты</span>
-                </button>
+              {/* Only the sleek side/corner HUD panel */}
+              <NavigationDock
+                activeTab={activeTab}
+                onTabChange={t => setActiveTab(t)}
+                isAdmin={isAdmin}
+                eventsCount={activeEventsCount}
+                plannedRpsCount={activePlannedRpsCount}
+                casesCount={appState.cases.length}
+                marketItemsCount={(appState.weeklyShopItems?.length || 0) + (appState.auctionListings?.length || 0)}
+              />
 
-                <button
-                  onClick={() => setActiveTab('planned_rp')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-heading font-bold whitespace-nowrap transition ${
-                    activeTab === 'planned_rp'
-                      ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white'
-                      : 'bg-zinc-900 text-zinc-400'
-                  }`}
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>Запланированные РП</span>
-                </button>
-
-                <button
-                  onClick={() => setActiveTab('characters')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-heading font-bold whitespace-nowrap transition ${
-                    activeTab === 'characters' ? 'bg-amber-500 text-black' : 'bg-zinc-900 text-zinc-400'
-                  }`}
-                >
-                  <span>📜 Анкеты</span>
-                </button>
-
-                <button
-                  onClick={() => setActiveTab('profile')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-heading font-bold whitespace-nowrap transition ${
-                    activeTab === 'profile' ? 'bg-amber-500 text-black' : 'bg-zinc-900 text-zinc-400'
-                  }`}
-                >
-                  <User className="w-3.5 h-3.5" />
-                  <span>Профиль</span>
-                </button>
-
-                <button
-                  onClick={() => setActiveTab('cases')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-heading font-bold whitespace-nowrap transition ${
-                    activeTab === 'cases' ? 'bg-amber-500 text-black' : 'bg-zinc-900 text-zinc-400'
-                  }`}
-                >
-                  <Package className="w-3.5 h-3.5" />
-                  <span>Кейсы</span>
-                </button>
-
-                {isAdmin && (
-                  <button
-                    onClick={() => setActiveTab('admin')}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-heading font-bold whitespace-nowrap transition ${
-                      activeTab === 'admin' ? 'bg-amber-500 text-black' : 'bg-zinc-900 text-zinc-400'
-                    }`}
-                  >
-                    <Shield className="w-3.5 h-3.5" />
-                    <span>Админ-панель</span>
-                  </button>
-                )}
-              </div>
-
-              {/* Tab Content */}
-              <div className="p-4 sm:p-6 flex-1">
+              <div className="p-4 sm:p-6 flex-1 pr-12 sm:pr-14">
                 {activeTab === 'events' && (
                   <EventsView
                     events={appState.events}
@@ -524,6 +769,22 @@ export default function App() {
                     isAdmin={isAdmin}
                   />
                 )}
+                {activeTab === 'market' && (
+                  <MarketView
+                    currentUser={currentUser}
+                    profiles={appState.profiles}
+                    weeklyItems={appState.weeklyShopItems || []}
+                    auctionListings={appState.auctionListings || []}
+                    caseItems={appState.caseItems || []}
+                    isAdmin={isAdmin}
+                    onBuyWeeklyItem={handleBuyWeeklyItem}
+                    onAddWeeklyItem={handleAddWeeklyItem}
+                    onRemoveWeeklyItem={handleRemoveWeeklyItem}
+                    onListItemOnAuction={handleListItemOnAuction}
+                    onCancelAuctionListing={handleCancelAuctionListing}
+                    onBuyAuctionItem={handleBuyAuctionItem}
+                  />
+                )}
                 {activeTab === 'characters' && (
                   <CharactersView
                     characters={appState.characters}
@@ -540,6 +801,8 @@ export default function App() {
                     onUpdateProfile={handleUpdateProfile}
                     onSelectCharacter={c => setInspectedCharacter(c)}
                     onOpenCases={() => setActiveTab('cases')}
+                    onSellItemToPawnshop={handleSellItemToPawnshop}
+                    onOpenLotteryTicket={ticket => setActiveLotteryTicket(ticket)}
                   />
                 )}
                 {activeTab === 'cases' && (
@@ -553,7 +816,7 @@ export default function App() {
                     isAdmin={isAdmin}
                   />
                 )}
-                {activeTab === 'admin' && (
+                {isAdmin && activeTab === 'admin' && (
                   <AdminPanel
                     currentUser={currentUser}
                     admins={appState.admins}
@@ -577,6 +840,7 @@ export default function App() {
                     onDeleteCase={handleDeleteCase}
                     onCreateItem={handleCreateItem}
                     onSelectProfile={p => setInspectedProfile(p)}
+                    onIssueLotteryTicket={handleIssueLotteryTicket}
                   />
                 )}
               </div>
@@ -585,10 +849,17 @@ export default function App() {
         )}
 
         {viewMode === 'miniapp' && (
-          <div className="flex-1 flex flex-col max-w-4xl w-full mx-auto">
-            {/* Profiles Top Bar above all tabs */}
+          <div className="flex-1 flex flex-col max-w-4xl w-full mx-auto relative">
+            {/* Collab Ticker Running Banner (События-коллаборации) */}
+            <CollabTickerBanner
+              collabs={appState.events}
+              onSelectCollab={collab => setSelectedCollab(collab)}
+            />
+
+            {/* Profiles Top Bar */}
             <ProfilesTopBar
               profiles={appState.profiles}
+              admins={appState.admins}
               currentUserId={currentUserId}
               onSelectProfile={profile => setInspectedProfile(profile)}
             />
@@ -596,91 +867,25 @@ export default function App() {
             {/* Mini App Header */}
             <MiniAppHeader
               currentUser={currentUser}
-              profiles={appState.profiles}
               admins={appState.admins}
-              onSwitchUser={id => setCurrentUserId(id)}
               onOpenMyProfile={() => setActiveTab('profile')}
               onOpenCases={() => setActiveTab('cases')}
+              onUnlockOwner={handleUnlockOwner}
             />
 
-            {/* Navigation Tabs */}
-            <div className="sticky top-[57px] z-20 bg-zinc-950/95 border-b border-zinc-800 px-3 py-2 flex items-center gap-1.5 overflow-x-auto scrollbar-none backdrop-blur-md">
-              <button
-                onClick={() => setActiveTab('events')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-heading font-bold whitespace-nowrap transition ${
-                  activeTab === 'events'
-                    ? 'bg-amber-500 text-black shadow'
-                    : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
-                }`}
-              >
-                <Calendar className="w-3.5 h-3.5" />
-                <span>События/Ивенты</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('planned_rp')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-heading font-bold whitespace-nowrap transition ${
-                  activeTab === 'planned_rp'
-                    ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white shadow'
-                    : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
-                }`}
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>Запланированные РП</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('characters')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-heading font-bold whitespace-nowrap transition ${
-                  activeTab === 'characters'
-                    ? 'bg-amber-500 text-black shadow'
-                    : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
-                }`}
-              >
-                <span>📜 Анкеты персонажей</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('profile')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-heading font-bold whitespace-nowrap transition ${
-                  activeTab === 'profile'
-                    ? 'bg-amber-500 text-black shadow'
-                    : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
-                }`}
-              >
-                <User className="w-3.5 h-3.5" />
-                <span>Профиль игрока</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('cases')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-heading font-bold whitespace-nowrap transition ${
-                  activeTab === 'cases'
-                    ? 'bg-amber-500 text-black shadow'
-                    : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
-                }`}
-              >
-                <Package className="w-3.5 h-3.5" />
-                <span>Кейсы</span>
-              </button>
-
-              {isAdmin && (
-                <button
-                  onClick={() => setActiveTab('admin')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-heading font-bold whitespace-nowrap transition ${
-                    activeTab === 'admin'
-                      ? 'bg-amber-500 text-black shadow'
-                      : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
-                  }`}
-                >
-                  <Shield className="w-3.5 h-3.5" />
-                  <span>Админ-панель</span>
-                </button>
-              )}
-            </div>
+            {/* Sleek Right-Corner HUD Navigation Panel («на угол правый, половина сверху половина сбоку») */}
+            <NavigationDock
+              activeTab={activeTab}
+              onTabChange={t => setActiveTab(t)}
+              isAdmin={isAdmin}
+              eventsCount={activeEventsCount}
+              plannedRpsCount={activePlannedRpsCount}
+              casesCount={appState.cases.length}
+              marketItemsCount={(appState.weeklyShopItems?.length || 0) + (appState.auctionListings?.length || 0)}
+            />
 
             {/* Tab Body */}
-            <main className="p-4 sm:p-6 flex-1 pb-16">
+            <main className="p-4 sm:p-6 flex-1 pb-16 pr-12 sm:pr-14">
               {activeTab === 'events' && (
                 <EventsView
                   events={appState.events}
@@ -703,6 +908,22 @@ export default function App() {
                   isAdmin={isAdmin}
                 />
               )}
+              {activeTab === 'market' && (
+                <MarketView
+                  currentUser={currentUser}
+                  profiles={appState.profiles}
+                  weeklyItems={appState.weeklyShopItems || []}
+                  auctionListings={appState.auctionListings || []}
+                  caseItems={appState.caseItems || []}
+                  isAdmin={isAdmin}
+                  onBuyWeeklyItem={handleBuyWeeklyItem}
+                  onAddWeeklyItem={handleAddWeeklyItem}
+                  onRemoveWeeklyItem={handleRemoveWeeklyItem}
+                  onListItemOnAuction={handleListItemOnAuction}
+                  onCancelAuctionListing={handleCancelAuctionListing}
+                  onBuyAuctionItem={handleBuyAuctionItem}
+                />
+              )}
               {activeTab === 'characters' && (
                 <CharactersView
                   characters={appState.characters}
@@ -719,6 +940,8 @@ export default function App() {
                   onUpdateProfile={handleUpdateProfile}
                   onSelectCharacter={c => setInspectedCharacter(c)}
                   onOpenCases={() => setActiveTab('cases')}
+                  onSellItemToPawnshop={handleSellItemToPawnshop}
+                  onOpenLotteryTicket={ticket => setActiveLotteryTicket(ticket)}
                 />
               )}
               {activeTab === 'cases' && (
@@ -732,7 +955,7 @@ export default function App() {
                   isAdmin={isAdmin}
                 />
               )}
-              {activeTab === 'admin' && (
+              {isAdmin && activeTab === 'admin' && (
                 <AdminPanel
                   currentUser={currentUser}
                   admins={appState.admins}
@@ -756,6 +979,7 @@ export default function App() {
                   onDeleteCase={handleDeleteCase}
                   onCreateItem={handleCreateItem}
                   onSelectProfile={p => setInspectedProfile(p)}
+                  onIssueLotteryTicket={handleIssueLotteryTicket}
                 />
               )}
             </main>
@@ -770,6 +994,7 @@ export default function App() {
           awards={appState.awards}
           characters={appState.characters}
           currentUser={currentUser}
+          admins={appState.admins}
           isAdmin={isAdmin}
           onClose={() => setInspectedProfile(null)}
           onSelectCharacter={c => {
@@ -777,6 +1002,8 @@ export default function App() {
             setInspectedCharacter(c);
           }}
           onQuickGrantMoney={isAdmin ? (userId, amt) => handleGrantMoney(userId, amt) : undefined}
+          onToggleAdmin={isOwner ? handleToggleAdmin : undefined}
+          onIssueLotteryTicket={handleIssueLotteryTicket}
         />
       )}
 
@@ -785,6 +1012,25 @@ export default function App() {
         <CharacterDetailModal
           character={inspectedCharacter}
           onClose={() => setInspectedCharacter(null)}
+        />
+      )}
+
+      {/* Interactive Lottery Scratch Modal */}
+      {activeLotteryTicket && (
+        <LotteryScratchModal
+          ticketItem={activeLotteryTicket}
+          onClaimPrize={handleClaimLotteryPrize}
+          onClose={() => setActiveLotteryTicket(null)}
+        />
+      )}
+
+      {/* Collaboration Event Detail Modal */}
+      {selectedCollab && (
+        <CollabDetailModal
+          event={selectedCollab}
+          currentUser={currentUser}
+          onJoinEvent={handleJoinEvent}
+          onClose={() => setSelectedCollab(null)}
         />
       )}
     </div>
