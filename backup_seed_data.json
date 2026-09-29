@@ -1,0 +1,143 @@
+{
+  "profiles": [
+    {
+      "id": "owner_mrwhitepio",
+      "username": "@MrWhitePio",
+      "displayName": "MrWhitePio [Создатель]",
+      "avatarUrl": "https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=300&q=80",
+      "bio": "Главный Архитектор и Создатель DustTown RP. Магитех-инженер довоенных времен.",
+      "equivaxes": 9999999,
+      "isInfiniteEquivaxes": true,
+      "joinedAt": "2026-01-01T00:00:00Z",
+      "eventsAttended": 12,
+      "plannedRpsAttended": 8,
+      "activeThemeId": "black_tree",
+      "activeAvatarFrame": "frame_rad_pulse",
+      "inventory": [],
+      "pinnedArts": []
+    }
+  ],
+  "admins": [
+    {
+      "username": "@MrWhitePio",
+      "tags": [
+        "Главный Создатель",
+        "Архитектор DustTown",
+        "Supreme GM"
+      ],
+      "addedAt": "2026-01-01T00:00:00Z",
+      "isMainCreator": true
+    }
+  ],
+  "characters": [],
+  "events": [],
+  "awards": [],
+  "cases": [],
+  "caseItems": [],
+  "weeklyShopItems": [
+    {
+      "id": "weekly_item_rad_core",
+      "name": "Анимированная Тема: Реактор Радиации ☢️",
+      "description": "Эпический довоенный экран с пульсирующей радиацией и частицами.",
+      "photoUrl": "https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=400&q=80",
+      "bgStyle": "from-emerald-950 via-zinc-950 to-green-950 border-emerald-500/70",
+      "textStyle": "text-emerald-400 font-bold drop-shadow-[0_0_8px_#34d399]",
+      "rarity": "legendary",
+      "type": "profile_theme",
+      "appliedValue": "rad_core",
+      "price": 320,
+      "oldPrice": 450,
+      "badge": "ХИТ НЕДЕЛИ 🔥",
+      "stock": 5,
+      "addedBy": "@MrWhitePio",
+      "addedAt": "2026-01-01T00:00:00Z"
+    },
+    {
+      "id": "weekly_item_frame_gold",
+      "name": "3D Рамка: Золото Рейнджера 🏆",
+      "description": "Массивная золотая 3D-окантовка с гравировкой орла НКР Эквестрии.",
+      "photoUrl": "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=400&q=80",
+      "bgStyle": "from-amber-950 via-zinc-950 to-yellow-950 border-amber-500",
+      "textStyle": "text-amber-300 font-bold",
+      "rarity": "epic",
+      "type": "avatar_frame",
+      "appliedValue": "frame_gold_3d",
+      "price": 190,
+      "oldPrice": 250,
+      "badge": "СКИДКА -24%",
+      "addedBy": "@MrWhitePio",
+      "addedAt": "2026-01-01T00:00:00Z"
+    }
+  ],
+  "auctionListings": [],
+  "factions": [],
+  "lastUpdated": "2026-09-29T18:00:49.373Z",
+  "artworks": [],
+  "activityLogs": [
+    {
+      "id": "act_init_1",
+      "timestamp": "2026-09-29T14:13:59.678Z",
+      "username": "@MrWhitePio",
+      "displayName": "MrWhitePio (Основатель)",
+      "userAvatarUrl": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80",
+      "category": "event_create",
+      "title": "Создан новый ивент Пустоши",
+      "description": "Основатель запустил регистрацию на рейд «Битва за Чистую Воду» (+150 ℰQ)",
+      "details": {
+        "amount": 150,
+        "targetName": "Битва за Чистую Воду"
+      },
+      "serverVerified": true,
+      "handshakeId": "hs_init_8f921a"
+    },
+    {
+      "id": "act_init_2",
+      "timestamp": "2026-09-29T14:00:59.678Z",
+      "username": "@starlight_art",
+      "displayName": "Starlight Glimmer",
+      "userAvatarUrl": "https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=200&q=80",
+      "category": "art_publish",
+      "title": "Опубликован авторский арт",
+      "description": "Художник опубликовал работу «Огни Нового Эппллузы» в Арт-Галерее",
+      "details": {
+        "targetName": "Огни Нового Эппллузы"
+      },
+      "serverVerified": true,
+      "handshakeId": "hs_init_7c413b"
+    },
+    {
+      "id": "act_init_3",
+      "timestamp": "2026-09-29T13:40:59.678Z",
+      "username": "@MrWhitePio",
+      "displayName": "MrWhitePio (Основатель)",
+      "userAvatarUrl": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80",
+      "category": "shop_purchase",
+      "title": "Покупка в Торговом Посту",
+      "description": "Приобретена 3D-рамка «Золотой Ореол Пустоши 3D» (-190 ℰQ)",
+      "details": {
+        "amount": -190,
+        "targetName": "Золотой Ореол Пустоши 3D",
+        "txType": "expense_market"
+      },
+      "serverVerified": true,
+      "handshakeId": "hs_init_3a290d"
+    },
+    {
+      "id": "act_init_4",
+      "timestamp": "2026-09-29T12:55:59.678Z",
+      "username": "@SteelPaladin",
+      "displayName": "Паладин Братства",
+      "userAvatarUrl": "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=200&q=80",
+      "category": "event_join",
+      "title": "Запись на РП-сессию",
+      "description": "Сталкер подтвердил участие в экспедиции «Заброшенный Бункер СРЭ» (+80 ℰQ)",
+      "details": {
+        "amount": 80,
+        "targetName": "Заброшенный Бункер СРЭ"
+      },
+      "serverVerified": true,
+      "handshakeId": "hs_init_19e48f"
+    }
+  ],
+  "syncVersion": 10
+}
