@@ -504,8 +504,10 @@ async function handleTelegramUpdate(update: any) {
   addBotLog('message', `[${userTag}]: ${text}`);
 
   const appUrl = process.env.APP_URL || 'https://t.me/DustTown_RP_bot/app';
+  const chatTitle = msg.chat.title || msg.chat.username || '';
   const mentionsBot = botInfo?.username ? text.toLowerCase().includes(`@${botInfo.username.toLowerCase()}`) || text.toLowerCase().includes(botInfo.username.toLowerCase()) : false;
   const replyToBot = !!msg.reply_to_message && msg.reply_to_message.from?.username === botInfo?.username;
+  const isDustTownCollectiveChat = /dusttowncollective|dust town collective|даст таун коллектив/i.test(chatTitle);
 
   if (text.startsWith('/start')) {
     const welcomeText = `👋 Добро пожаловать в **Даст Таун Колектив** (DustTown Collective RP)!
@@ -617,15 +619,24 @@ Mini App: ${appUrl}`
     && !isBotMessage
     && !text.startsWith('/')
     && (isGroupChat
-      ? shouldLittlepipReactToMessage({
+      ? isDustTownCollectiveChat && shouldLittlepipReactToMessage({
           text,
           isBotMessage,
           isGroupChat,
+          chatTitle,
           botUsername: botInfo?.username,
           mentionsBot,
           replyToBot,
         })
-      : true);
+      : shouldLittlepipReactToMessage({
+          text,
+          isBotMessage,
+          isGroupChat: false,
+          chatTitle,
+          botUsername: botInfo?.username,
+          mentionsBot,
+          replyToBot,
+        }));
 
   if (shouldReactToMessage) {
     const replyText = await generateLittlepipReply({
