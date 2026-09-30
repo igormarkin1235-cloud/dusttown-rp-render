@@ -13,7 +13,9 @@ import {
   Crown,
   Palette,
   Activity,
-  MessageCircle
+  MessageCircle,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 
 interface NavigationDockProps {
@@ -25,6 +27,8 @@ interface NavigationDockProps {
   factionsCount?: number;
   casesCount?: number;
   marketItemsCount?: number;
+  soundEnabled: boolean;
+  onToggleSound: () => void;
 }
 
 export const NavigationDock: React.FC<NavigationDockProps> = ({
@@ -35,7 +39,9 @@ export const NavigationDock: React.FC<NavigationDockProps> = ({
   plannedRpsCount = 0,
   factionsCount = 0,
   casesCount = 0,
-  marketItemsCount = 0
+  marketItemsCount = 0,
+  soundEnabled,
+  onToggleSound
 }) => {
   const [isExpanded, setIsExpanded] = useState(true);
 
@@ -146,6 +152,16 @@ export const NavigationDock: React.FC<NavigationDockProps> = ({
           <span className="text-[9px] font-mono-pip font-extrabold uppercase text-amber-400 tracking-widest flex items-center gap-1">
             <Menu className="w-2.5 h-2.5" /> МЕНЮ
           </span>
+          <button
+            type="button"
+            onClick={onToggleSound}
+            aria-label={soundEnabled ? 'Выключить звуки кнопок' : 'Включить звуки кнопок'}
+            aria-pressed={soundEnabled}
+            title={soundEnabled ? 'Выключить звуки кнопок' : 'Включить звуки кнопок'}
+            className="rounded p-1 text-zinc-400 hover:text-white"
+          >
+            {soundEnabled ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
+          </button>
           <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_#10b981] animate-pulse" />
         </div>
 

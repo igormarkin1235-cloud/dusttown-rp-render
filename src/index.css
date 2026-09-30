@@ -685,10 +685,107 @@
   animation: nuke-text-flow 1.8s ease-in-out infinite;
 }
 
+@keyframes nuke-red-pulse {
+  from {
+    box-shadow: inset 22px 0 42px -28px rgba(248, 48, 48, 0.48), inset -22px 0 42px -28px rgba(248, 48, 48, 0.48);
+  }
+  to {
+    box-shadow: inset 30px 0 58px -24px rgba(239, 30, 30, 0.9), inset -30px 0 58px -24px rgba(239, 30, 30, 0.9);
+  }
+}
+
+@keyframes nuke-frame-pulse {
+  from { border-color: rgba(248, 113, 113, 0.35); }
+  to { border-color: rgba(239, 30, 30, 0.9); }
+}
+
+@keyframes nuke-orbit-top {
+  to { transform: translateX(390%); }
+}
+
+@keyframes nuke-orbit-right {
+  to { transform: translateY(390%); }
+}
+
+@keyframes nuke-orbit-bottom {
+  to { transform: translateX(-390%); }
+}
+
+@keyframes nuke-orbit-left {
+  to { transform: translateY(-390%); }
+}
+
+.nuke-screen-frame {
+  position: fixed;
+  inset: 0;
+  z-index: 99;
+  overflow: hidden;
+  pointer-events: none;
+  animation: nuke-red-pulse 0.65s ease-in-out infinite alternate;
+}
+
+.nuke-screen-frame::before {
+  position: absolute;
+  inset: 3px;
+  border: 2px solid rgba(248, 113, 113, 0.6);
+  content: '';
+  animation: nuke-frame-pulse 0.65s ease-in-out infinite alternate;
+}
+
+.nuke-orbit-light {
+  position: absolute;
+  display: block;
+  z-index: 1;
+  filter: drop-shadow(0 0 8px #ef3030) drop-shadow(0 0 18px rgba(239, 48, 48, 0.8));
+}
+
+.nuke-orbit-top,
+.nuke-orbit-bottom {
+  width: 35vw;
+  height: 4px;
+  background: linear-gradient(90deg, transparent, #fecaca 35%, #ef3030 70%, transparent);
+}
+
+.nuke-orbit-top {
+  top: 0;
+  left: -35vw;
+  animation: nuke-orbit-top 2.8s linear infinite;
+}
+
+.nuke-orbit-bottom {
+  right: -35vw;
+  bottom: 0;
+  transform: rotate(180deg);
+  animation: nuke-orbit-bottom 2.8s linear infinite 1.4s;
+}
+
+.nuke-orbit-left,
+.nuke-orbit-right {
+  width: 4px;
+  height: 35vh;
+  background: linear-gradient(180deg, transparent, #fecaca 35%, #ef3030 70%, transparent);
+}
+
+.nuke-orbit-right {
+  top: -35vh;
+  right: 0;
+  animation: nuke-orbit-right 2.8s linear infinite 0.7s;
+}
+
+.nuke-orbit-left {
+  bottom: -35vh;
+  left: 0;
+  transform: rotate(180deg);
+  animation: nuke-orbit-left 2.8s linear infinite 2.1s;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .chat-nuke-message,
   .chat-nuke-overlay,
-  .chat-nuke-title {
+  .chat-nuke-title,
+  .nuke-screen-frame,
+  .nuke-screen-frame::before,
+  .nuke-orbit-light {
     animation-duration: 0.01ms;
     animation-iteration-count: 1;
   }

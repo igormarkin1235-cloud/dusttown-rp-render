@@ -61,6 +61,7 @@ import { ArtGalleryView } from './components/ArtGalleryView';
 import { ActivityLogView } from './components/ActivityLogView';
 import { NotificationModal } from './components/NotificationModal';
 import { ChatView, NukeBroadcastOverlay } from './components/ChatView';
+import { installGlobalButtonSounds, setButtonSoundsEnabled } from './services/uiSound';
 import {
   Smartphone,
   Bot,
@@ -71,6 +72,13 @@ import {
 
 export default function App() {
   const [appState, setAppState] = useState<AppStateData>(loadAppState());
+  const [soundEnabled, setSoundEnabled] = useState(() => {
+    try {
+      return localStorage.getItem('dusttown_button_sounds') !== 'false';
+    } catch {
+      return true;
+    }
+  });
   
   // By default in clean browser, use a visitor profile or first registered profile
   // If Telegram WebApp is present, it binds directly to the real Telegram user
@@ -92,6 +100,12 @@ export default function App() {
   const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
   const [selectedArtIdForFocus, setSelectedArtIdForFocus] = useState<string | null>(null);
   const [chatRecipient, setChatRecipient] = useState<UserProfile | null>(null);
+
+  useEffect(() => {
+    setButtonSoundsEnabled(soundEnabled);
+  }, [soundEnabled]);
+
+  useEffect(() => installGlobalButtonSounds(), []);
 
   // Initial Sync + Background Polling of shared server state
   useEffect(() => {
@@ -1520,6 +1534,8 @@ export default function App() {
                 factionsCount={appState.factions?.length || 0}
                 casesCount={appState.cases.length}
                 marketItemsCount={(appState.weeklyShopItems?.length || 0) + (appState.auctionListings?.length || 0)}
+                soundEnabled={soundEnabled}
+                onToggleSound={() => setSoundEnabled(enabled => !enabled)}
               />
 
               <div className="p-4 sm:p-6 flex-1 pr-12 sm:pr-14">
@@ -1729,6 +1745,8 @@ export default function App() {
               factionsCount={appState.factions?.length || 0}
               casesCount={appState.cases.length}
               marketItemsCount={(appState.weeklyShopItems?.length || 0) + (appState.auctionListings?.length || 0)}
+              soundEnabled={soundEnabled}
+              onToggleSound={() => setSoundEnabled(enabled => !enabled)}
             />
 
             {/* Floating Faction Daily Salary Notification */}

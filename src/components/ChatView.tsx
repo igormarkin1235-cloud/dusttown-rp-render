@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, MessageCircle, Radio, Search, Send, ShieldAlert, Users, Zap } from 'lucide-react';
 import { ChatMessage, NukeBroadcastAlert, UserProfile } from '../types';
 import { fetchChatMessages, fetchNukeAlerts, sendChatMessage, sendNukeMessage } from '../services/chat';
+import { playNukeSiren } from '../services/uiSound';
 import { AvatarWithFrame } from './AvatarWithFrame';
 
 interface ChatViewProps {
@@ -271,13 +272,22 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
 export const NukeBroadcastOverlay: React.FC = () => {
   const [alerts, setAlerts] = useState<NukeBroadcastAlert[]>([]);
+  const seenAlertIdsRef = useRef(new Set<string>());
 
   useEffect(() => {
     let isMounted = true;
     const pollAlerts = async () => {
       try {
         const fresh = await fetchNukeAlerts();
-        if (isMounted) setAlerts(fresh);
+        if (isMounted) {
+          for (const alert of fresh) {
+            if (!seenAlertIdsRef.current.has(alert.id)) {
+              seenAlertIdsRef.current.add(alert.id);
+              playNukeSiren();
+            }
+          }
+          setAlerts(fresh);
+        }
       } catch {
         if (isMounted) setAlerts([]);
       }
@@ -292,14 +302,22 @@ export const NukeBroadcastOverlay: React.FC = () => {
 
   if (!alerts.length) return null;
   return (
-    <div className="pointer-events-none fixed inset-0 z-[100] flex flex-col items-center justify-center gap-3 p-4" aria-live="assertive">
-      {alerts.map(alert => (
-        <div key={alert.id} className="chat-nuke-overlay w-full max-w-2xl border border-emerald-200/80 px-5 py-5 text-center shadow-[0_0_60px_rgba(16,185,129,.55)] sm:px-10 sm:py-8">
-          <p className="mb-2 flex items-center justify-center gap-2 text-xs font-black uppercase text-emerald-200"><ShieldAlert className="h-4 w-4" /> Глобальный сигнал Пустоши</p>
-          <p className="chat-nuke-title break-words text-2xl font-black sm:text-4xl">{alert.message}</p>
-          <p className="mt-3 text-xs text-emerald-100/80">{alert.senderDisplayName} · {new Date(alert.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-        </div>
-      ))}
-    </div>
+    <>
+      <div className="nuke-screen-frame" aria-hidden="true">
+        <span className="nuke-orbit-light nuke-orbit-top" />
+        <span className="nuke-orbit-light nuke-orbit-right" />
+        <span className="nuke-orbit-light nuke-orbit-bottom" />
+        <span className="nuke-orbit-light nuke-orbit-left" />
+      </div>
+      <div className="pointer-events-none fixed inset-0 z-[100] flex flex-col items-center justify-center gap-3 p-4" aria-live="assertive">
+        {alerts.map(alert => (
+          <div key={alert.id} className="chat-nuke-overlay w-full max-w-2xl border border-emerald-200/80 px-5 py-5 text-center shadow-[0_0_60px_rgba(16,185,129,.55)] sm:px-10 sm:py-8">
+            <p className="mb-2 flex items-center justify-center gap-2 text-xs font-black uppercase text-emerald-200"><ShieldAlert className="h-4 w-4" /> Глобальный сигнал Пустоши</p>
+            <p className="chat-nuke-title break-words text-2xl font-black sm:text-4xl">{alert.message}</p>
+            <p className="mt-3 text-xs text-emerald-100/80">{alert.senderDisplayName} · {new Date(alert.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+          </div>
+        ))}
+      </div>
+    </>
   );
 };
