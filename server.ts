@@ -4,6 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import { exec } from 'child_process';
 import { fileURLToPath } from 'url';
+import { generateLittlepipReply } from './src/services/littlepip';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -11,6 +12,7 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
+const activeAiChats = new Set<number>();
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
@@ -401,11 +403,12 @@ async function handleTelegramUpdate(update: any) {
 
   const chatId = msg.chat.id;
   const user = msg.from;
-  const userTag = user.username ? `@${user.username}` : user.first_name;
+  const isBotMessage = user?.is_bot === true;
+  const userTag = user?.username ? `@${user.username}` : (user?.first_name || 'незнакомец');
   const text = msg.text.trim();
 
   // Automatic registration of Telegram user in the shared database
-  if (user) {
+  if (user && !isBotMessage) {
     registerOrUpdateUser(user);
   }
 
@@ -452,14 +455,93 @@ async function handleTelegramUpdate(update: any) {
     } catch (e: any) {
       addBotLog('error', `Ошибка отправки /start: ${e.message}`);
     }
-  } else if (text.startsWith('/help')) {
+    return;
+  }
+
+  if (text.startsWith('/help')) {
     await tgApi('sendMessage', {
       chat_id: chatId,
-      text: `Команды бота группы Даст Таун Колектив:
-/start — Главное меню и запуск Mini App
-По всем вопросам и проблемам обращайтесь к основателю: @MrWhitePio
-Группа проекта: https://t.me/DustTownCollective`
+      text: `Команды бота DustTown RP:
+/start — главное меню и запуск Mini App
+/help — помощь по боту
+/support — техподдержка и инструкция по работе с платформой
+/ai_start — включить Littlepip в этом чате
+/ai_stop — выключить Littlepip в этом чате
+
+Если что-то ломается — пишите @MrWhitePio.
+Группа проекта: https://t.me/DustTownCollective
+Mini App: ${appUrl}`
     });
+    return;
+  }
+
+  if (text.startsWith('/support')) {
+    const supportText = `🛠️ Техподдержка DustTown RP
+
+Ключевые команды:
+• /start — стартовое меню и Mini App
+• /help — список команд
+• /support — эта справка
+• /ai_start — включить Littlepip в чате группы
+• /ai_stop — выключить Littlepip
+
+Структура бота:
+• Telegram polling в server.ts
+• Mini App фронтенд в src/
+• данные профилей и логов хранятся локально в .dusttown_data.json
+• объявления в группу идут через Telegram API
+• AI-ассистент подключается через Google Gemini
+
+Если проблема не решена — смело пишите @MrWhitePio.`;
+
+    await tgApi('sendMessage', {
+      chat_id: chatId,
+      text: supportText
+    });
+    return;
+  }
+
+  if (text.startsWith('/ai_start')) {
+    activeAiChats.add(chatId);
+    await tgApi('sendMessage', {
+      chat_id: chatId,
+      text: '🧬 Littlepip активирована. Пустошь снова может слышать мой голос. Если надо что-то сломать, проверить, починить или просто высказать мнение — я здесь.'
+    });
+    addBotLog('info', `AI-персонаж Littlepip включён в чат ${chatId}`);
+    return;
+  }
+
+  if (text.startsWith('/ai_stop')) {
+    activeAiChats.delete(chatId);
+    await tgApi('sendMessage', {
+      chat_id: chatId,
+      text: '🧯 Littlepip выключена. Сигнал удалён, блоки снова тихие. Если понадоблюсь — знай, где меня включить.'
+    });
+    addBotLog('info', `AI-персонаж Littlepip отключён в чате ${chatId}`);
+    return;
+  }
+
+  const isGroupChat = msg.chat.type === 'group' || msg.chat.type === 'supergroup';
+  const shouldReactToMessage = activeAiChats.has(chatId) && !isBotMessage && !text.startsWith('/') && isGroupChat;
+
+  if (shouldReactToMessage) {
+    const replyText = await generateLittlepipReply({
+      chatId,
+      userTag,
+      incomingText: text
+    });
+
+    if (replyText) {
+      try {
+        await tgApi('sendMessage', {
+          chat_id: chatId,
+          text: replyText,
+          parse_mode: 'Markdown'
+        });
+      } catch (e: any) {
+        addBotLog('error', `Не удалось ответить Littlepip: ${e.message}`);
+      }
+    }
   }
 }
 
