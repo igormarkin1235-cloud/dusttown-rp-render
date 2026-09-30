@@ -442,6 +442,19 @@ async function startTelegramPolling() {
     return;
   }
 
+  try {
+    const webhookResult = await tgApi('deleteWebhook', { drop_pending_updates: false });
+    if (!webhookResult.ok) {
+      throw new Error(webhookResult.description || 'Telegram webhook could not be removed');
+    }
+    addBotLog('info', 'Активный webhook удалён; запускается Long-Polling');
+  } catch (error: any) {
+    isBotPolling = false;
+    lastBotError = error?.message || 'Failed to remove Telegram webhook';
+    addBotLog('error', `Не удалось переключить Telegram на Long-Polling: ${lastBotError}`);
+    return;
+  }
+
   if (pollingAbortController) {
     pollingAbortController.abort();
   }
