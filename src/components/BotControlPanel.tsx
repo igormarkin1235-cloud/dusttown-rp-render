@@ -24,11 +24,13 @@ interface BotControlPanelProps {
 }
 
 export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp }) => {
-  const [isPolling, setIsPolling] = useState(true);
+  const [isActive, setIsActive] = useState(true);
+  const [transport, setTransport] = useState<'polling' | 'webhook' | 'stopped'>('stopped');
+  const [canReadAllGroupMessages, setCanReadAllGroupMessages] = useState<boolean | null>(null);
   const [botInfo, setBotInfo] = useState<any>(null);
   const [logs, setLogs] = useState<Array<{ id: string; time: string; type: string; text: string }>>([
     { id: '1', time: '12:00:00', type: 'info', text: 'Сервер DustTown RP запущен' },
-    { id: '2', time: '12:00:01', type: 'info', text: 'Telegram Long-Polling активен' }
+    { id: '2', time: '12:00:01', type: 'info', text: 'Telegram подключается' }
   ]);
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadDone, setDownloadDone] = useState(false);
@@ -58,7 +60,9 @@ export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp 
       const res = await fetch('/api/bot/status');
       if (res.ok) {
         const data = await res.json();
-        setIsPolling(data.isPolling);
+        setIsActive(data.isActive ?? data.isPolling);
+        setTransport(data.transport || (data.isPolling ? 'polling' : 'stopped'));
+        setCanReadAllGroupMessages(data.canReadAllGroupMessages ?? null);
         if (data.botInfo) setBotInfo(data.botInfo);
         if (Array.isArray(data.logs) && data.logs.length > 0) setLogs(data.logs);
       }
@@ -74,14 +78,15 @@ export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp 
   const handleTogglePolling = async () => {
     setLoading(true);
     try {
-      const endpoint = isPolling ? '/api/bot/stop' : '/api/bot/start';
+      const endpoint = isActive ? '/api/bot/stop' : '/api/bot/start';
       const res = await fetch(endpoint, { method: 'POST' });
       if (res.ok) {
         const data = await res.json();
-        setIsPolling(data.isPolling);
+        setIsActive(data.isActive ?? data.isPolling);
+        setTransport(data.transport || (data.isPolling ? 'polling' : 'stopped'));
       }
     } catch (e) {
-      setIsPolling(!isPolling);
+      setIsActive(!isActive);
     } finally {
       setLoading(false);
     }
@@ -203,18 +208,23 @@ export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp 
                 </h2>
                 <span
                   className={`px-2 py-0.5 rounded-full text-[10px] font-mono-pip font-bold flex items-center gap-1 ${
-                    isPolling
+                    isActive
                       ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
                       : 'bg-red-500/20 text-red-400 border border-red-500/40'
                   }`}
                 >
-                  <span className={`w-1.5 h-1.5 rounded-full ${isPolling ? 'bg-emerald-400 animate-ping' : 'bg-red-400'}`} />
-                  {isPolling ? 'ПОДКЛЮЧЕН (ПОЛЛИНГ)' : 'ОСТАНОВЛЕН'}
+                  <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-emerald-400 animate-ping' : 'bg-red-400'}`} />
+                  {isActive ? `ПОДКЛЮЧЕН (${transport === 'webhook' ? 'WEBHOOK' : 'ПОЛЛИНГ'})` : 'ОСТАНОВЛЕН'}
                 </span>
               </div>
               <p className="text-xs text-zinc-400 font-mono-pip mt-0.5">
                 DustTown RP Bot • токен задаётся в Render
               </p>
+              {canReadAllGroupMessages === false && isActive && (
+                <p className="text-xs text-amber-300 mt-1">
+                  Бот не видит обычные сообщения группы: отключите Privacy Mode через /setprivacy в BotFather или выдайте боту права администратора.
+                </p>
+              )}
             </div>
           </div>
 
@@ -252,12 +262,12 @@ export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp 
               disabled={loading}
               onClick={handleTogglePolling}
               className={`px-4 py-2.5 rounded-xl font-heading font-black text-xs uppercase tracking-wider transition flex items-center gap-2 shadow-lg ${
-                isPolling
+                isActive
                   ? 'bg-red-600 hover:bg-red-500 text-white shadow-red-950/50'
                   : 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-emerald-950/50'
               }`}
             >
-              {isPolling ? (
+              {isActive ? (
                 <>
                   <Square className="w-4 h-4" />
                   <span>Остановить бота</span>

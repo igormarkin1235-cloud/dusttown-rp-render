@@ -4,6 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import { exec } from 'child_process';
 import { fileURLToPath } from 'url';
+import { createHash, randomBytes } from 'crypto';
 import { generateLittlepipReply } from './src/services/littlepip';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -295,7 +296,12 @@ function registerOrUpdateUser(user: { id: number | string; first_name?: string; 
 }
 
 // Bot state
-let isBotPolling = true;
+let isBotPolling = false;
+let isBotWebhook = false;
+let botTransport: 'polling' | 'webhook' | 'stopped' = 'stopped';
+const telegramWebhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET || createHash('sha256')
+  .update(TELEGRAM_BOT_TOKEN || randomBytes(32).toString('hex'))
+  .digest('hex');
 let pollingAbortController: AbortController | null = null;
 let lastBotError: string | null = null;
 let botInfo: any = null;
@@ -338,6 +344,8 @@ async function startTelegramPolling() {
   if (!TELEGRAM_BOT_TOKEN) {
     lastBotError = 'TELEGRAM_BOT_TOKEN is not configured';
     isBotPolling = false;
+    isBotWebhook = false;
+    botTransport = 'stopped';
     addBotLog('error', 'TELEGRAM_BOT_TOKEN не настроен в окружении сервера');
     return;
   }
@@ -347,12 +355,17 @@ async function startTelegramPolling() {
   }
   pollingAbortController = new AbortController();
   isBotPolling = true;
+  isBotWebhook = false;
+  botTransport = 'polling';
 
   try {
     const me = await tgApi('getMe');
     if (me.ok) {
       botInfo = me.result;
       addBotLog('info', `Бот подключен: @${me.result.username} (${me.result.first_name})`);
+      if (!me.result.can_read_all_group_messages) {
+        addBotLog('info', 'Telegram Privacy Mode включён: бот видит только команды и упоминания в группах');
+      }
     } else {
       addBotLog('error', `Ошибка getMe: ${me.description || 'Неверный токен'}`);
     }
@@ -372,7 +385,10 @@ async function startTelegramPolling() {
         if (data.ok && Array.isArray(data.result)) {
           for (const update of data.result) {
             lastUpdateId = update.update_id;
-            handleTelegramUpdate(update);
+            void handleTelegramUpdate(update).catch((error: any) => {
+              lastBotError = error?.message || 'Telegram update handling failed';
+              addBotLog('error', `Ошибка обработки Telegram update: ${lastBotError}`);
+            });
           }
         } else if (!data.ok) {
           lastBotError = data.description || 'Polling error';
@@ -387,13 +403,86 @@ async function startTelegramPolling() {
   })();
 }
 
+async function startTelegramWebhook(webhookBaseUrl: string) {
+  if (!TELEGRAM_BOT_TOKEN) {
+    lastBotError = 'TELEGRAM_BOT_TOKEN is not configured';
+    botTransport = 'stopped';
+    addBotLog('error', 'TELEGRAM_BOT_TOKEN не настроен в окружении сервера');
+    return;
+  }
+
+  if (pollingAbortController) {
+    pollingAbortController.abort();
+    pollingAbortController = null;
+  }
+  isBotPolling = false;
+  isBotWebhook = false;
+  botTransport = 'stopped';
+
+  const me = await tgApi('getMe');
+  if (!me.ok) {
+    throw new Error(me.description || 'Telegram getMe failed');
+  }
+  botInfo = me.result;
+
+  if (!me.result.can_read_all_group_messages) {
+    addBotLog('info', 'Telegram Privacy Mode включён: бот видит только команды и упоминания в группах');
+  }
+
+  const webhookUrl = `${webhookBaseUrl.replace(/\/+$/, '')}/api/telegram/webhook`;
+  const result = await tgApi('setWebhook', {
+    url: webhookUrl,
+    secret_token: telegramWebhookSecret,
+    allowed_updates: ['message']
+  });
+
+  if (!result.ok) {
+    const errorMessage = result.description || 'Telegram setWebhook failed';
+    lastBotError = errorMessage;
+    throw new Error(errorMessage);
+  }
+
+  isBotWebhook = true;
+  botTransport = 'webhook';
+  lastBotError = null;
+  addBotLog('info', `Telegram webhook активен: ${webhookUrl}`);
+  addBotLog('info', `Бот подключен: @${me.result.username} (${me.result.first_name})`);
+}
+
+async function startTelegramBot() {
+  const webhookBaseUrl = process.env.TELEGRAM_WEBHOOK_URL || process.env.RENDER_EXTERNAL_URL;
+  if (webhookBaseUrl) {
+    await startTelegramWebhook(webhookBaseUrl);
+    return;
+  }
+  await startTelegramPolling();
+}
+
 function stopTelegramPolling() {
   isBotPolling = false;
   if (pollingAbortController) {
     pollingAbortController.abort();
     pollingAbortController = null;
   }
+  botTransport = 'stopped';
   addBotLog('info', 'Telegram Long-Polling остановлен пользователем');
+}
+
+async function stopTelegramBot() {
+  const wasWebhook = isBotWebhook;
+  stopTelegramPolling();
+
+  if (wasWebhook && TELEGRAM_BOT_TOKEN) {
+    const result = await tgApi('deleteWebhook', { drop_pending_updates: false });
+    if (!result.ok) {
+      const errorMessage = result.description || 'Telegram deleteWebhook failed';
+      lastBotError = errorMessage;
+      throw new Error(errorMessage);
+    }
+  }
+
+  isBotWebhook = false;
+  botTransport = 'stopped';
 }
 
 // Handle Bot Messages
@@ -546,27 +635,58 @@ Mini App: ${appUrl}`
 }
 
 // API Routes
+app.post('/api/telegram/webhook', (req, res) => {
+  if (req.get('x-telegram-bot-api-secret-token') !== telegramWebhookSecret) {
+    return res.sendStatus(403);
+  }
+
+  const update = req.body;
+  if (!update || typeof update.update_id !== 'number') {
+    return res.sendStatus(400);
+  }
+
+  res.sendStatus(200);
+  void handleTelegramUpdate(update).catch((error: any) => {
+    lastBotError = error?.message || 'Telegram update handling failed';
+    addBotLog('error', `Ошибка обработки Telegram update: ${lastBotError}`);
+  });
+});
+
 app.get('/api/bot/status', (req, res) => {
   res.json({
     isPolling: isBotPolling,
+    isWebhook: isBotWebhook,
+    isActive: isBotPolling || isBotWebhook,
+    transport: botTransport,
     botInfo,
     logs: botLogs,
     lastError: lastBotError,
     tokenConfigured: Boolean(TELEGRAM_BOT_TOKEN),
+    canReadAllGroupMessages: botInfo?.can_read_all_group_messages === true,
     appUrl: process.env.APP_URL || ''
   });
 });
 
 app.post('/api/bot/start', async (req, res) => {
-  if (!isBotPolling) {
-    await startTelegramPolling();
+  if (botTransport === 'stopped') {
+    try {
+      await startTelegramBot();
+    } catch (error: any) {
+      lastBotError = error?.message || 'Telegram startup failed';
+      return res.status(500).json({ error: lastBotError, isActive: false, transport: botTransport });
+    }
   }
-  res.json({ success: true, isPolling: isBotPolling, botInfo });
+  res.json({ success: true, isPolling: isBotPolling, isActive: isBotPolling || isBotWebhook, transport: botTransport, botInfo });
 });
 
-app.post('/api/bot/stop', (req, res) => {
-  stopTelegramPolling();
-  res.json({ success: true, isPolling: false });
+app.post('/api/bot/stop', async (req, res) => {
+  try {
+    await stopTelegramBot();
+    res.json({ success: true, isPolling: false, isActive: false, transport: botTransport });
+  } catch (error: any) {
+    lastBotError = error?.message || 'Telegram shutdown failed';
+    res.status(500).json({ error: lastBotError, isActive: isBotPolling || isBotWebhook, transport: botTransport });
+  }
 });
 
 // Automatic announcement to community group when an event/collab/RP is published
@@ -1607,11 +1727,6 @@ app.post('/api/data', (req, res) => {
   }
 });
 
-// Start Bot Polling immediately
-startTelegramPolling().catch(err => {
-  console.error('Initial telegram polling error:', err);
-});
-
 // Mount Vite or serve static
 async function startServer() {
   const distDir = path.join(__dirname, 'dist');
@@ -1687,6 +1802,10 @@ async function startServer() {
 
   app.listen(PORT, () => {
     console.log(`DustTown RP Server running on http://localhost:${PORT}`);
+    void startTelegramBot().catch((error: any) => {
+      lastBotError = error?.message || 'Telegram startup failed';
+      addBotLog('error', `Ошибка запуска Telegram: ${lastBotError}`);
+    });
   });
 }
 
