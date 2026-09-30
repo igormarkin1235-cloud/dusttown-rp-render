@@ -28,6 +28,7 @@
    * **Instance Type:** `Free` (бесплатно)
 5. В разделе **Environment Variables** (переменные окружения) добавьте:
    * `TELEGRAM_BOT_TOKEN` = значение, выданное BotFather. Добавьте его напрямую в Environment Variables на Render, не храните в GitHub.
+   * `GEMINI_API_KEY` = ключ Google Gemini для ответов AI-агента Littlepip. Добавьте его напрямую в Environment Variables на Render, не храните в GitHub.
    * `NODE_ENV` = `production`
 6. Нажмите **«Deploy Web Service»**.
 

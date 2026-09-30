@@ -60,6 +60,7 @@ import { CollabDetailModal } from './components/CollabDetailModal';
 import { ArtGalleryView } from './components/ArtGalleryView';
 import { ActivityLogView } from './components/ActivityLogView';
 import { NotificationModal } from './components/NotificationModal';
+import { ChatView, NukeBroadcastOverlay } from './components/ChatView';
 import {
   Smartphone,
   Bot,
@@ -90,6 +91,7 @@ export default function App() {
   const [salaryNotice, setSalaryNotice] = useState<{ amount: number; days: number; factionName: string } | null>(null);
   const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
   const [selectedArtIdForFocus, setSelectedArtIdForFocus] = useState<string | null>(null);
+  const [chatRecipient, setChatRecipient] = useState<UserProfile | null>(null);
 
   // Initial Sync + Background Polling of shared server state
   useEffect(() => {
@@ -191,6 +193,12 @@ export default function App() {
   const isAdmin =
     isOwner ||
     appState.admins.some(a => a.username.toLowerCase() === currentUser?.username?.toLowerCase());
+
+  const openDirectChat = (profile: UserProfile) => {
+    setInspectedProfile(null);
+    setChatRecipient(profile);
+    setActiveTab('chat');
+  };
 
   // Security: If not admin, redirect away from admin tab
   useEffect(() => {
@@ -1408,6 +1416,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col relative selection:bg-amber-500 selection:text-black">
+      <NukeBroadcastOverlay />
       {/* Top Mode Switcher Bar: STRICTLY VISIBLE ONLY TO OWNER */}
       {isOwner && (
         <div className="w-full bg-zinc-900 border-b border-zinc-800 px-3 py-2 text-xs flex items-center justify-between">
@@ -1636,6 +1645,15 @@ export default function App() {
                     onNavigateTab={tab => setActiveTab(tab)}
                   />
                 )}
+                {activeTab === 'chat' && (
+                  <ChatView
+                    currentUser={currentUser}
+                    profiles={appState.profiles}
+                    selectedRecipient={chatRecipient}
+                    onRecipientChange={setChatRecipient}
+                    onOpenProfile={profile => setInspectedProfile(profile)}
+                  />
+                )}
                 {isAdmin && activeTab === 'admin' && (
                   <AdminPanel
                     currentUser={currentUser}
@@ -1862,6 +1880,15 @@ export default function App() {
                   onNavigateTab={tab => setActiveTab(tab)}
                 />
               )}
+              {activeTab === 'chat' && (
+                <ChatView
+                  currentUser={currentUser}
+                  profiles={appState.profiles}
+                  selectedRecipient={chatRecipient}
+                  onRecipientChange={setChatRecipient}
+                  onOpenProfile={profile => setInspectedProfile(profile)}
+                />
+              )}
               {isAdmin && activeTab === 'admin' && (
                 <AdminPanel
                   currentUser={currentUser}
@@ -1917,6 +1944,7 @@ export default function App() {
           onQuickGrantMoney={isAdmin ? (userId, amt) => handleGrantMoney(userId, amt) : undefined}
           onToggleAdmin={isOwner ? handleToggleAdmin : undefined}
           onIssueLotteryTicket={handleIssueLotteryTicket}
+          onStartChat={openDirectChat}
         />
       )}
 

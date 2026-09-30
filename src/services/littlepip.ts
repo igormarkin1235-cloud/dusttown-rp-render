@@ -19,6 +19,16 @@ const geminiClient = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY
   : null;
 
 const chatMemory = new Map<number, { history: LittlepipHistoryItem[]; lastReplyAt: number }>();
+let lastLittlepipMode: 'gemini' | 'fallback' = geminiClient ? 'gemini' : 'fallback';
+let lastLittlepipError: string | null = geminiClient ? null : 'Gemini API key is not configured';
+
+export function getLittlepipStatus() {
+  return {
+    providerConfigured: Boolean(geminiClient),
+    mode: lastLittlepipMode,
+    lastError: lastLittlepipError
+  };
+}
 
 export const littlepipPersonality = `Ты — Littlepip (Литлпип), живой, язвительный, дерзкий и тёплый лидер отряда в мире DustTown RP.
 
@@ -175,6 +185,8 @@ export async function generateLittlepipReply(input: LittlepipReplyInput): Promis
 
   try {
     if (!geminiClient) {
+      lastLittlepipMode = 'fallback';
+      lastLittlepipError = 'Gemini API key is not configured';
       const fallback = getFallbackLittlepipReply(incomingText, userTag);
       memory.history.push({ role: 'user', text: incomingText, timestamp: now });
       memory.history.push({ role: 'assistant', text: fallback, timestamp: now + 1 });
@@ -195,6 +207,8 @@ export async function generateLittlepipReply(input: LittlepipReplyInput): Promis
     const cleanText = String(replyText).trim();
 
     if (!cleanText) {
+      lastLittlepipMode = 'fallback';
+      lastLittlepipError = 'Gemini returned an empty response';
       const fallback = getFallbackLittlepipReply(incomingText, userTag);
       memory.history.push({ role: 'user', text: incomingText, timestamp: now });
       memory.history.push({ role: 'assistant', text: fallback, timestamp: now + 1 });
@@ -203,6 +217,8 @@ export async function generateLittlepipReply(input: LittlepipReplyInput): Promis
       return fallback;
     }
 
+    lastLittlepipMode = 'gemini';
+    lastLittlepipError = null;
     memory.history.push({ role: 'user', text: incomingText, timestamp: now });
     memory.history.push({ role: 'assistant', text: cleanText, timestamp: now + 1 });
     memory.history = memory.history.slice(-12);
@@ -211,6 +227,8 @@ export async function generateLittlepipReply(input: LittlepipReplyInput): Promis
     return cleanText;
   } catch (error: any) {
     console.error('Littlepip generation failed:', error?.message || error);
+    lastLittlepipMode = 'fallback';
+    lastLittlepipError = error?.message || 'Gemini generation failed';
     const fallback = getFallbackLittlepipReply(incomingText, userTag);
     memory.history.push({ role: 'user', text: incomingText, timestamp: now });
     memory.history.push({ role: 'assistant', text: fallback, timestamp: now + 1 });

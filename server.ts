@@ -4,8 +4,8 @@ import path from 'path';
 import fs from 'fs';
 import { exec } from 'child_process';
 import { fileURLToPath } from 'url';
-import { createHash, randomBytes } from 'crypto';
-import { generateLittlepipReply, shouldLittlepipReactToMessage } from './src/services/littlepip';
+import { createHmac, randomUUID, timingSafeEqual } from 'crypto';
+import { ChatMessage, ChatMessageStyle, NukeBroadcastAlert, UserProfile } from './src/types';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -13,14 +13,15 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
-const activeAiChats = new Set<number>();
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Persistent state cache file path
-const DATA_FILE = path.join(__dirname, '.dusttown_data.json');
-const BACKUP_FILE = path.join(__dirname, 'backup_seed_data.json');
+const DATA_DIR = process.env.DUSTTOWN_DATA_DIR || __dirname;
+const DATA_FILE = path.join(DATA_DIR, '.dusttown_data.json');
+const BACKUP_FILE = path.join(DATA_DIR, 'backup_seed_data.json');
+const CHAT_FILE = path.join(DATA_DIR, '.dusttown_chat.json');
 
 function getDefaultData() {
   return {
@@ -295,13 +296,106 @@ function registerOrUpdateUser(user: { id: number | string; first_name?: string; 
   return { profile, data };
 }
 
+interface ChatStore {
+  messages: ChatMessage[];
+  nukeAlerts: NukeBroadcastAlert[];
+}
+
+const chatRateLimit = new Map<string, number>();
+
+function loadChatStore(): ChatStore {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(CHAT_FILE, 'utf-8'));
+    return {
+      messages: Array.isArray(parsed.messages) ? parsed.messages : [],
+      nukeAlerts: Array.isArray(parsed.nukeAlerts) ? parsed.nukeAlerts : []
+    };
+  } catch {
+    return { messages: [], nukeAlerts: [] };
+  }
+}
+
+function saveChatStore(store: ChatStore) {
+  try {
+    fs.writeFileSync(CHAT_FILE, JSON.stringify(store), 'utf-8');
+  } catch (error) {
+    console.error('Failed to write chat storage:', error);
+  }
+}
+
+function verifyTelegramInitData(initData: string): UserProfile | null {
+  if (!TELEGRAM_BOT_TOKEN || !initData) return null;
+
+  try {
+    const params = new URLSearchParams(initData);
+    const hash = params.get('hash');
+    const authDate = Number(params.get('auth_date'));
+    const now = Math.floor(Date.now() / 1000);
+    if (!hash || !Number.isFinite(authDate) || authDate > now + 60 || now - authDate > 86400) return null;
+
+    const dataCheckString = [...params.entries()]
+      .filter(([key]) => key !== 'hash')
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, value]) => `${key}=${value}`)
+      .join('\n');
+    const secretKey = createHmac('sha256', 'WebAppData').update(TELEGRAM_BOT_TOKEN).digest();
+    const expectedHash = createHmac('sha256', secretKey).update(dataCheckString).digest();
+    const suppliedHash = Buffer.from(hash, 'hex');
+    if (suppliedHash.length !== expectedHash.length || !timingSafeEqual(suppliedHash, expectedHash)) return null;
+
+    const telegramUser = JSON.parse(params.get('user') || '{}');
+    if (!telegramUser.id) return null;
+    const data = getOrInitData();
+    return data.profiles.find((profile: UserProfile) =>
+      profile.id === `tg_user_${telegramUser.id}` ||
+      (telegramUser.username && profile.username.toLowerCase() === `@${telegramUser.username}`.toLowerCase())
+    ) || null;
+  } catch {
+    return null;
+  }
+}
+
+function authenticatedChatProfile(req: any, res: any): UserProfile | null {
+  const authorization = req.get('authorization') || '';
+  const initData = authorization.startsWith('tma ') ? authorization.slice(4) : '';
+  const profile = verifyTelegramInitData(initData);
+  if (!profile) {
+    res.status(401).json({ error: 'Откройте чат внутри Telegram Mini App и повторите попытку' });
+    return null;
+  }
+  return profile;
+}
+
+function snapshotChatStyle(profile: UserProfile): ChatMessageStyle {
+  return {
+    customBgUrl: profile.customBgUrl,
+    customBgEffect: profile.customBgEffect,
+    customBgPosition: profile.customBgPosition,
+    profileTextBg: profile.activeTextBg,
+    profileTextColor: profile.activeTextColor,
+    themePreset: profile.activeThemeId
+  };
+}
+
+function createChatMessage(profile: UserProfile, content: string, type: ChatMessage['type'], recipient?: UserProfile): ChatMessage {
+  return {
+    id: randomUUID(),
+    senderId: profile.id,
+    senderUsername: profile.username,
+    senderDisplayName: profile.displayName,
+    senderAvatarUrl: profile.avatarUrl,
+    senderFrameId: profile.activeAvatarFrame,
+    senderRole: profile.factionRole,
+    content,
+    timestamp: new Date().toISOString(),
+    type,
+    style: snapshotChatStyle(profile),
+    ...(recipient ? { recipientId: recipient.id, recipientUsername: recipient.username, recipientDisplayName: recipient.displayName } : {})
+  };
+}
+
 // Bot state
 let isBotPolling = false;
-let isBotWebhook = false;
-let botTransport: 'polling' | 'webhook' | 'stopped' = 'stopped';
-const telegramWebhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET || createHash('sha256')
-  .update(TELEGRAM_BOT_TOKEN || randomBytes(32).toString('hex'))
-  .digest('hex');
 let pollingAbortController: AbortController | null = null;
 let lastBotError: string | null = null;
 let botInfo: any = null;
@@ -342,10 +436,8 @@ let lastUpdateId = 0;
 
 async function startTelegramPolling() {
   if (!TELEGRAM_BOT_TOKEN) {
-    lastBotError = 'TELEGRAM_BOT_TOKEN is not configured';
     isBotPolling = false;
-    isBotWebhook = false;
-    botTransport = 'stopped';
+    lastBotError = 'TELEGRAM_BOT_TOKEN is not configured';
     addBotLog('error', 'TELEGRAM_BOT_TOKEN не настроен в окружении сервера');
     return;
   }
@@ -355,17 +447,12 @@ async function startTelegramPolling() {
   }
   pollingAbortController = new AbortController();
   isBotPolling = true;
-  isBotWebhook = false;
-  botTransport = 'polling';
 
   try {
     const me = await tgApi('getMe');
     if (me.ok) {
       botInfo = me.result;
       addBotLog('info', `Бот подключен: @${me.result.username} (${me.result.first_name})`);
-      if (!me.result.can_read_all_group_messages) {
-        addBotLog('info', 'Telegram Privacy Mode включён: бот видит только команды и упоминания в группах');
-      }
     } else {
       addBotLog('error', `Ошибка getMe: ${me.description || 'Неверный токен'}`);
     }
@@ -383,15 +470,18 @@ async function startTelegramPolling() {
         const data = await res.json();
 
         if (data.ok && Array.isArray(data.result)) {
+          lastBotError = null;
           for (const update of data.result) {
             lastUpdateId = update.update_id;
-            void handleTelegramUpdate(update).catch((error: any) => {
-              lastBotError = error?.message || 'Telegram update handling failed';
-              addBotLog('error', `Ошибка обработки Telegram update: ${lastBotError}`);
-            });
+            handleTelegramUpdate(update);
           }
         } else if (!data.ok) {
           lastBotError = data.description || 'Polling error';
+          addBotLog('error', `Ошибка Telegram Long-Polling: ${lastBotError}`);
+          if (data.error_code === 409) {
+            isBotPolling = false;
+            break;
+          }
           await new Promise(r => setTimeout(r, 4000));
         }
       } catch (err: any) {
@@ -403,86 +493,13 @@ async function startTelegramPolling() {
   })();
 }
 
-async function startTelegramWebhook(webhookBaseUrl: string) {
-  if (!TELEGRAM_BOT_TOKEN) {
-    lastBotError = 'TELEGRAM_BOT_TOKEN is not configured';
-    botTransport = 'stopped';
-    addBotLog('error', 'TELEGRAM_BOT_TOKEN не настроен в окружении сервера');
-    return;
-  }
-
-  if (pollingAbortController) {
-    pollingAbortController.abort();
-    pollingAbortController = null;
-  }
-  isBotPolling = false;
-  isBotWebhook = false;
-  botTransport = 'stopped';
-
-  const me = await tgApi('getMe');
-  if (!me.ok) {
-    throw new Error(me.description || 'Telegram getMe failed');
-  }
-  botInfo = me.result;
-
-  if (!me.result.can_read_all_group_messages) {
-    addBotLog('info', 'Telegram Privacy Mode включён: бот видит только команды и упоминания в группах');
-  }
-
-  const webhookUrl = `${webhookBaseUrl.replace(/\/+$/, '')}/api/telegram/webhook`;
-  const result = await tgApi('setWebhook', {
-    url: webhookUrl,
-    secret_token: telegramWebhookSecret,
-    allowed_updates: ['message']
-  });
-
-  if (!result.ok) {
-    const errorMessage = result.description || 'Telegram setWebhook failed';
-    lastBotError = errorMessage;
-    throw new Error(errorMessage);
-  }
-
-  isBotWebhook = true;
-  botTransport = 'webhook';
-  lastBotError = null;
-  addBotLog('info', `Telegram webhook активен: ${webhookUrl}`);
-  addBotLog('info', `Бот подключен: @${me.result.username} (${me.result.first_name})`);
-}
-
-async function startTelegramBot() {
-  const webhookBaseUrl = process.env.TELEGRAM_WEBHOOK_URL || process.env.RENDER_EXTERNAL_URL;
-  if (webhookBaseUrl) {
-    await startTelegramWebhook(webhookBaseUrl);
-    return;
-  }
-  await startTelegramPolling();
-}
-
 function stopTelegramPolling() {
   isBotPolling = false;
   if (pollingAbortController) {
     pollingAbortController.abort();
     pollingAbortController = null;
   }
-  botTransport = 'stopped';
   addBotLog('info', 'Telegram Long-Polling остановлен пользователем');
-}
-
-async function stopTelegramBot() {
-  const wasWebhook = isBotWebhook;
-  stopTelegramPolling();
-
-  if (wasWebhook && TELEGRAM_BOT_TOKEN) {
-    const result = await tgApi('deleteWebhook', { drop_pending_updates: false });
-    if (!result.ok) {
-      const errorMessage = result.description || 'Telegram deleteWebhook failed';
-      lastBotError = errorMessage;
-      throw new Error(errorMessage);
-    }
-  }
-
-  isBotWebhook = false;
-  botTransport = 'stopped';
 }
 
 // Handle Bot Messages
@@ -492,22 +509,17 @@ async function handleTelegramUpdate(update: any) {
 
   const chatId = msg.chat.id;
   const user = msg.from;
-  const isBotMessage = user?.is_bot === true;
-  const userTag = user?.username ? `@${user.username}` : (user?.first_name || 'незнакомец');
+  const userTag = user.username ? `@${user.username}` : user.first_name;
   const text = msg.text.trim();
 
   // Automatic registration of Telegram user in the shared database
-  if (user && !isBotMessage) {
+  if (user) {
     registerOrUpdateUser(user);
   }
 
   addBotLog('message', `[${userTag}]: ${text}`);
 
   const appUrl = process.env.APP_URL || 'https://t.me/DustTown_RP_bot/app';
-  const chatTitle = msg.chat.title || msg.chat.username || '';
-  const mentionsBot = botInfo?.username ? text.toLowerCase().includes(`@${botInfo.username.toLowerCase()}`) || text.toLowerCase().includes(botInfo.username.toLowerCase()) : false;
-  const replyToBot = !!msg.reply_to_message && msg.reply_to_message.from?.username === botInfo?.username;
-  const isDustTownCollectiveChat = /dusttowncollective|dust town collective|даст таун коллектив/i.test(chatTitle);
 
   if (text.startsWith('/start')) {
     const welcomeText = `👋 Добро пожаловать в **Даст Таун Колектив** (DustTown Collective RP)!
@@ -548,170 +560,42 @@ async function handleTelegramUpdate(update: any) {
     } catch (e: any) {
       addBotLog('error', `Ошибка отправки /start: ${e.message}`);
     }
-    return;
-  }
-
-  if (text.startsWith('/help')) {
+  } else if (text.startsWith('/help')) {
     await tgApi('sendMessage', {
       chat_id: chatId,
-      text: `Команды бота DustTown RP:
-/start — главное меню и запуск Mini App
-/help — помощь по боту
-/support — техподдержка и инструкция по работе с платформой
-/ai_start — включить Littlepip в этом чате
-/ai_stop — выключить Littlepip в этом чате
-
-Если что-то ломается — пишите @MrWhitePio.
-Группа проекта: https://t.me/DustTownCollective
-Mini App: ${appUrl}`
+      text: `Команды бота группы Даст Таун Колектив:
+/start — Главное меню и запуск Mini App
+По всем вопросам и проблемам обращайтесь к основателю: @MrWhitePio
+Группа проекта: https://t.me/DustTownCollective`
     });
-    return;
-  }
-
-  if (text.startsWith('/support')) {
-    const supportText = `🛠️ Техподдержка DustTown RP
-
-Ключевые команды:
-• /start — стартовое меню и Mini App
-• /help — список команд
-• /support — эта справка
-• /ai_start — включить Littlepip в чате группы
-• /ai_stop — выключить Littlepip
-
-Структура бота:
-• Telegram polling в server.ts
-• Mini App фронтенд в src/
-• данные профилей и логов хранятся локально в .dusttown_data.json
-• объявления в группу идут через Telegram API
-• AI-ассистент подключается через Google Gemini
-
-Если проблема не решена — смело пишите @MrWhitePio.`;
-
-    await tgApi('sendMessage', {
-      chat_id: chatId,
-      text: supportText
-    });
-    return;
-  }
-
-  if (text.startsWith('/ai_start')) {
-    activeAiChats.add(chatId);
-    await tgApi('sendMessage', {
-      chat_id: chatId,
-      text: '🧬 Littlepip активирована. Пустошь снова может слышать мой голос. Если надо что-то сломать, проверить, починить или просто высказать мнение — я здесь.'
-    });
-    addBotLog('info', `AI-персонаж Littlepip включён в чат ${chatId}`);
-    return;
-  }
-
-  if (text.startsWith('/ai_stop')) {
-    activeAiChats.delete(chatId);
-    await tgApi('sendMessage', {
-      chat_id: chatId,
-      text: '🧯 Littlepip выключена. Сигнал удалён, блоки снова тихие. Если понадоблюсь — знай, где меня включить.'
-    });
-    addBotLog('info', `AI-персонаж Littlepip отключён в чате ${chatId}`);
-    return;
-  }
-
-  const isGroupChat = msg.chat.type === 'group' || msg.chat.type === 'supergroup';
-  const shouldReactToMessage = activeAiChats.has(chatId)
-    && !isBotMessage
-    && !text.startsWith('/')
-    && (isGroupChat
-      ? isDustTownCollectiveChat && shouldLittlepipReactToMessage({
-          text,
-          isBotMessage,
-          isGroupChat,
-          chatTitle,
-          botUsername: botInfo?.username,
-          mentionsBot,
-          replyToBot,
-        })
-      : shouldLittlepipReactToMessage({
-          text,
-          isBotMessage,
-          isGroupChat: false,
-          chatTitle,
-          botUsername: botInfo?.username,
-          mentionsBot,
-          replyToBot,
-        }));
-
-  if (shouldReactToMessage) {
-    const replyText = await generateLittlepipReply({
-      chatId,
-      userTag,
-      incomingText: text
-    });
-
-    if (replyText) {
-      try {
-        await tgApi('sendMessage', {
-          chat_id: chatId,
-          text: replyText,
-          parse_mode: 'Markdown'
-        });
-      } catch (e: any) {
-        addBotLog('error', `Не удалось ответить Littlepip: ${e.message}`);
-      }
-    }
   }
 }
 
 // API Routes
-app.post('/api/telegram/webhook', (req, res) => {
-  if (req.get('x-telegram-bot-api-secret-token') !== telegramWebhookSecret) {
-    return res.sendStatus(403);
-  }
-
-  const update = req.body;
-  if (!update || typeof update.update_id !== 'number') {
-    return res.sendStatus(400);
-  }
-
-  res.sendStatus(200);
-  void handleTelegramUpdate(update).catch((error: any) => {
-    lastBotError = error?.message || 'Telegram update handling failed';
-    addBotLog('error', `Ошибка обработки Telegram update: ${lastBotError}`);
-  });
-});
-
 app.get('/api/bot/status', (req, res) => {
   res.json({
     isPolling: isBotPolling,
-    isWebhook: isBotWebhook,
-    isActive: isBotPolling || isBotWebhook,
-    transport: botTransport,
     botInfo,
     logs: botLogs,
     lastError: lastBotError,
     tokenConfigured: Boolean(TELEGRAM_BOT_TOKEN),
-    canReadAllGroupMessages: botInfo?.can_read_all_group_messages === true,
     appUrl: process.env.APP_URL || ''
   });
 });
 
 app.post('/api/bot/start', async (req, res) => {
-  if (botTransport === 'stopped') {
-    try {
-      await startTelegramBot();
-    } catch (error: any) {
-      lastBotError = error?.message || 'Telegram startup failed';
-      return res.status(500).json({ error: lastBotError, isActive: false, transport: botTransport });
-    }
+  if (!TELEGRAM_BOT_TOKEN) {
+    return res.status(503).json({ error: 'TELEGRAM_BOT_TOKEN is not configured', isActive: false });
   }
-  res.json({ success: true, isPolling: isBotPolling, isActive: isBotPolling || isBotWebhook, transport: botTransport, botInfo });
+  if (!isBotPolling) {
+    await startTelegramPolling();
+  }
+  res.json({ success: true, isPolling: isBotPolling, botInfo });
 });
 
-app.post('/api/bot/stop', async (req, res) => {
-  try {
-    await stopTelegramBot();
-    res.json({ success: true, isPolling: false, isActive: false, transport: botTransport });
-  } catch (error: any) {
-    lastBotError = error?.message || 'Telegram shutdown failed';
-    res.status(500).json({ error: lastBotError, isActive: isBotPolling || isBotWebhook, transport: botTransport });
-  }
+app.post('/api/bot/stop', (req, res) => {
+  stopTelegramPolling();
+  res.json({ success: true, isPolling: false });
 });
 
 // Automatic announcement to community group when an event/collab/RP is published
@@ -927,6 +811,127 @@ app.get('/api/data', (req, res) => {
   res.setHeader('Expires', '0');
   const data = getOrInitData();
   res.json(data);
+});
+
+app.get('/api/chat/messages', (req, res) => {
+  const profile = authenticatedChatProfile(req, res);
+  if (!profile) return;
+
+  const recipientId = String(req.query.recipientId || '');
+  const store = loadChatStore();
+  let messages = store.messages;
+
+  if (recipientId) {
+    if (recipientId === profile.id || !getOrInitData().profiles.some((item: UserProfile) => item.id === recipientId)) {
+      return res.status(400).json({ error: 'Недопустимый собеседник' });
+    }
+    messages = messages.filter(message =>
+      (message.senderId === profile.id && message.recipientId === recipientId) ||
+      (message.senderId === recipientId && message.recipientId === profile.id)
+    );
+  } else {
+    messages = messages.filter(message => !message.recipientId);
+  }
+
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ messages: messages.slice(-100) });
+});
+
+app.post('/api/chat/messages', (req, res) => {
+  const profile = authenticatedChatProfile(req, res);
+  if (!profile) return;
+
+  const content = typeof req.body?.content === 'string' ? req.body.content.trim() : '';
+  const recipientId = typeof req.body?.recipientId === 'string' ? req.body.recipientId : '';
+  if (!content || content.length > 800) {
+    return res.status(400).json({ error: 'Сообщение должно содержать от 1 до 800 символов' });
+  }
+
+  let recipient: UserProfile | undefined;
+  if (recipientId) {
+    if (recipientId === profile.id) return res.status(400).json({ error: 'Нельзя написать самому себе' });
+    recipient = getOrInitData().profiles.find((item: UserProfile) => item.id === recipientId);
+    if (!recipient) return res.status(404).json({ error: 'Игрок не найден' });
+  }
+
+  const previousMessageAt = chatRateLimit.get(profile.id) || 0;
+  if (Date.now() - previousMessageAt < 800) {
+    return res.status(429).json({ error: 'Подождите немного перед следующим сообщением' });
+  }
+
+  const store = loadChatStore();
+  const message = createChatMessage(profile, content, 'text', recipient);
+  store.messages = [...store.messages, message].slice(-1500);
+  saveChatStore(store);
+  chatRateLimit.set(profile.id, Date.now());
+  res.status(201).json({ message });
+});
+
+app.post('/api/chat/nuke', (req, res) => {
+  const profile = authenticatedChatProfile(req, res);
+  if (!profile) return;
+
+  const content = typeof req.body?.content === 'string' ? req.body.content.trim() : '';
+  if (!content || content.length > 400) {
+    return res.status(400).json({ error: 'Текст ядерного сообщения должен содержать от 1 до 400 символов' });
+  }
+
+  const isInfinite = profile.isInfiniteEquivaxes || profile.username.toLowerCase() === '@mrwhitepio';
+  if (!isInfinite && profile.equivaxes < 100) {
+    return res.status(400).json({ error: 'Для запуска ядерного сообщения нужно 100 ℰQ' });
+  }
+
+  const previousMessageAt = chatRateLimit.get(profile.id) || 0;
+  if (Date.now() - previousMessageAt < 800) {
+    return res.status(429).json({ error: 'Подождите немного перед следующим сообщением' });
+  }
+
+  if (!isInfinite) {
+    const data = getOrInitData();
+    const storedProfile = data.profiles.find((item: UserProfile) => item.id === profile.id);
+    if (!storedProfile || storedProfile.equivaxes < 100) {
+      return res.status(400).json({ error: 'Недостаточно ℰQ для ядерного сообщения' });
+    }
+    storedProfile.equivaxes -= 100;
+    storedProfile.transactions = [{
+      id: `tx_${randomUUID()}`,
+      userId: storedProfile.id,
+      amount: -100,
+      type: 'expense_other',
+      title: 'Ядерное сообщение',
+      description: 'Запуск глобального ядерного сообщения',
+      timestamp: new Date().toISOString(),
+      balanceAfter: storedProfile.equivaxes
+    }, ...(storedProfile.transactions || [])].slice(0, 100);
+    saveData(data);
+  }
+
+  const store = loadChatStore();
+  const message = createChatMessage(profile, content, 'nuke');
+  message.isNuke = true;
+  message.nukePricePaid = 100;
+  store.messages = [...store.messages, message].slice(-1500);
+  store.nukeAlerts = [...store.nukeAlerts.filter(alert => alert.expiresAt > Date.now()), {
+    id: message.id,
+    senderId: message.senderId,
+    senderUsername: message.senderUsername,
+    senderDisplayName: message.senderDisplayName,
+    senderAvatarUrl: message.senderAvatarUrl,
+    senderFrameId: message.senderFrameId,
+    message: message.content,
+    timestamp: message.timestamp,
+    expiresAt: Date.now() + 8000
+  }].slice(-10);
+  saveChatStore(store);
+  chatRateLimit.set(profile.id, Date.now());
+  res.status(201).json({ message });
+});
+
+app.get('/api/chat/nuke-alerts', (req, res) => {
+  const store = loadChatStore();
+  const alerts = store.nukeAlerts.filter(alert => alert.expiresAt > Date.now());
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ alerts });
 });
 
 // Sync or auto-register Mini App user from Telegram WebApp initData
@@ -1752,6 +1757,11 @@ app.post('/api/data', (req, res) => {
   }
 });
 
+// Start Bot Polling immediately
+startTelegramPolling().catch(err => {
+  console.error('Initial telegram polling error:', err);
+});
+
 // Mount Vite or serve static
 async function startServer() {
   const distDir = path.join(__dirname, 'dist');
@@ -1827,10 +1837,6 @@ async function startServer() {
 
   app.listen(PORT, () => {
     console.log(`DustTown RP Server running on http://localhost:${PORT}`);
-    void startTelegramBot().catch((error: any) => {
-      lastBotError = error?.message || 'Telegram startup failed';
-      addBotLog('error', `Ошибка запуска Telegram: ${lastBotError}`);
-    });
   });
 }
 

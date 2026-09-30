@@ -24,13 +24,12 @@ interface BotControlPanelProps {
 }
 
 export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp }) => {
-  const [isActive, setIsActive] = useState(true);
-  const [transport, setTransport] = useState<'polling' | 'webhook' | 'stopped'>('stopped');
-  const [canReadAllGroupMessages, setCanReadAllGroupMessages] = useState<boolean | null>(null);
+  const [isPolling, setIsPolling] = useState(false);
+  const [tokenConfigured, setTokenConfigured] = useState(false);
   const [botInfo, setBotInfo] = useState<any>(null);
   const [logs, setLogs] = useState<Array<{ id: string; time: string; type: string; text: string }>>([
     { id: '1', time: '12:00:00', type: 'info', text: 'Сервер DustTown RP запущен' },
-    { id: '2', time: '12:00:01', type: 'info', text: 'Telegram подключается' }
+    { id: '2', time: '12:00:01', type: 'info', text: 'Ожидание статуса Telegram Long-Polling' }
   ]);
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadDone, setDownloadDone] = useState(false);
@@ -60,9 +59,8 @@ export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp 
       const res = await fetch('/api/bot/status');
       if (res.ok) {
         const data = await res.json();
-        setIsActive(data.isActive ?? data.isPolling);
-        setTransport(data.transport || (data.isPolling ? 'polling' : 'stopped'));
-        setCanReadAllGroupMessages(data.canReadAllGroupMessages ?? null);
+        setIsPolling(data.isPolling);
+        setTokenConfigured(Boolean(data.tokenConfigured));
         if (data.botInfo) setBotInfo(data.botInfo);
         if (Array.isArray(data.logs) && data.logs.length > 0) setLogs(data.logs);
       }
@@ -78,15 +76,14 @@ export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp 
   const handleTogglePolling = async () => {
     setLoading(true);
     try {
-      const endpoint = isActive ? '/api/bot/stop' : '/api/bot/start';
+      const endpoint = isPolling ? '/api/bot/stop' : '/api/bot/start';
       const res = await fetch(endpoint, { method: 'POST' });
       if (res.ok) {
         const data = await res.json();
-        setIsActive(data.isActive ?? data.isPolling);
-        setTransport(data.transport || (data.isPolling ? 'polling' : 'stopped'));
+        setIsPolling(data.isPolling);
       }
     } catch (e) {
-      setIsActive(!isActive);
+      setIsPolling(!isPolling);
     } finally {
       setLoading(false);
     }
@@ -208,23 +205,18 @@ export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp 
                 </h2>
                 <span
                   className={`px-2 py-0.5 rounded-full text-[10px] font-mono-pip font-bold flex items-center gap-1 ${
-                    isActive
+                    isPolling
                       ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
                       : 'bg-red-500/20 text-red-400 border border-red-500/40'
                   }`}
                 >
-                  <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-emerald-400 animate-ping' : 'bg-red-400'}`} />
-                  {isActive ? `ПОДКЛЮЧЕН (${transport === 'webhook' ? 'WEBHOOK' : 'ПОЛЛИНГ'})` : 'ОСТАНОВЛЕН'}
+                  <span className={`w-1.5 h-1.5 rounded-full ${isPolling ? 'bg-emerald-400 animate-ping' : 'bg-red-400'}`} />
+                  {isPolling ? 'ПОДКЛЮЧЕН (ПОЛЛИНГ)' : 'ОСТАНОВЛЕН'}
                 </span>
               </div>
               <p className="text-xs text-zinc-400 font-mono-pip mt-0.5">
-                DustTown RP Bot • токен задаётся в Render
+                DustTown RP Bot • токен {tokenConfigured ? 'задан в окружении' : 'не настроен'}
               </p>
-              {canReadAllGroupMessages === false && isActive && (
-                <p className="text-xs text-amber-300 mt-1">
-                  Бот не видит обычные сообщения группы: отключите Privacy Mode через /setprivacy в BotFather или выдайте боту права администратора.
-                </p>
-              )}
             </div>
           </div>
 
@@ -262,12 +254,12 @@ export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp 
               disabled={loading}
               onClick={handleTogglePolling}
               className={`px-4 py-2.5 rounded-xl font-heading font-black text-xs uppercase tracking-wider transition flex items-center gap-2 shadow-lg ${
-                isActive
+                isPolling
                   ? 'bg-red-600 hover:bg-red-500 text-white shadow-red-950/50'
                   : 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-emerald-950/50'
               }`}
             >
-              {isActive ? (
+              {isPolling ? (
                 <>
                   <Square className="w-4 h-4" />
                   <span>Остановить бота</span>
@@ -498,7 +490,7 @@ export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp 
           <div className="space-y-1">
             <span className="text-zinc-500 uppercase text-[10px]">Переменная окружения для Render (Environment Variables):</span>
             <div className="text-zinc-200 font-bold">
-              <span className="text-indigo-400">TELEGRAM_BOT_TOKEN</span> задайте в Render Environment Variables; значение не передаётся в браузер.
+              <span className="text-indigo-400">TELEGRAM_BOT_TOKEN</span> = <span className="text-zinc-400">добавьте значение в Render Environment Variables</span>
             </div>
           </div>
         </div>
@@ -599,28 +591,67 @@ export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp 
 
       {/* 4. Bot Polling Logs */}
       <div className="rounded-3xl bg-zinc-950 border border-zinc-800 p-5 shadow-xl space-y-3">
-        <div className="flex items-center gap-2 text-xs font-bold font-mono-pip text-zinc-400 uppercase">
-          <Terminal className="w-4 h-4 text-amber-400" />
-          <span>Логи сервера Telegram Бота</span>
+        <div className="flex items-center justify-between gap-3 text-xs font-bold font-mono-pip text-zinc-400 uppercase">
+          <div className="flex items-center gap-2">
+            <Terminal className="w-4 h-4 text-amber-400" />
+            <span>Логи сервера Telegram Бота</span>
+          </div>
+          <span className="text-[10px] text-zinc-600">{logs.length} записей</span>
         </div>
 
-        <div className="p-3 rounded-2xl bg-black font-mono text-[11px] space-y-1 max-h-36 overflow-y-auto text-zinc-400 border border-zinc-800">
-          {logs.map(log => (
-            <div key={log.id} className="flex items-start gap-2">
-              <span className="text-zinc-600">[{log.time}]</span>
-              <span
-                className={
-                  log.type === 'error'
-                    ? 'text-red-400'
-                    : log.type === 'message'
-                    ? 'text-cyan-400'
-                    : 'text-emerald-400'
-                }
-              >
-                {log.text}
-              </span>
+        <div className="flex flex-col-reverse sm:flex-row gap-3">
+          <div className="p-3 rounded-2xl bg-black font-mono text-[11px] space-y-1 h-36 sm:flex-1 overflow-y-auto text-zinc-400 border border-zinc-800">
+            {logs.map(log => (
+              <div key={log.id} className="flex items-start gap-2">
+                <span className="text-zinc-600 shrink-0">[{log.time}]</span>
+                <span
+                  className={
+                    log.type === 'error'
+                      ? 'text-red-400'
+                      : log.type === 'message'
+                      ? 'text-cyan-400'
+                      : 'text-emerald-400'
+                  }
+                >
+                  {log.text}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <div
+            className={`sm:w-36 shrink-0 min-h-36 rounded-2xl border flex flex-col items-center justify-center gap-2 overflow-hidden ${
+              isPolling
+                ? 'bg-emerald-950/20 border-emerald-900/60 text-emerald-300'
+                : 'bg-zinc-900/50 border-zinc-800 text-zinc-500'
+            }`}
+            role="img"
+            aria-label={isPolling ? 'Поні біжить: бот онлайн' : 'Поні відпочиває: бот зупинений'}
+          >
+            <div className={`bot-pony ${isPolling ? 'bot-pony--running' : ''}`} aria-hidden="true">
+                          <pre className="bot-pony-frame bot-pony-frame--a">{`       /\\   /\\
+                        /  \\_/  \\
+                       (  o   o  )
+                        \\   ^   /
+                         \\ ___ /
+                         /|   |\\
+                        /_|___|_\\
+                         /     \\
+                        /_/   \\_\\`}</pre>
+                          <pre className="bot-pony-frame bot-pony-frame--b">{`       /\\   /\\
+                        /  \\_/  \\
+                       (  o   o  )
+                        \\   ^   /
+                         \\ ___ /
+                         /|   |\\
+                        _/|___|\\_
+                    /   \\
+                         /_/   \\_\\`}</pre>
             </div>
-          ))}
+            <span className="text-[9px] font-mono-pip font-bold uppercase">
+              {isPolling ? 'ПОНІ БІЖИТЬ' : 'БОТ ЗУПИНЕНИЙ'}
+            </span>
+          </div>
         </div>
       </div>
     </div>

@@ -12,7 +12,8 @@ import {
   Eye,
   Crown,
   Palette,
-  Activity
+  Activity,
+  MessageCircle
 } from 'lucide-react';
 
 interface NavigationDockProps {
@@ -97,6 +98,11 @@ export const NavigationDock: React.FC<NavigationDockProps> = ({
       label: 'Журнал',
       icon: <Activity className="w-4 h-4 text-emerald-400" />,
       badge: 'LIVE'
+    },
+    {
+      id: 'chat',
+      label: 'Чат',
+      icon: <MessageCircle className="w-4 h-4 text-emerald-300" />
     },
     {
       id: 'profile',

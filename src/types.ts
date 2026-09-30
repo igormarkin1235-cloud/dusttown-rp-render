@@ -357,6 +357,8 @@ export interface ChatMessageStyle {
   customBgEffect?: 'none' | 'embers' | 'radiation' | 'glitch' | 'dust' | 'cyber' | 'vignette';
   customBgPosition?: 'center' | 'top' | 'bottom';
   textColorClass?: string;
+  profileTextBg?: string;
+  profileTextColor?: string;
   bubbleBorderTheme?: string;
   themePreset?: string;
 }

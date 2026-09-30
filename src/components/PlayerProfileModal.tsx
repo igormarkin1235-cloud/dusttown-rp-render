@@ -3,7 +3,7 @@ import { UserProfile, Award, CharacterSheet, AdminInfo } from '../types';
 import { AvatarWithFrame } from './AvatarWithFrame';
 import { ProfileAnimatedTheme } from './ProfileAnimatedTheme';
 import { ProfilePinnedArtsShowcase } from './ProfilePinnedArtsShowcase';
-import { Award as AwardIcon, Sparkles, Shield, Coins, Calendar, X, ExternalLink, Crown, UserCheck, UserX, History } from 'lucide-react';
+import { Award as AwardIcon, Sparkles, Shield, Coins, Calendar, X, ExternalLink, Crown, UserCheck, UserX, History, MessageCircle } from 'lucide-react';
 
 interface PlayerProfileModalProps {
   user: UserProfile | null;
@@ -17,6 +17,7 @@ interface PlayerProfileModalProps {
   onQuickGrantMoney?: (userId: string, amount: number) => void;
   onToggleAdmin?: (username: string, makeAdmin: boolean) => void;
   onIssueLotteryTicket?: (userId: string, ticketItem: any) => void;
+  onStartChat?: (user: UserProfile) => void;
 }
 
 export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
@@ -30,7 +31,8 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
   onSelectCharacter,
   onQuickGrantMoney,
   onToggleAdmin,
-  onIssueLotteryTicket
+  onIssueLotteryTicket,
+  onStartChat
 }) => {
   if (!user) return null;
 
@@ -108,6 +110,15 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                 <p className="mt-2 text-xs text-zinc-300 leading-relaxed italic max-w-md">
                   "{user.bio}"
                 </p>
+              )}
+
+              {onStartChat && user.id !== currentUser.id && (
+                <button
+                  onClick={() => onStartChat(user)}
+                  className="mt-3 inline-flex items-center gap-2 rounded-lg border border-cyan-700/60 bg-cyan-950/50 px-3 py-2 text-xs font-bold text-cyan-200 transition hover:border-cyan-400 hover:bg-cyan-900/60"
+                >
+                  <MessageCircle className="h-4 w-4" /> Написать в личные сообщения
+                </button>
               )}
 
               {/* Faction & Role Badge */}

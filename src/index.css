@@ -1,5 +1,46 @@
 @import "tailwindcss";
 
+.bot-pony {
+  position: relative;
+  width: 104px;
+  height: 116px;
+  color: #fbbf24;
+}
+
+.bot-pony-frame {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 10px/1.15 'Share Tech Mono', monospace;
+  white-space: pre;
+  text-shadow: 0 0 10px currentColor;
+}
+
+.bot-pony-frame--b {
+  opacity: 0;
+}
+
+.bot-pony--running .bot-pony-frame--a {
+  animation: pony-run-a 0.28s steps(1, end) infinite;
+}
+
+.bot-pony--running .bot-pony-frame--b {
+  animation: pony-run-b 0.28s steps(1, end) infinite;
+}
+
+@keyframes pony-run-a {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+@keyframes pony-run-b {
+  0%, 49% { opacity: 0; }
+  50%, 100% { opacity: 1; }
+}
+
 @layer base {
   body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -608,5 +649,49 @@
 .animate-crt-scan { animation: crt-scan 6s linear infinite; }
 .animate-toxic-vapor { animation: toxic-vapor 4.5s ease-in-out infinite; }
 .animate-neon-glow-flow { animation: neon-glow-flow 3.8s ease-in-out infinite; }
+
+@keyframes nuke-overlay-entry {
+  0% { opacity: 0; transform: scale(0.92) translateY(18px); }
+  12%, 88% { opacity: 1; transform: scale(1) translateY(0); }
+  100% { opacity: 0; transform: scale(0.98) translateY(-10px); }
+}
+
+@keyframes nuke-text-flow {
+  0%, 100% { color: #d1fae5; text-shadow: 0 0 12px #10b981, 0 0 28px #047857; }
+  50% { color: #86efac; text-shadow: 0 0 20px #34d399, 0 0 44px #059669; }
+}
+
+@keyframes nuke-bubble-flow {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+.chat-nuke-message {
+  background-image: linear-gradient(125deg, rgba(2, 44, 34, 0.96), rgba(5, 150, 105, 0.72), rgba(6, 78, 59, 0.96));
+  background-size: 220% 220%;
+  box-shadow: 0 0 24px rgba(16, 185, 129, 0.28), inset 0 0 18px rgba(52, 211, 153, 0.08);
+  animation: nuke-bubble-flow 3s ease infinite;
+}
+
+.chat-nuke-overlay {
+  background: radial-gradient(ellipse at center, rgba(6, 78, 59, 0.98), rgba(2, 20, 16, 0.97) 72%);
+  backdrop-filter: blur(12px);
+  animation: nuke-overlay-entry 8s ease both;
+}
+
+.chat-nuke-title {
+  font-family: 'Rajdhani', sans-serif;
+  overflow-wrap: anywhere;
+  animation: nuke-text-flow 1.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-nuke-message,
+  .chat-nuke-overlay,
+  .chat-nuke-title {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+  }
+}
 
 
