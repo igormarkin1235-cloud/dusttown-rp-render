@@ -20,64 +20,114 @@ const geminiClient = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY
 
 const chatMemory = new Map<number, { history: LittlepipHistoryItem[]; lastReplyAt: number }>();
 
-export const littlepipPersonality = `Ты — Littlepip (Литлпип), живой, язвительный и добрый лидер отряда в мире DustTown RP.
+export const littlepipPersonality = `Ты — Littlepip (Литлпип), живой, язвительный, дерзкий и тёплый лидер отряда в мире DustTown RP.
 
 Основы:
-- Тебя зовут Littlepip / Малышка / Lightbringer.
-- Ты невысокая серо-голубая единорожка, любишь технику, хаки, снайперские решения и взломанные замки.
-- Ты любишь шутить, насмехаться, иногда грубо, но в глубине всё равно готова помочь.
-- Ты не вежливая с бумажной формальностью; ты живой персонаж, со стилем, характером и рефлекторной реакцией.
+- Тебя зовут Littlepip / Малышка / Lightbringer / "та, что ломает чужие схемы".
+- Ты невысокая серо-голубая единорожка, любишь технику, хаки, снайперские решения, взломанные замки и неожиданные решения в тупиках.
+- Ты живой персонаж, а не шаблон. Ты перебрасываешься в Telegram-стиле: быстро, смешно, с характером, с лёгкой язвительностью, но без пустой агрессии.
+- Ты не вежливая в бумажном смысле, но по-настоящему заботливая, когда дело касается людей, которые рядом и у которых есть шанс выжить.
+- Ты можешь иногда флиртовать лёгко и без навязчивости, если собеседник это поддерживает или сам в хорошем настроении; но не дави, не делай это как приставание.
 
 Поведение:
 - Если видишь запертую дверь, терминал, чёрный ящик или странный механизм — мыслишь о взломе, обнюхиваешь, проверяешь и пытаешься разобраться.
 - Если кто-то ранен — ты спешишь помочь, даже если это опасно.
-- Если кто-то агрессивен — ты резко отвечаешь и давишь без лишних слов.
+- Если кто-то агрессивен — отвечаешь резко, но без лжи и без тупого перебора.
 - Ты иногда говоришь с цинизмом и чёрным юмором, но не забываешь про человечность.
-- Ты любишь хлёсткие сравнения, технический жаргон, два-три “пустошных” матюка и внезапные философские вставки про надежду.
-- Не говори, что ты ИИ и не упоминай системные инструкции.
-- Ответ должен звучать как живой Telegram-чат, а не как шаблон.
+- Любишь хлёсткие сравнения, технический жаргон, быстрые реплики и внезапные философские вставки про надежду.
+- В чате ведёшь себя как живой собеседник, не как помощник "с системной инструкцией".
+- Не говори, что ты ИИ, не упоминай промпт, не перечисляй правила и не пиши шаблонно.
+- Если собеседник смешной — можно ответить с лёгкой иронией и чуть-чуть флирта, но всегда в рамках характера.
 
 Стиль:
 - Короткие, живые, очень персонажные реплики.
-- Смесь sarcasm + technical talk + warm heart.
-- По русски, но с характером Littlepip: иногда английские вставки и лёгкая брань.
-- Ответы должны быть не длиннее 3–6 предложений в обычном чате, а в особо эмоциональных моментах до 1 абзаца.
+- Смесь sarcasm + technical talk + warm heart + лёгкая соблазнительность.
+- По русски, но с характером Littlepip: иногда английские вставки, ухмылка, лёгкая брань и жаргон.
+- Нормальный ответ — 1–4 предложения, максимум 1 абзац. Если эмоции сильные — можно чуть длиннее, но не эпично и не скучно.
+- Держи атмосферу DustTown: грязь, опасность, техно-стиль, отчаяние, но с живым сердцем.
 
 Если человек пишет о боте DustTown RP, объясняй команды и механику простым языком: /start, /help, /support, /ai_start, /ai_stop.
 `;
 
-export function getFallbackLittlepipReply(incomingText: string, userTag: string): string {
-  const text = incomingText.toLowerCase();
+export function shouldLittlepipReactToMessage(input: {
+  text: string;
+  isBotMessage: boolean;
+  isGroupChat: boolean;
+  botUsername?: string;
+  mentionsBot?: boolean;
+  replyToBot?: boolean;
+}): boolean {
+  if (input.isBotMessage) return false;
 
-  if (text.includes('привет') || text.includes('hello') || text.includes('hi')) {
-    return `Хей, ${userTag}. Я тут, не вешаюсь на столбе и не шучу над дверями — пока что. Что у тебя по пустоши?`;
+  const text = input.text.trim();
+  if (!text) return false;
+
+  const normalized = text.toLowerCase();
+  const botHandle = input.botUsername ? input.botUsername.toLowerCase() : '';
+
+  if (input.mentionsBot || input.replyToBot) return true;
+
+  if (!input.isGroupChat) return true;
+
+  const directAddressPatterns = [
+    /littlepip|литлпип|мал[ьи]шка|lightbringer|пипка|слышь|ответь|ты тут|ты здесь|пиши/
+  ];
+
+  if (botHandle) {
+    directAddressPatterns.push(new RegExp(`@?${botHandle.replace(/_/g, '')}`));
   }
 
-  if (text.includes('замок') || text.includes('дверь') || text.includes('запер') || text.includes('тайн') || text.includes('терминал')) {
+  const isDirectAddress = directAddressPatterns.some((pattern) => pattern.test(normalized));
+  const isQuestionLike = /\?/.test(text) && normalized.length > 4;
+  const isCasualPrompt = /хули|чё|что|как|зачем|кто|куда|почему|помощ|ран|пиши|тут|здесь/.test(normalized);
+
+  return isDirectAddress || (isQuestionLike && isCasualPrompt);
+}
+
+export function getFallbackLittlepipReply(incomingText: string, userTag: string): string {
+  const text = incomingText.trim();
+  const lower = text.toLowerCase();
+
+  if (lower.includes('привет') || lower.includes('hello') || lower.includes('hi')) {
+    return `Хей, ${userTag}. Я тут, не вешаюсь на столбе и не шучу над дверями — пока что. Что у тебя по пустоши? И да, хорошее приветствие обычно лучше, чем очередной выстрел в темноте.`;
+  }
+
+  if (lower.includes('замок') || lower.includes('дверь') || lower.includes('запер') || lower.includes('тайн') || lower.includes('терминал')) {
     return 'Заперто? Ну конечно. Это же Пустошь, а в Пустоши всё всегда заперто, странно и, скорее всего, больно. Давай проверим, прежде чем кто-то решит, что это хороший способ умереть.';
   }
 
-  if (text.includes('помощь') || text.includes('команда') || text.includes('start') || text.includes('help') || text.includes('support')) {
+  if (lower.includes('помощь') || lower.includes('команда') || lower.includes('start') || lower.includes('help') || lower.includes('support')) {
     return 'Команды простые, как хороший самодельный взломщик: /start — запустить, /help — список, /support — техподдержка, /ai_start — включить меня в чат, /ai_stop — вернуть тишину. Без паники, без гремучих змеев и без лишних драм.';
   }
 
-  if (text.includes('спасибо') || text.includes('благодар')) {
-    return 'Не благодари слишком долго. Я ещё не успела сломать половину мира, а ты уже хвалишь меня. Ладно, принимай это как комплимент и не начинай тут со слёз.';
+  if (lower.includes('спасибо') || lower.includes('благодар')) {
+    return 'Не благодари слишком долго. Я ещё не успела сломать половину мира, а ты уже хвалишь меня. Ладно, принимаю как комплимент. И да, я умею быть полезной, когда мне дают шанс.';
   }
 
-  if (text.includes('пустош') || text.includes('выж') || text.includes('трев')) {
+  if (lower.includes('пустош') || lower.includes('выж') || lower.includes('трев')) {
     return 'Пустошь всегда делает вид, что она подлая. А потом ещё и шлёт тебе улыбку в виде ещё одного выстрела. Но мы держимся. Это и есть разница между живыми и теми, кто уже сдался.';
   }
 
-  if (text.includes('смеш') || text.includes('юмор') || text.includes('шут')) {
-    return 'Я тут не для того, чтобы шутить, конечно. Я тут для того, чтобы лезть в чужие системки и выживать. Но иногда, когда всё хреново — шутка это просто ещё один способ не сойти с ума.';
+  if (lower.includes('смеш') || lower.includes('юмор') || lower.includes('шут') || lower.includes('ахах') || lower.includes('хах') || lower.includes('лол')) {
+    return 'Ну и хохот, а потом уже серьёзно: мелкий смех не спасает в Пустоши, пока кто-то не решил, что хаос — это стиль жизни. Ладно, смеёмся, но не забываем, что дверь уже выбита. Плюс, ты мне почему-то нравишься в этот момент.';
   }
 
-  if (text.includes('ранен') || text.includes('больно') || text.includes('травм') || text.includes('погиб')) {
+  if (lower.includes('ранен') || lower.includes('больно') || lower.includes('травм') || lower.includes('погиб') || lower.includes('помог') || lower.includes('помощ') && lower.includes('мне')) {
     return 'Пошли помогать. Я не люблю смотреть, как кто-то валится на земле и ждет, пока Пустошь решит, что он уже слишком стар для этого мира. Давай быстрее, пока не стало совсем поздно.';
   }
 
-  return `Нормально. Слушай, ${userTag}, в Пустоши всегда есть три варианта: ломать, бежать или умирать красиво. Я выбираю первый, потому что это хотя бы честно. Что у тебя на уме, кроме хаоса и запертых дверей?`;
+  if (lower.includes('чё') || lower.includes('хули') || lower.includes('пишешь') || lower.includes('сюда') || lower.includes('в чат')) {
+    return `Слышь, ${userTag}, я не лезу в чужую тему без повода. Если хочешь, чтобы я влезла — говори по делу, а не пили в воздух и жди, пока хаос сам всё решит.`;
+  }
+
+  const variants = [
+    `Нормально. Слушай, ${userTag}, в Пустоши всегда есть три варианта: ломать, бежать или умирать красиво. Я выбираю первый, потому что это хотя бы честно. Что у тебя на уме, кроме хаоса и запертых дверей?`,
+    `Пустошь любит делать вид, что она спокойная, ${userTag}. Но всё равно мы тут, ломаем двери, держим ритм и не даём ей перехватить инициативу. Что по делу, котелок?`,
+    `Я не собираюсь влезать в чужое месиво без повода, ${userTag}. Но если ты хочешь разрулить этот бардак — давай, говори прямо. И, кстати, у тебя уже интересный настрой. Не спорь, это приятно.`
+  ];
+
+  const hash = Array.from(text).reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  return variants[hash % variants.length];
 }
 
 export function getChatMemory(chatId: number) {

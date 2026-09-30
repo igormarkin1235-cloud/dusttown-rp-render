@@ -5,7 +5,7 @@ import fs from 'fs';
 import { exec } from 'child_process';
 import { fileURLToPath } from 'url';
 import { createHash, randomBytes } from 'crypto';
-import { generateLittlepipReply } from './src/services/littlepip';
+import { generateLittlepipReply, shouldLittlepipReactToMessage } from './src/services/littlepip';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -504,6 +504,8 @@ async function handleTelegramUpdate(update: any) {
   addBotLog('message', `[${userTag}]: ${text}`);
 
   const appUrl = process.env.APP_URL || 'https://t.me/DustTown_RP_bot/app';
+  const mentionsBot = botInfo?.username ? text.toLowerCase().includes(`@${botInfo.username.toLowerCase()}`) || text.toLowerCase().includes(botInfo.username.toLowerCase()) : false;
+  const replyToBot = !!msg.reply_to_message && msg.reply_to_message.from?.username === botInfo?.username;
 
   if (text.startsWith('/start')) {
     const welcomeText = `👋 Добро пожаловать в **Даст Таун Колектив** (DustTown Collective RP)!
@@ -611,7 +613,19 @@ Mini App: ${appUrl}`
   }
 
   const isGroupChat = msg.chat.type === 'group' || msg.chat.type === 'supergroup';
-  const shouldReactToMessage = activeAiChats.has(chatId) && !isBotMessage && !text.startsWith('/') && isGroupChat;
+  const shouldReactToMessage = activeAiChats.has(chatId)
+    && !isBotMessage
+    && !text.startsWith('/')
+    && (isGroupChat
+      ? shouldLittlepipReactToMessage({
+          text,
+          isBotMessage,
+          isGroupChat,
+          botUsername: botInfo?.username,
+          mentionsBot,
+          replyToBot,
+        })
+      : true);
 
   if (shouldReactToMessage) {
     const replyText = await generateLittlepipReply({
