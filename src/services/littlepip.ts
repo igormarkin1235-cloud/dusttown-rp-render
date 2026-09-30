@@ -63,25 +63,27 @@ export function shouldLittlepipReactToMessage(input: {
   if (!text) return false;
 
   const normalized = text.toLowerCase();
-  const botHandle = input.botUsername ? input.botUsername.toLowerCase() : '';
+  const botHandle = input.botUsername ? input.botUsername.toLowerCase().replace(/_/g, '') : '';
 
   if (input.mentionsBot || input.replyToBot) return true;
 
   if (!input.isGroupChat) return true;
 
   const directAddressPatterns = [
-    /littlepip|литлпип|мал[ьи]шка|lightbringer|пипка|слышь|ответь|ты тут|ты здесь|пиши/
+    /littlepip|литлпип|мал[ьи]шка|lightbringer|пипка|слышь|ответь|ты тут|ты здесь|пиши|пипка_бот|pippka|littlepip_bot/
   ];
 
   if (botHandle) {
-    directAddressPatterns.push(new RegExp(`@?${botHandle.replace(/_/g, '')}`));
+    directAddressPatterns.push(new RegExp(`@?${botHandle.replace(/-/g, '')}`));
   }
 
-  const isDirectAddress = directAddressPatterns.some((pattern) => pattern.test(normalized));
-  const isQuestionLike = /\?/.test(text) && normalized.length > 4;
-  const isCasualPrompt = /хули|чё|что|как|зачем|кто|куда|почему|помощ|ран|пиши|тут|здесь/.test(normalized);
+  const explicitMention = directAddressPatterns.some((pattern) => pattern.test(normalized));
+  if (explicitMention) return true;
 
-  return isDirectAddress || (isQuestionLike && isCasualPrompt);
+  const questionToBot = /\?/.test(text) && /ты|пипка|литлпип|littlepip|малышка/.test(normalized);
+  if (questionToBot) return true;
+
+  return false;
 }
 
 export function getFallbackLittlepipReply(incomingText: string, userTag: string): string {
@@ -144,7 +146,14 @@ export async function generateLittlepipReply(input: LittlepipReplyInput): Promis
   const memory = getChatMemory(chatId);
   const now = Date.now();
 
+  const lastUserText = memory.history.filter((item) => item.role === 'user').at(-1)?.text || '';
+  const lastAssistantText = memory.history.filter((item) => item.role === 'assistant').at(-1)?.text || '';
+
   if (now - memory.lastReplyAt < 18000) {
+    return null;
+  }
+
+  if (lastUserText === incomingText && lastAssistantText) {
     return null;
   }
 
