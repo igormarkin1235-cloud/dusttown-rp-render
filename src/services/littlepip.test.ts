@@ -101,4 +101,8 @@ test('keeps the ten latest preceding messages for conversation context', async (
   assert.match(prompt, /ordinary line 11/);
   assert.match(prompt, /Текущее обращение от @tester: "Пипка, привет!"/);
   assert.doesNotMatch(prompt, /ordinary line 1\b/);
+
+  const botQuestion = buildLittlepipPrompt('Пипка, какие функции у бота?', '@tester', 'chat');
+  assert.match(botQuestion, /server\.ts/);
+  assert.match(botQuestion, /src\/services\/storage\.ts/);
 });
