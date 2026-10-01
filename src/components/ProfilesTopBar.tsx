@@ -18,10 +18,31 @@ export const ProfilesTopBar: React.FC<ProfilesTopBarProps> = ({
 }) => {
   const [search, setSearch] = useState('');
 
-  const filtered = profiles.filter(
+  // Deduplicate profiles by unique id/userId/username to avoid duplicate keys and redundant items
+  const uniqueProfiles = React.useMemo(() => {
+    if (!Array.isArray(profiles)) return [];
+    const seen = new Set<string>();
+    const result: UserProfile[] = [];
+    for (const p of profiles) {
+      if (!p) continue;
+      const key = (p.id || p.userId || p.username || '').toLowerCase().trim();
+      if (!key) {
+        result.push(p);
+        continue;
+      }
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      result.push(p);
+    }
+    return result;
+  }, [profiles]);
+
+  const filtered = uniqueProfiles.filter(
     p =>
-      p.displayName.toLowerCase().includes(search.toLowerCase()) ||
-      p.username.toLowerCase().includes(search.toLowerCase())
+      (p.displayName || '').toLowerCase().includes(search.toLowerCase()) ||
+      (p.username || '').toLowerCase().includes(search.toLowerCase())
   );
 
   return (
@@ -32,8 +53,8 @@ export const ProfilesTopBar: React.FC<ProfilesTopBarProps> = ({
           <div className="flex items-center gap-1.5 text-xs font-heading font-bold uppercase tracking-wider text-amber-400">
             <Users className="w-4 h-4 text-amber-400" />
             <span>Сталкеры Даст Таун Колектив</span>
-            <span className="px-1.5 py-0.2 rounded-full bg-zinc-800 text-[10px] text-zinc-300 font-mono-pip border border-zinc-700">
-              {profiles.length}
+            <span className="px-1.5 py-0.5 rounded-full bg-zinc-800 text-[10px] text-zinc-300 font-mono-pip border border-zinc-700">
+              {uniqueProfiles.length}
             </span>
           </div>
 
@@ -52,14 +73,20 @@ export const ProfilesTopBar: React.FC<ProfilesTopBarProps> = ({
 
         {/* Horizontal Avatars Scrollable Row */}
         <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-          {filtered.map(profile => {
-            const isMe = profile.id === currentUserId;
-            const isOwner = profile.username.toLowerCase() === '@mrwhitepio';
-            const isAdmin = !isOwner && admins.some(a => a.username.toLowerCase() === profile.username.toLowerCase());
+          {filtered.map((profile, index) => {
+            const profileId = profile.id || profile.userId || '';
+            const isMe = profileId === currentUserId;
+            const isOwner = (profile.username || '').toLowerCase() === '@mrwhitepio';
+            const isAdmin =
+              !isOwner &&
+              admins.some(
+                a => (a.username || '').toLowerCase() === (profile.username || '').toLowerCase()
+              );
+            const itemKey = profileId || profile.username || `profile-${index}`;
 
             return (
               <button
-                key={profile.id}
+                key={`${itemKey}-${index}`}
                 onClick={() => onSelectProfile(profile)}
                 className={`flex-shrink-0 flex items-center gap-2 px-2.5 py-1.5 rounded-xl border transition group ${
                   isMe
@@ -72,7 +99,7 @@ export const ProfilesTopBar: React.FC<ProfilesTopBarProps> = ({
                   <div className="relative">
                     <AvatarWithFrame
                       avatarUrl={profile.avatarUrl}
-                      frameId={profile.activeAvatarFrame}
+                      frameId={profile.activeAvatarFrame || profile.activeFrameId}
                       size="sm"
                     />
                     {isOwner && (
@@ -85,12 +112,12 @@ export const ProfilesTopBar: React.FC<ProfilesTopBarProps> = ({
 
                   {/* Badges directly under the avatar */}
                   {isOwner && (
-                    <span className="badge-owner-shimmer text-black text-[8px] font-black uppercase px-1.5 py-0.2 rounded-full tracking-wider mt-1 scale-95 shadow">
+                    <span className="badge-owner-shimmer text-black text-[8px] font-black uppercase px-1.5 py-0.5 rounded-full tracking-wider mt-1 scale-95 shadow">
                       Создатель
                     </span>
                   )}
                   {isAdmin && (
-                    <span className="badge-admin-shimmer text-white text-[8px] font-black uppercase px-1.5 py-0.2 rounded-full tracking-wider mt-1 scale-95 shadow">
+                    <span className="badge-admin-shimmer text-white text-[8px] font-black uppercase px-1.5 py-0.5 rounded-full tracking-wider mt-1 scale-95 shadow">
                       Админ
                     </span>
                   )}
@@ -98,10 +125,10 @@ export const ProfilesTopBar: React.FC<ProfilesTopBarProps> = ({
 
                 <div className="text-left flex flex-col justify-center">
                   <span className={`text-[11px] font-bold line-clamp-1 font-heading ${profile.activeTextColor || ''}`}>
-                    {profile.displayName.split(' ')[0]}
+                    {(profile.displayName || 'Сталкер').split(' ')[0]}
                   </span>
                   <span className="text-[9px] text-zinc-400 font-mono-pip -mt-0.5">
-                    {profile.username}
+                    {profile.username || '@unknown'}
                   </span>
                 </div>
               </button>

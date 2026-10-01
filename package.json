@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "make-zip": "python3 scripts/make_zip.py"
+    "make-zip": "python3 scripts/make_zip.py",
+    "import-firebase-state": "tsx scripts/import-firebase-state.ts"
   },
   "engines": {
     "node": ">=20.0.0"
@@ -27,6 +28,7 @@
     "dotenv": "^17.2.3",
     "esbuild": "^0.28.0",
     "express": "^4.21.2",
+    "firebase-admin": "^14.5.0",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "react": "^19.0.1",
@@ -35,6 +37,5 @@
     "tsx": "^4.21.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.0"
-  },
-  "devDependencies": {}
+  }
 }

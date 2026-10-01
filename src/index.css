@@ -1,46 +1,5 @@
 @import "tailwindcss";
 
-.bot-pony {
-  position: relative;
-  width: 104px;
-  height: 116px;
-  color: #fbbf24;
-}
-
-.bot-pony-frame {
-  position: absolute;
-  inset: 0;
-  margin: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font: 10px/1.15 'Share Tech Mono', monospace;
-  white-space: pre;
-  text-shadow: 0 0 10px currentColor;
-}
-
-.bot-pony-frame--b {
-  opacity: 0;
-}
-
-.bot-pony--running .bot-pony-frame--a {
-  animation: pony-run-a 0.28s steps(1, end) infinite;
-}
-
-.bot-pony--running .bot-pony-frame--b {
-  animation: pony-run-b 0.28s steps(1, end) infinite;
-}
-
-@keyframes pony-run-a {
-  0%, 49% { opacity: 1; }
-  50%, 100% { opacity: 0; }
-}
-
-@keyframes pony-run-b {
-  0%, 49% { opacity: 0; }
-  50%, 100% { opacity: 1; }
-}
-
 @layer base {
   body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -650,145 +609,32 @@
 .animate-toxic-vapor { animation: toxic-vapor 4.5s ease-in-out infinite; }
 .animate-neon-glow-flow { animation: neon-glow-flow 3.8s ease-in-out infinite; }
 
-@keyframes nuke-overlay-entry {
-  0% { opacity: 0; transform: scale(0.92) translateY(18px); }
-  12%, 88% { opacity: 1; transform: scale(1) translateY(0); }
-  100% { opacity: 0; transform: scale(0.98) translateY(-10px); }
+/* Pip-Buck Radio Marquee & Equalizer Animations */
+@keyframes marquee-scroll {
+  0% { transform: translateX(0%); }
+  100% { transform: translateX(-50%); }
 }
 
-@keyframes nuke-text-flow {
-  0%, 100% { color: #d1fae5; text-shadow: 0 0 12px #10b981, 0 0 28px #047857; }
-  50% { color: #86efac; text-shadow: 0 0 20px #34d399, 0 0 44px #059669; }
+.animate-marquee-smooth {
+  display: inline-flex;
+  white-space: nowrap;
+  animation: marquee-scroll 14s linear infinite;
 }
 
-@keyframes nuke-bubble-flow {
-  0%, 100% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
+.animate-marquee-smooth:hover {
+  animation-play-state: paused;
 }
 
-.chat-nuke-message {
-  background-image: linear-gradient(125deg, rgba(2, 44, 34, 0.96), rgba(5, 150, 105, 0.72), rgba(6, 78, 59, 0.96));
-  background-size: 220% 220%;
-  box-shadow: 0 0 24px rgba(16, 185, 129, 0.28), inset 0 0 18px rgba(52, 211, 153, 0.08);
-  animation: nuke-bubble-flow 3s ease infinite;
+@keyframes equalizer-bounce {
+  0%, 100% { height: 3px; }
+  50% { height: 14px; }
 }
 
-.chat-nuke-overlay {
-  background: radial-gradient(ellipse at center, rgba(6, 78, 59, 0.98), rgba(2, 20, 16, 0.97) 72%);
-  backdrop-filter: blur(12px);
-  animation: nuke-overlay-entry 8s ease both;
-}
+.animate-eq-bar-1 { animation: equalizer-bounce 0.8s ease-in-out infinite; }
+.animate-eq-bar-2 { animation: equalizer-bounce 0.6s ease-in-out infinite 0.2s; }
+.animate-eq-bar-3 { animation: equalizer-bounce 0.9s ease-in-out infinite 0.4s; }
+.animate-eq-bar-4 { animation: equalizer-bounce 0.7s ease-in-out infinite 0.1s; }
+.animate-eq-bar-5 { animation: equalizer-bounce 1.0s ease-in-out infinite 0.3s; }
 
-.chat-nuke-title {
-  font-family: 'Rajdhani', sans-serif;
-  overflow-wrap: anywhere;
-  animation: nuke-text-flow 1.8s ease-in-out infinite;
-}
-
-@keyframes nuke-red-pulse {
-  from {
-    box-shadow: inset 22px 0 42px -28px rgba(248, 48, 48, 0.48), inset -22px 0 42px -28px rgba(248, 48, 48, 0.48);
-  }
-  to {
-    box-shadow: inset 30px 0 58px -24px rgba(239, 30, 30, 0.9), inset -30px 0 58px -24px rgba(239, 30, 30, 0.9);
-  }
-}
-
-@keyframes nuke-frame-pulse {
-  from { border-color: rgba(248, 113, 113, 0.35); }
-  to { border-color: rgba(239, 30, 30, 0.9); }
-}
-
-@keyframes nuke-orbit-top {
-  to { transform: translateX(390%); }
-}
-
-@keyframes nuke-orbit-right {
-  to { transform: translateY(390%); }
-}
-
-@keyframes nuke-orbit-bottom {
-  to { transform: translateX(-390%); }
-}
-
-@keyframes nuke-orbit-left {
-  to { transform: translateY(-390%); }
-}
-
-.nuke-screen-frame {
-  position: fixed;
-  inset: 0;
-  z-index: 99;
-  overflow: hidden;
-  pointer-events: none;
-  animation: nuke-red-pulse 0.65s ease-in-out infinite alternate;
-}
-
-.nuke-screen-frame::before {
-  position: absolute;
-  inset: 3px;
-  border: 2px solid rgba(248, 113, 113, 0.6);
-  content: '';
-  animation: nuke-frame-pulse 0.65s ease-in-out infinite alternate;
-}
-
-.nuke-orbit-light {
-  position: absolute;
-  display: block;
-  z-index: 1;
-  filter: drop-shadow(0 0 8px #ef3030) drop-shadow(0 0 18px rgba(239, 48, 48, 0.8));
-}
-
-.nuke-orbit-top,
-.nuke-orbit-bottom {
-  width: 35vw;
-  height: 4px;
-  background: linear-gradient(90deg, transparent, #fecaca 35%, #ef3030 70%, transparent);
-}
-
-.nuke-orbit-top {
-  top: 0;
-  left: -35vw;
-  animation: nuke-orbit-top 2.8s linear infinite;
-}
-
-.nuke-orbit-bottom {
-  right: -35vw;
-  bottom: 0;
-  transform: rotate(180deg);
-  animation: nuke-orbit-bottom 2.8s linear infinite 1.4s;
-}
-
-.nuke-orbit-left,
-.nuke-orbit-right {
-  width: 4px;
-  height: 35vh;
-  background: linear-gradient(180deg, transparent, #fecaca 35%, #ef3030 70%, transparent);
-}
-
-.nuke-orbit-right {
-  top: -35vh;
-  right: 0;
-  animation: nuke-orbit-right 2.8s linear infinite 0.7s;
-}
-
-.nuke-orbit-left {
-  bottom: -35vh;
-  left: 0;
-  transform: rotate(180deg);
-  animation: nuke-orbit-left 2.8s linear infinite 2.1s;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .chat-nuke-message,
-  .chat-nuke-overlay,
-  .chat-nuke-title,
-  .nuke-screen-frame,
-  .nuke-screen-frame::before,
-  .nuke-orbit-light {
-    animation-duration: 0.01ms;
-    animation-iteration-count: 1;
-  }
-}
 
 

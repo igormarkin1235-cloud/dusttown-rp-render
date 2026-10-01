@@ -42,6 +42,7 @@ import { processDailyFactionSalaries } from './services/factionSalary';
 import { ProfilesTopBar } from './components/ProfilesTopBar';
 import { MiniAppHeader } from './components/MiniAppHeader';
 import { NavigationDock } from './components/NavigationDock';
+import { RadioMusicPlayer } from './components/RadioMusicPlayer';
 import { EventsView } from './components/EventsView';
 import { PlannedRPView } from './components/PlannedRPView';
 import { PreReleaseView } from './components/PreReleaseView';
@@ -1524,6 +1525,8 @@ export default function App() {
                 unreadNotificationsCount={(appState.notifications || []).filter(n => !n.isRead).length}
               />
 
+              <RadioMusicPlayer />
+
               {/* Only the sleek side/corner HUD panel */}
               <NavigationDock
                 activeTab={activeTab}
@@ -1736,6 +1739,8 @@ export default function App() {
             />
 
             {/* Sleek Right-Corner HUD Navigation Panel («на угол правый, половина сверху половина сбоку») */}
+            <RadioMusicPlayer />
+
             <NavigationDock
               activeTab={activeTab}
               onTabChange={t => setActiveTab(t)}

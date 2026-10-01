@@ -1,0 +1,10 @@
+{
+  "patchCreatedAt": "2026-09-30T18:13:25.189708+00:00",
+  "filesCount": 3,
+  "files": [
+    "src/components/NavigationDock.tsx",
+    "src/components/RadioMusicPlayer.tsx",
+    "src/index.css"
+  ],
+  "deletedFiles": []
+}

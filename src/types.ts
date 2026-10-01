@@ -510,6 +510,7 @@ export interface AppStateData {
   activityLogs?: ActivityLogEntry[];
   notifications?: AppNotification[];
   botVersions?: BotVersionRecord[];
+  schemaVersion?: number;
   lastUpdated?: string;
   syncVersion?: number;
 }

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { TabType } from '../types';
+export type { TabType } from '../types';
 import {
   Calendar,
   Sparkles,
@@ -13,7 +14,7 @@ import {
   Crown,
   Palette,
   Activity,
-  MessageCircle,
+  MessageSquare,
   Volume2,
   VolumeX
 } from 'lucide-react';
@@ -27,8 +28,8 @@ interface NavigationDockProps {
   factionsCount?: number;
   casesCount?: number;
   marketItemsCount?: number;
-  soundEnabled: boolean;
-  onToggleSound: () => void;
+  soundEnabled?: boolean;
+  onToggleSound?: () => void;
 }
 
 export const NavigationDock: React.FC<NavigationDockProps> = ({
@@ -40,7 +41,7 @@ export const NavigationDock: React.FC<NavigationDockProps> = ({
   factionsCount = 0,
   casesCount = 0,
   marketItemsCount = 0,
-  soundEnabled,
+  soundEnabled = true,
   onToggleSound
 }) => {
   const [isExpanded, setIsExpanded] = useState(true);
@@ -94,6 +95,12 @@ export const NavigationDock: React.FC<NavigationDockProps> = ({
       badge: 'АРТ'
     },
     {
+      id: 'chat',
+      label: 'Чат / ЛС',
+      icon: <MessageSquare className="w-4 h-4 text-emerald-400" />,
+      badge: 'РАДИО'
+    },
+    {
       id: 'cases',
       label: 'Кейсы',
       icon: <Package className="w-4 h-4 text-emerald-400" />,
@@ -104,11 +111,6 @@ export const NavigationDock: React.FC<NavigationDockProps> = ({
       label: 'Журнал',
       icon: <Activity className="w-4 h-4 text-emerald-400" />,
       badge: 'LIVE'
-    },
-    {
-      id: 'chat',
-      label: 'Чат',
-      icon: <MessageCircle className="w-4 h-4 text-emerald-300" />
     },
     {
       id: 'profile',
@@ -126,7 +128,7 @@ export const NavigationDock: React.FC<NavigationDockProps> = ({
   const visibleTabs = tabs.filter(t => !t.adminOnly || isAdmin);
 
   return (
-    /* Side / Corner Right-Hand HUD Dock («на угол правый, половина сверху половина сбоку») */
+    /* Side / Corner Right-Hand HUD Dock */
     <aside
       className={`fixed top-20 right-2 z-40 transition-all duration-300 ease-out flex items-center select-none ${
         isExpanded ? 'translate-x-0' : 'translate-x-[calc(100%-14px)]'
@@ -152,20 +154,27 @@ export const NavigationDock: React.FC<NavigationDockProps> = ({
           <span className="text-[9px] font-mono-pip font-extrabold uppercase text-amber-400 tracking-widest flex items-center gap-1">
             <Menu className="w-2.5 h-2.5" /> МЕНЮ
           </span>
-          <button
-            type="button"
-            onClick={onToggleSound}
-            aria-label={soundEnabled ? 'Выключить звуки кнопок' : 'Включить звуки кнопок'}
-            aria-pressed={soundEnabled}
-            title={soundEnabled ? 'Выключить звуки кнопок' : 'Включить звуки кнопок'}
-            className="rounded p-1 text-zinc-400 hover:text-white"
-          >
-            {soundEnabled ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
-          </button>
-          <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_#10b981] animate-pulse" />
+          <div className="flex items-center gap-1.5">
+            {onToggleSound && (
+              <button
+                type="button"
+                onClick={onToggleSound}
+                className={`p-0.5 rounded-full border transition-colors ${
+                  soundEnabled
+                    ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+                    : 'border-zinc-700 bg-zinc-900 text-zinc-500'
+                }`}
+                title={soundEnabled ? 'Выключить звук интерфейса' : 'Включить звук интерфейса'}
+                aria-label={soundEnabled ? 'Выключить звук интерфейса' : 'Включить звук интерфейса'}
+              >
+                {soundEnabled ? <Volume2 className="w-2.5 h-2.5" /> : <VolumeX className="w-2.5 h-2.5" />}
+              </button>
+            )}
+            <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_#10b981] animate-pulse" />
+          </div>
         </div>
 
-        <nav className="flex flex-col gap-1">
+        <nav className="flex flex-col gap-1 max-h-[calc(100vh-140px)] overflow-y-auto pr-0.5 select-none scrollbar-thin">
           {visibleTabs.map(tab => {
             const isActive = activeTab === tab.id;
 
