@@ -8,6 +8,7 @@ import { handleLittlepipUpdate, getLittlepipStats, generateLittlepipText } from 
 import { CloudChatState, FirebaseCloudStore } from './src/services/firebaseCloud';
 import { AppStateData } from './src/types';
 import { extractSongSearchQuery, searchYouTubeTrack } from './src/services/youtubeSearch';
+import { generateLittlepipVoice } from './src/services/littlepipVoice';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -707,6 +708,25 @@ app.post('/api/littlepip/chat', async (req, res) => {
     });
   } catch (err: any) {
     res.status(500).json({ error: err?.message || 'Error generating Littlepip reply' });
+  }
+});
+
+app.post('/api/littlepip/voice', async (req, res) => {
+  const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
+  if (!text) return res.status(400).json({ error: 'Нечего озвучивать.' });
+  if (text.length > 1000) return res.status(413).json({ error: 'Сообщение слишком длинное для озвучивания.' });
+
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  if (!apiKey) return res.status(503).json({ error: 'Озвучивание не настроено.' });
+
+  try {
+    const audio = await generateLittlepipVoice(text, apiKey);
+    res.setHeader('Content-Type', 'audio/wav');
+    res.setHeader('Cache-Control', 'no-store');
+    res.send(audio);
+  } catch (error: any) {
+    console.error('[Littlepip TTS] Generation failed:', error?.message || error);
+    res.status(502).json({ error: 'Голосовое сообщение временно недоступно.' });
   }
 });
 

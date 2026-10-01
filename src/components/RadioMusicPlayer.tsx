@@ -85,14 +85,30 @@ export const RadioMusicPlayer: React.FC<RadioMusicPlayerProps> = ({ username = '
   const [assistantMessages, setAssistantMessages] = useState<AssistantMessage[]>([]);
   const [assistantDraft, setAssistantDraft] = useState('');
   const [isAssistantSending, setIsAssistantSending] = useState(false);
+  const [isVoiceEnabled, setIsVoiceEnabled] = useState(() => {
+    try {
+      return localStorage.getItem('dusttown_littlepip_voice') !== 'false';
+    } catch {
+      return true;
+    }
+  });
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const assistantEndRef = useRef<HTMLDivElement>(null);
+  const voiceEnabledRef = useRef(isVoiceEnabled);
+  const voiceAudioRef = useRef<HTMLAudioElement | null>(null);
+  const voiceObjectUrlRef = useRef<string | null>(null);
   const currentTrack = tracks[currentTrackIndex] || tracks[0];
 
   useEffect(() => {
     assistantEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [assistantMessages, isAssistantOpen]);
+
+  useEffect(() => () => {
+    voiceAudioRef.current?.pause();
+    if (voiceObjectUrlRef.current) URL.revokeObjectURL(voiceObjectUrlRef.current);
+    window.speechSynthesis?.cancel();
+  }, []);
 
   // 1. Fetch fresh official titles via YouTube oEmbed API
   useEffect(() => {
@@ -173,6 +189,72 @@ export const RadioMusicPlayer: React.FC<RadioMusicPlayerProps> = ({ username = '
     setShowPlaylist(false);
   };
 
+  const stopLittlepipVoice = () => {
+    voiceAudioRef.current?.pause();
+    voiceAudioRef.current = null;
+    if (voiceObjectUrlRef.current) {
+      URL.revokeObjectURL(voiceObjectUrlRef.current);
+      voiceObjectUrlRef.current = null;
+    }
+    window.speechSynthesis?.cancel();
+  };
+
+  const speakWithBrowserVoice = (text: string) => {
+    if (!('speechSynthesis' in window)) return;
+    const synth = window.speechSynthesis;
+    const utterance = new SpeechSynthesisUtterance(text);
+    const russianVoices = synth.getVoices().filter(voice => voice.lang.toLowerCase().startsWith('ru'));
+    utterance.voice = russianVoices.find(voice => /female|жен|milena|alena|irina/i.test(voice.name)) || russianVoices[0] || null;
+    utterance.lang = 'ru-RU';
+    utterance.pitch = 1.22;
+    utterance.rate = 1.02;
+    utterance.volume = 0.95;
+    synth.speak(utterance);
+  };
+
+  const speakLittlepipReply = async (text: string) => {
+    if (!voiceEnabledRef.current) return;
+    stopLittlepipVoice();
+
+    try {
+      const response = await fetch('/api/littlepip/voice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text })
+      });
+      if (!response.ok) throw new Error('Neural voice unavailable');
+
+      const audioUrl = URL.createObjectURL(await response.blob());
+      if (!voiceEnabledRef.current) {
+        URL.revokeObjectURL(audioUrl);
+        return;
+      }
+
+      voiceObjectUrlRef.current = audioUrl;
+      const audio = new Audio(audioUrl);
+      voiceAudioRef.current = audio;
+      audio.onended = () => {
+        URL.revokeObjectURL(audioUrl);
+        voiceObjectUrlRef.current = null;
+        voiceAudioRef.current = null;
+      };
+      await audio.play();
+    } catch {
+      stopLittlepipVoice();
+      if (voiceEnabledRef.current) speakWithBrowserVoice(text);
+    }
+  };
+
+  const handleToggleVoice = () => {
+    const enabled = !isVoiceEnabled;
+    voiceEnabledRef.current = enabled;
+    setIsVoiceEnabled(enabled);
+    try {
+      localStorage.setItem('dusttown_littlepip_voice', String(enabled));
+    } catch {}
+    if (!enabled) stopLittlepipVoice();
+  };
+
   const handleSendAssistantMessage = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const text = assistantDraft.trim();
@@ -196,6 +278,7 @@ export const RadioMusicPlayer: React.FC<RadioMusicPlayerProps> = ({ username = '
         ...previous,
         { role: 'assistant', text: data.reply || 'Я тут, но эфир что-то проглотил мой ответ.' }
       ].slice(-20));
+      void speakLittlepipReply(data.reply || 'Я тут, но эфир что-то проглотил мой ответ.');
 
       if (data.track?.id && data.track?.title) {
         const track: RadioTrack = {
@@ -318,16 +401,28 @@ export const RadioMusicPlayer: React.FC<RadioMusicPlayerProps> = ({ username = '
             <div className="text-[11px] font-heading font-bold text-emerald-300 truncate">Литлпип</div>
             <div className="text-[8px] font-mono-pip text-zinc-500 truncate">НА СВЯЗИ • РАДИО 98.7</div>
           </div>
-          <button
-            type="button"
-            onClick={() => setIsAssistantOpen(open => !open)}
-            className={`w-8 h-8 grid place-items-center rounded-lg border transition-colors ${isAssistantOpen ? 'border-emerald-400/60 bg-emerald-500/15 text-emerald-300' : 'border-zinc-700 bg-zinc-900 text-zinc-300 hover:text-emerald-300'}`}
-            title={isAssistantOpen ? 'Закрыть чат с Литлпип' : 'Открыть чат с Литлпип'}
-            aria-label={isAssistantOpen ? 'Закрыть чат с Литлпип' : 'Открыть чат с Литлпип'}
-            aria-expanded={isAssistantOpen}
-          >
-            {isAssistantOpen ? <X className="w-4 h-4" /> : <MessageCircle className="w-4 h-4" />}
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={handleToggleVoice}
+              className={`w-8 h-8 grid place-items-center rounded-lg border transition-colors ${isVoiceEnabled ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300' : 'border-zinc-700 bg-zinc-900 text-zinc-500'}`}
+              title={isVoiceEnabled ? 'Выключить голос Пипки' : 'Включить голос Пипки'}
+              aria-label={isVoiceEnabled ? 'Выключить голос Пипки' : 'Включить голос Пипки'}
+              aria-pressed={isVoiceEnabled}
+            >
+              {isVoiceEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsAssistantOpen(open => !open)}
+              className={`w-8 h-8 grid place-items-center rounded-lg border transition-colors ${isAssistantOpen ? 'border-emerald-400/60 bg-emerald-500/15 text-emerald-300' : 'border-zinc-700 bg-zinc-900 text-zinc-300 hover:text-emerald-300'}`}
+              title={isAssistantOpen ? 'Закрыть чат с Литлпип' : 'Открыть чат с Литлпип'}
+              aria-label={isAssistantOpen ? 'Закрыть чат с Литлпип' : 'Открыть чат с Литлпип'}
+              aria-expanded={isAssistantOpen}
+            >
+              {isAssistantOpen ? <X className="w-4 h-4" /> : <MessageCircle className="w-4 h-4" />}
+            </button>
+          </div>
         </div>
 
         {isAssistantOpen && (
