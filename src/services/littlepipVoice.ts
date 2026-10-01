@@ -2,6 +2,25 @@ import { GoogleGenAI, Modality } from '@google/genai';
 
 const TTS_MODEL = 'gemini-3.8-flash-lite-tts';
 
+export function buildLittlepipSpeechRequest(text: string) {
+  return {
+    contents: [{
+      role: 'user' as const,
+      parts: [{ text }]
+    }],
+    config: {
+      systemInstruction: 'Ты синтезируешь русскую речь. Произнеси только текст пользователя, без перевода, вступления, комментариев и добавленных слов. Голос мягкий, тёплый, молодой женский, с лёгкой игривой звонкостью и чуть повышенной высотой; говори естественно и разборчиво, не детским голосом.',
+      responseModalities: [Modality.AUDIO],
+      speechConfig: {
+        languageCode: 'ru-RU',
+        voiceConfig: {
+          prebuiltVoiceConfig: { voiceName: 'Leda' }
+        }
+      }
+    }
+  };
+}
+
 export function pcmToWav(pcm: Buffer, sampleRate = 24000, channels = 1): Buffer {
   const wav = Buffer.alloc(44 + pcm.length);
   const byteRate = sampleRate * channels * 2;
@@ -28,21 +47,7 @@ export async function generateLittlepipVoice(text: string, apiKey: string): Prom
   const client = new GoogleGenAI({ apiKey });
   const response = await client.models.generateContent({
     model: TTS_MODEL,
-    contents: [{
-      role: 'user',
-      parts: [{
-        text: `Read this Russian message exactly as written. Use a warm, gentle, youthful feminine voice with a light, slightly high-pitched playful sparkle. Keep it natural, soft, affectionate, and clearly articulated; do not sound like a child or add extra words. Message: ${text}`
-      }]
-    }],
-    config: {
-      responseModalities: [Modality.AUDIO],
-      speechConfig: {
-        languageCode: 'ru-RU',
-        voiceConfig: {
-          prebuiltVoiceConfig: { voiceName: 'Leda' }
-        }
-      }
-    }
+    ...buildLittlepipSpeechRequest(text)
   });
 
   const audioPart = response.candidates?.[0]?.content?.parts?.find(part => part.inlineData?.data);

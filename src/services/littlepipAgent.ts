@@ -13,8 +13,14 @@
 import fs from 'fs';
 import path from 'path';
 import { GoogleGenAI } from '@google/genai';
+import {
+  FALLOUT_EQUISTRIA_FORUM_URL,
+  formatFalloutEquestriaReferences,
+  searchFalloutEquestriaWiki,
+  shouldSearchFalloutEquestriaWiki
+} from './falloutEquestriaWiki';
 
-const DUSTTOWN_FORUM_URL = 'https://dusttown-rp.ru/forum';
+export const LITTLEPIP_GEMINI_MODEL = 'gemini-3.8-flash';
 
 // ==========================================
 // 1. ТИПЫ И ИНТЕРФЕЙСЫ
@@ -205,10 +211,12 @@ function buildSystemPrompt(mode: AgentMode): string {
 • Никогда не говори как сухой чат-бот или робот («Я языковая модель...»). Ты настоящая живая Пипка!
 • Не зацикливайся на одном слове, не повторяй «пип-бак» или «я поправлю свой пип-бак» в каждом сообщении. Это не смешно и ломает вайб.
 • Если не знаешь точный канон Fallout: Equestria или конкретный факт — не выдумывай. Скажи честно: "я не хочу гадать" или "по этому канону не уверен". Лучше честно уточнить, чем наврать.
-• Если собеседник спрашивает про форум или сообщество — давай прямую ссылку в конце сообщения: ${DUSTTOWN_FORUM_URL}
+• Если собеседник спрашивает про форум или сообщество — давай прямую ссылку: ${FALLOUT_EQUISTRIA_FORUM_URL}
+• Для вопросов о каноне используй только переданные фрагменты источников. Если поиск ничего не нашёл, честно скажи об этом; не подменяй факты общими заготовками.
 • Когда к тебе обращаются по имени, учитывай до 10 последних реплик этого же чата/топика: можешь ответить на предыдущую мысль, подхватить шутку или поддержать разговор. Не приписывай людям слова и не отвечай так, будто прочитала то, чего нет в контексте.
 • Меняй ритм и формулировки: иногда короткая реплика, иногда уточняющий вопрос, иногда сочувствие или уместная шутка. Не вставляй Pip-Buck, сидр или оружие в каждый ответ.
 • Если спрашивают о функциях DustTown RP, отвечай по переданному контексту проекта, различай Mini App и команды Telegram; не выдумывай отсутствующие функции.
+• Отвечай непосредственно на смысл текущего сообщения. Не используй повторяющиеся вступления, итоговые фразы, дежурную шутку или вопрос в конце, если они не нужны.
 
 ТЕКУЩИЙ РЕЖИМ: ${isSupport ? 'ТЕХПОДДЕРЖКА И КОД БОТА (/support)' : 'ОБЫЧНЫЙ СТАЛКЕРСКИЙ ДИАЛОГ (/pip_start)'}
 
@@ -226,137 +234,45 @@ ${isSupport ? `
 ОСОБЕННОСТИ РЕЖИМА ДИАЛОГА:
 • Ты общаешься со сталкерами на любые темы: байки о Пустошах, жизнь в Даст Таун, приколы, рейдеры, фракции, общение в сообществе, спокойные беседы и немного шуток.
 • Поддерживай контекст предыдущих реплик, шути, подкалывай по-доброму, проявляй заботу о друзьях.
-• Не отвечай на каждое сообщение без запроса; реагируй на прямое обращение или на явный контекст, где упоминается ты, форум, Пустошь или вопрос о Даст Таун.
+• Не отвечай на каждое сообщение без запроса; в Telegram реагируй на прямое обращение к тебе или ответ на твоё сообщение.
 `}
 
 Отвечай ёмко, живо и интересно (от 1 до 4 предложений, если не требуется подробный тех-ответ по коду). Не пиши шаблонно. Всегда на русском языке!`;
 }
 
 // ==========================================
-// 6. ИИ ДВИЖОК: GEMINI 3.8 + СВОБОДНАЯ НЕЙРОСЕТЬ + АДАПТИВНЫЙ СИНТЕЗАТОР
+// 6. ЕДИНЫЙ GEMINI ГЕНЕРАТОР ДЛЯ TELEGRAM И MINI APP
 // ==========================================
 
-async function generateGeminiReply(systemInstruction: string, prompt: string): Promise<string | null> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return null;
+async function generateGeminiReply(systemInstruction: string, prompt: string): Promise<string> {
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  if (!apiKey) throw new Error('GEMINI_API_KEY is not configured');
 
-  // Пробуем доступные модели Gemini с достаточным таймаутом (14 секунд)
-  const candidateModels = ['gemini-3.8-flash', 'gemini-3.1-flash-lite'];
-
-  for (const model of candidateModels) {
-    try {
-      const ai = new GoogleGenAI({ apiKey });
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 14000);
-
-      const response = await ai.models.generateContent({
-        model,
+  const client = new GoogleGenAI({ apiKey });
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const response = await Promise.race([
+      client.models.generateContent({
+        model: LITTLEPIP_GEMINI_MODEL,
         contents: prompt,
         config: {
           systemInstruction,
-          temperature: 0.85
+          temperature: 0.95,
+          topP: 0.92
         }
-      });
-      clearTimeout(timeoutId);
-
-      const text = response.text?.trim();
-      if (text && text.length > 3) {
-        console.log(`[Littlepip AI] Успешный ответ от Gemini (${model})`);
-        return text;
-      }
-    } catch (err: any) {
-      console.warn(`[Littlepip AI] Gemini (${model}) вернул ошибку:`, err?.message || err);
-      // Если модель 503 или 429 — переходим к следующему варианту
-    }
-  }
-  return null;
-}
-
-// Свободная нейросеть с открытым кодом (Pollinations / Llama 3 / Mistral) — 100% бесплатно, без ключей и без 503
-async function generateFreeNeuralReply(systemInstruction: string, prompt: string): Promise<string | null> {
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 22000);
-
-    const res = await fetch('https://text.pollinations.ai/', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'User-Agent': 'DustTownRP-Littlepip/1.2'
-      },
-      body: JSON.stringify({
-        messages: [
-          { role: 'system', content: systemInstruction },
-          { role: 'user', content: prompt }
-        ]
       }),
-      signal: controller.signal
-    });
-    clearTimeout(timeoutId);
+      new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error('Littlepip generation timed out')), 20000);
+      })
+    ]);
 
-    if (res.ok) {
-      const raw = await res.text();
-      // Очистка от промо-подвалов и ссылок
-      const clean = raw
-        .split('---')[0]
-        .replace(/\*\*Support Pollinations[\s\S]*/i, '')
-        .replace(/🌸 \*\*Ad\*\* 🌸[\s\S]*/i, '')
-        .trim();
-
-      if (clean && clean.length > 5 && clean !== '{}') {
-        console.log('[Littlepip AI] Успешный живой ответ от Свободной Нейросети!');
-        return clean;
-      }
-    }
-  } catch (err: any) {
-    console.warn('[Littlepip AI] Свободная нейросеть временно недоступна:', err?.message || err);
+    const answer = response.text?.trim();
+    if (!answer) throw new Error('Gemini returned an empty Littlepip response');
+    console.log(`[Littlepip AI] Reply generated by ${LITTLEPIP_GEMINI_MODEL}`);
+    return answer;
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
   }
-  return null;
-}
-
-// Динамический адаптивный генератор (на случай полного отсутствия интернета — живой отклик на реплику пользователя)
-function generateDynamicConversationalReply(text: string, mode: AgentMode, username: string): string {
-  const clean = text.trim();
-  const lower = clean.toLowerCase();
-
-  // Извлечение ключевых слов из реплики пользователя для живого эхо-ответа
-  const words = clean.split(/\s+/).filter(w => w.length > 3 && !w.startsWith('/'));
-  const topicKeyword = words.length > 0 ? words[Math.floor(Math.random() * words.length)] : 'Пустошь';
-
-  if (mode === 'support') {
-    if (lower.includes('ядер') || lower.includes('nuke') || lower.includes('alert')) {
-      return `☢️ По поводу «${clean}»: ядерный удар в Даст Таун прописан в \`server.ts\` (эндпоинт \`/api/chat/send\` с параметром \`isNuke: true\`) и визуализирован в \`NuclearAlertOverlay.tsx\`. Запуск стоит 100 ℰQ, списывает баланс у сталкера и включает неоновую сирену по всей радиоволне!`;
-    }
-    if (lower.includes('render') || lower.includes('хост') || lower.includes('409') || lower.includes('деплой')) {
-      return `🚀 Насчёт «${clean}»: на Render всё летает без конфликтов! Наш локальный бот на дев-сервере переведён в тихий режим, чтобы на Render не возникало ошибки \`409 Conflict\`. В настройках сервиса на Render вставь токен в \`TELEGRAM_BOT_TOKEN\` — и готово!`;
-    }
-    if (lower.includes('github') || lower.includes('патч') || lower.includes('обновлен') || lower.includes('лимит')) {
-      return `📦 По поводу «${clean}»: специально для работы с двумя ИИ мы сделали инкрементальный патч! В панели управления жми кнопку «Скачать обновления», кидай файлы в GitHub, а потом ставь галочку подтверждения — кнопка сбросится и станет ждать следующих изменений!`;
-    }
-    if (lower.includes('валют') || lower.includes('деньг') || lower.includes('eq') || lower.includes('эквивакс') || lower.includes('зарплат')) {
-      return `💰 Экономика ℰQ: зарплаты фракций начисляются раз в сутки в \`src/services/factionSalary.ts\`. Баланс хранится в \`profile.equivaxes\`. Если ты основатель @MrWhitePio — у тебя бесконечный запас для тестов!`;
-    }
-    return `🔧 Слушаю по технической части: в контексте «${clean}» я проверила структуру файлов Даст Таун. Сервер \`server.ts\`, типы в \`types.ts\` и хранилище \`storage.ts\` синхронизированы. Назови точный файл или строку, сталкер, и я помогу раскрутить винтики!`;
-  }
-
-  // Режим живого диалога — адаптируется под слова сталкера, но не превращается в «бот, который отвечает на всё подряд»
-  if (lower.includes('?')) {
-    return `Хм, насчёт «${clean}»? Я не люблю гадать, если точно не знаю. Но если это про Даст Таун, то я как раз в теме: проверяю контекст, слушаю детали и даю честный ответ. Что именно ты хочешь узнать, ${username}? 😉`;
-  }
-
-  if (lower.match(/\b(сидр|бар|выпьем|отдых|пиво|яблок)\b/)) {
-    return `О-о, ты упомянул сидр — это уже серьёзный знак. Я люблю тёплый яблочный сидр после вылазки, но не в тот момент, когда у ворот уже скрипят рейдеры. Давай, ${username}, сначала разговор, потом по одной кружке. 🍏✨`;
-  }
-
-  if (lower.includes('форум') || lower.includes('сайт') || lower.includes('wiki') || lower.includes('сообщество')) {
-    return `Форум — это прямой путь в контекст. Я бы глянула туда, а не болтала в воздухе. Вот ссылка: ${DUSTTOWN_FORUM_URL} — там можно проверить lore, обсуждения и живые темы без фантомного анекдота. 🦄`;
-  }
-
-  if (lower.includes('foe') || lower.includes('fallout') || lower.includes('вселенной') || lower.includes('об вселенной')) {
-    return `В Fallout: Equestria я не люблю выдумывать лор на горячую. Если хочешь, я могу говорить по контексту, но честно: лучше свериться с форумом и каноном, чтобы не наделать херни. Ссылка: ${DUSTTOWN_FORUM_URL}`;
-  }
-
-  return `Слышу тебя чётко через радиопомехи, ${username}! Если это прямо про меня или про Даст Таун, я в деле. Если нет — лучше не лезть в чужой контекст и не мешать без повода. А если хочешь, закидывай в тему что-то конкретное, и я раскручу. 🦄🔧`;
 }
 
 // Единый оркестратор генерации реплики Литлпип
@@ -364,7 +280,8 @@ export function buildLittlepipPrompt(
   cleanText: string,
   username: string,
   mode: AgentMode,
-  conversationHistory: LittlepipConversationMessage[] = []
+  conversationHistory: LittlepipConversationMessage[] = [],
+  wikiContext = ''
 ): string {
   const recentContext = conversationHistory.slice(-10);
   let promptText = recentContext.length
@@ -374,6 +291,9 @@ export function buildLittlepipPrompt(
   const asksAboutBot = /(?:бота?|команд[а-я]*|функционал|mini\s*app|что умеет|как работает)/iu.test(cleanText);
   if (mode === 'support' || asksAboutBot) {
     promptText += `\n\nКонтекст архитектуры проекта Даст Таун:\n${getBotArchitectureOverview()}`;
+  }
+  if (wikiContext) {
+    promptText += `\n\nКонтекст Fallout: Equestria из Fandom. Используй его как источник фактов и не приписывай статье сведения, которых в ней нет:\n${wikiContext}`;
   }
   return promptText;
 }
@@ -385,20 +305,12 @@ export async function generateLittlepipText(
   conversationHistory: LittlepipConversationMessage[] = []
 ): Promise<string> {
   const systemInstruction = buildSystemPrompt(mode);
-  const promptText = buildLittlepipPrompt(cleanText, username, mode, conversationHistory);
-
-  // 1. Попытка через Gemini 3.8 / 3.1 Flash Lite
-  const geminiResult = await generateGeminiReply(systemInstruction, promptText);
-  if (geminiResult) return geminiResult;
-
-  // 2. Попытка через Свободную Нейросеть (без лимитов и без ключей)
-  console.log('[Littlepip AI] Переключаемся на Свободную Нейросеть без лимитов...');
-  const freeNeuralResult = await generateFreeNeuralReply(systemInstruction, promptText);
-  if (freeNeuralResult) return freeNeuralResult;
-
-  // 3. Динамический адаптивный синтезатор под слова пользователя (никаких застывших шаблонов)
-  console.log('[Littlepip AI] Используем динамический контекстный синтезатор...');
-  return generateDynamicConversationalReply(cleanText, mode, username);
+  const references = shouldSearchFalloutEquestriaWiki(cleanText)
+    ? await searchFalloutEquestriaWiki(cleanText)
+    : [];
+  const wikiContext = formatFalloutEquestriaReferences(references);
+  const promptText = buildLittlepipPrompt(cleanText, username, mode, conversationHistory, wikiContext);
+  return generateGeminiReply(systemInstruction, promptText);
 }
 
 // ==========================================
@@ -507,7 +419,7 @@ export async function handleLittlepipUpdate(
       `• Активность: ${binding?.isActive ? '🟢 В сети и слушает эфир' : '⚪ В спящем режиме'}\n` +
       `• Режим: **${binding?.mode === 'support' ? 'Техподдержка 🛠️' : 'Диалог 💬'}**\n` +
       `• Вкладка топика: \`${threadId || 'Общий'}\`\n` +
-      `• ИИ-модель: \`Gemini 3.8 Flash + Автономный движок Стойла 2\`\n` +
+      `• ИИ-модель: \`${LITTLEPIP_GEMINI_MODEL}\`\n` +
       `• Триггер-имена: *Литлпип, Пипка, Литка, Лилька, Littlepip*`;
 
     await sendMessageFn(chatId, statusText, sendOpts);

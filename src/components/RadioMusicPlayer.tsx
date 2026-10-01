@@ -261,7 +261,7 @@ export const RadioMusicPlayer: React.FC<RadioMusicPlayerProps> = ({ username = '
     if (!text || isAssistantSending) return;
 
     const previousMessages = assistantMessages.slice(-10);
-    setAssistantMessages(previous => [...previous, { role: 'user', text }].slice(-20));
+    setAssistantMessages(previous => [...previous, { role: 'user' as const, text }].slice(-20));
     setAssistantDraft('');
     setIsAssistantSending(true);
 
@@ -276,7 +276,7 @@ export const RadioMusicPlayer: React.FC<RadioMusicPlayerProps> = ({ username = '
 
       setAssistantMessages(previous => [
         ...previous,
-        { role: 'assistant', text: data.reply || 'Я тут, но эфир что-то проглотил мой ответ.' }
+        { role: 'assistant' as const, text: data.reply || 'Я тут, но эфир что-то проглотил мой ответ.' }
       ].slice(-20));
       void speakLittlepipReply(data.reply || 'Я тут, но эфир что-то проглотил мой ответ.');
 
@@ -303,7 +303,7 @@ export const RadioMusicPlayer: React.FC<RadioMusicPlayerProps> = ({ username = '
     } catch (error: any) {
       setAssistantMessages(previous => [
         ...previous,
-        { role: 'assistant', text: error?.message || 'Связь с радио прервалась. Попробуй ещё раз.' }
+        { role: 'assistant' as const, text: error?.message || 'Связь с радио прервалась. Попробуй ещё раз.' }
       ].slice(-20));
     } finally {
       setIsAssistantSending(false);

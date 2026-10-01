@@ -1,50 +1,17 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { getFallbackLittlepipReply, shouldLittlepipReactToMessage } from './littlepip';
 import {
   buildLittlepipPrompt,
   getRecentLittlepipMessages,
+  generateLittlepipText,
   handleLittlepipUpdate,
   hasPipMention,
   parseLittlepipCommand
 } from './littlepipAgent';
 
-test('does not react to unrelated messages in a non-target group chat', () => {
-  const shouldReact = shouldLittlepipReactToMessage({
-    text: 'мда, опять это говно',
-    isBotMessage: false,
-    isGroupChat: true,
-    chatTitle: 'Другой чат',
-    botUsername: 'DustTown_RP_bot',
-    mentionsBot: false,
-    replyToBot: false,
-  });
-
-  assert.equal(shouldReact, false);
-});
-
-test('reacts only when the message directly addresses Littlepip by name in the DustTownCollective chat', () => {
-  const shouldReact = shouldLittlepipReactToMessage({
-    text: 'Пипка, ты тут?',
-    isBotMessage: false,
-    isGroupChat: true,
-    chatTitle: 'DustTownCollective',
-    botUsername: 'DustTown_RP_bot',
-    mentionsBot: false,
-    replyToBot: false,
-  });
-
-  assert.equal(shouldReact, true);
-});
-
-test('fallback reply changes based on the actual message instead of repeating the same canned line', () => {
-  const angryReply = getFallbackLittlepipReply('пипка, ты чё сюда пишешь а не в чат?!', '@Chara');
-  const hurtReply = getFallbackLittlepipReply('пипка, меня ранили, помоги', '@Chara');
-
-  assert.notEqual(angryReply, hurtReply);
-  assert.match(hurtReply.toLowerCase(), /помощ|ран|пустош|быстр/);
-  assert.match(angryReply.toLowerCase(), /слышь|по делу|хочешь|влез|пипка/);
+test('does not treat unrelated messages as Pipka mentions', () => {
+  assert.equal(hasPipMention('мда, опять это говно'), false);
 });
 
 test('does not reply to unrelated messages unless the name is mentioned', async () => {
@@ -69,6 +36,25 @@ test('recognizes a casual direct address and Telegram commands addressed to the 
   assert.equal(hasPipMention('Пипка приве!'), true);
   assert.equal(parseLittlepipCommand('/pip_start@DustTown_RP_bot'), 'pip_start');
   assert.equal(parseLittlepipCommand('/support@DustTown_RP_bot'), 'support');
+});
+
+test('does not substitute a canned reply when the shared Gemini model is unavailable', async () => {
+  const geminiKey = process.env.GEMINI_API_KEY;
+  const googleKey = process.env.GOOGLE_API_KEY;
+  delete process.env.GEMINI_API_KEY;
+  delete process.env.GOOGLE_API_KEY;
+
+  try {
+    await assert.rejects(
+      generateLittlepipText('Пипка, как дела?', '@tester', 'chat'),
+      /GEMINI_API_KEY is not configured/
+    );
+  } finally {
+    if (geminiKey === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = geminiKey;
+    if (googleKey === undefined) delete process.env.GOOGLE_API_KEY;
+    else process.env.GOOGLE_API_KEY = googleKey;
+  }
 });
 
 test('keeps the ten latest preceding messages for conversation context', async () => {

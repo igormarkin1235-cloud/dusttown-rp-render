@@ -54,7 +54,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   initialDirectRecipientId,
   onClearInitialRecipient
 }) => {
-  const myUserId = currentUser.id || currentUser.userId || '';
+  const myUserId = currentUser.id || '';
 
   // Navigation mode: 'general' (public wasteland radio) or 'direct' (private DMs)
   const [chatMode, setChatMode] = useState<'general' | 'direct'>(
@@ -136,7 +136,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     return Array.from(participantIds);
   }, [messages, myUserId]);
 
-  const selectedRecipient = profiles.find(p => (p.id || p.userId) === selectedRecipientId);
+  const selectedRecipient = profiles.find(p => p.id === selectedRecipientId);
 
   // Send standard text message
   const handleSend = async (e?: React.FormEvent) => {
@@ -292,12 +292,12 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                   {profiles
                     .filter(
                       p =>
-                        (p.id || p.userId) !== myUserId &&
+                        p.id !== myUserId &&
                         (p.username.toLowerCase().includes(recipientSearchQuery.toLowerCase()) ||
                           p.displayName.toLowerCase().includes(recipientSearchQuery.toLowerCase()))
                     )
                     .map(p => {
-                      const pId = p.id || p.userId || '';
+                      const pId = p.id || '';
                       return (
                         <button
                           key={pId}
@@ -310,7 +310,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                         >
                           <AvatarWithFrame
                             avatarUrl={p.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'}
-                            frameId={p.activeAvatarFrame || p.activeFrameId}
+                            frameId={p.activeAvatarFrame}
                             size="sm"
                           />
                           <div className="truncate min-w-0">
@@ -332,7 +332,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 </div>
               ) : (
                 directConversations.map(userId => {
-                  const user = profiles.find(p => (p.id || p.userId) === userId);
+                  const user = profiles.find(p => p.id === userId);
                   const isSelected = selectedRecipientId === userId;
                   const lastMsg = [...messages]
                     .reverse()
@@ -354,7 +354,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                     >
                       <AvatarWithFrame
                         avatarUrl={user?.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'}
-                        frameId={user?.activeAvatarFrame || user?.activeFrameId}
+                        frameId={user?.activeAvatarFrame}
                         size="sm"
                       />
                       <div className="min-w-0 flex-1">
@@ -382,7 +382,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 <div className="flex items-center gap-3">
                   <AvatarWithFrame
                     avatarUrl={selectedRecipient.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'}
-                    frameId={selectedRecipient.activeAvatarFrame || selectedRecipient.activeFrameId}
+                    frameId={selectedRecipient.activeAvatarFrame}
                     size="sm"
                   />
                   <div>
@@ -445,7 +445,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                     <div
                       className="cursor-pointer shrink-0 hover:scale-105 transition"
                       onClick={() => {
-                        const author = profiles.find(p => (p.id || p.userId) === msg.senderId);
+                        const author = profiles.find(p => p.id === msg.senderId);
                         if (author && onViewProfile) onViewProfile(author);
                       }}
                       title="Открыть профиль игрока"
@@ -489,7 +489,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                         <div className="flex items-center gap-2">
                           <span
                             onClick={() => {
-                              const author = profiles.find(p => p.userId === msg.senderId);
+                              const author = profiles.find(p => p.id === msg.senderId);
                               if (author && onViewProfile) onViewProfile(author);
                             }}
                             className={`text-xs font-bold cursor-pointer hover:underline ${

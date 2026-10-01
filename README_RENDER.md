@@ -29,7 +29,7 @@
 5. В разделе **Environment Variables** (переменные окружения) добавьте:
    * `TELEGRAM_BOT_TOKEN` = значение, выданное BotFather. Добавьте его напрямую в Environment Variables на Render, не храните в GitHub.
    * `GEMINI_API_KEY` = ключ Google Gemini для ответов AI-агента и озвучки Littlepip. Для голоса используется `gemini-3.8-flash-lite-tts` с бесплатной квотой Google AI Studio; при превышении квоты Mini App использует системный голос браузера.
-   * `YOUTUBE_API_KEY` = server-side ключ Google Cloud с включённым YouTube Data API v3; нужен для поиска песен и не должен попадать в браузер или GitHub.
+   * `YOUTUBE_API_KEY` = необязательный server-side ключ Google Cloud для YouTube Data API v3. Без него используется поиск по публичной странице YouTube; Google API key не требуется.
    * `NODE_ENV` = `production`
 6. Нажмите **«Deploy Web Service»**.
 

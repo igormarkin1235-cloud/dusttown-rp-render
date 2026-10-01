@@ -25,7 +25,7 @@ export const ProfilesTopBar: React.FC<ProfilesTopBarProps> = ({
     const result: UserProfile[] = [];
     for (const p of profiles) {
       if (!p) continue;
-      const key = (p.id || p.userId || p.username || '').toLowerCase().trim();
+      const key = (p.id || p.username || '').toLowerCase().trim();
       if (!key) {
         result.push(p);
         continue;
@@ -74,7 +74,7 @@ export const ProfilesTopBar: React.FC<ProfilesTopBarProps> = ({
         {/* Horizontal Avatars Scrollable Row */}
         <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
           {filtered.map((profile, index) => {
-            const profileId = profile.id || profile.userId || '';
+            const profileId = profile.id || '';
             const isMe = profileId === currentUserId;
             const isOwner = (profile.username || '').toLowerCase() === '@mrwhitepio';
             const isAdmin =
@@ -99,7 +99,7 @@ export const ProfilesTopBar: React.FC<ProfilesTopBarProps> = ({
                   <div className="relative">
                     <AvatarWithFrame
                       avatarUrl={profile.avatarUrl}
-                      frameId={profile.activeAvatarFrame || profile.activeFrameId}
+                      frameId={profile.activeAvatarFrame}
                       size="sm"
                     />
                     {isOwner && (

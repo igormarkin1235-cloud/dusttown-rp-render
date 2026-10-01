@@ -4,7 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import { exec } from 'child_process';
 import { fileURLToPath } from 'url';
-import { handleLittlepipUpdate, getLittlepipStats, generateLittlepipText } from './src/services/littlepipAgent';
+import { handleLittlepipUpdate, getLittlepipStats, generateLittlepipText, hasPipMention, LITTLEPIP_GEMINI_MODEL } from './src/services/littlepipAgent';
 import { CloudChatState, FirebaseCloudStore } from './src/services/firebaseCloud';
 import { AppStateData } from './src/types';
 import { extractSongSearchQuery, searchYouTubeTrack } from './src/services/youtubeSearch';
@@ -571,6 +571,15 @@ async function handleTelegramUpdate(update: any) {
     }
   } catch (pipErr: any) {
     console.error('[Littlepip Error]:', pipErr);
+    if (hasPipMention(text) || msg.reply_to_message?.from?.is_bot) {
+      await tgApi('sendMessage', {
+        chat_id: chatId,
+        text: 'Не смогла связаться с моделью и не хочу подменять ответ заготовкой. Попробуй обратиться ко мне чуть позже.',
+        reply_to_message_id: msg.message_id,
+        ...(msg.message_thread_id ? { message_thread_id: msg.message_thread_id } : {})
+      });
+      return;
+    }
   }
 
   // 2. Standard Bot Commands
@@ -684,11 +693,7 @@ app.post('/api/littlepip/chat', async (req, res) => {
 
     const songQuery = mode === 'chat' ? extractSongSearchQuery(text) : null;
     if (songQuery) {
-      const apiKey = process.env.YOUTUBE_API_KEY;
-      if (!apiKey) {
-        return res.status(503).json({ error: 'YouTube-поиск не настроен: добавьте YOUTUBE_API_KEY на сервере.' });
-      }
-      const track = await searchYouTubeTrack(songQuery, apiKey);
+      const track = await searchYouTubeTrack(songQuery, process.env.YOUTUBE_API_KEY);
       if (!track) {
         return res.status(404).json({ error: `Не нашла подходящую песню по запросу «${songQuery}». Попробуй назвать исполнителя или точнее описать трек.` });
       }
