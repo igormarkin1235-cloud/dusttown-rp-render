@@ -149,8 +149,15 @@ export const NavigationDock: React.FC<NavigationDockProps> = ({
       </button>
 
       {/* Main HUD Cluster Menu */}
-      <div className="bg-zinc-950/95 border border-amber-500/40 rounded-2xl rounded-tr-none p-2 shadow-2xl backdrop-blur-xl flex flex-col gap-1.5 w-36 border-r-2 border-r-amber-500 ring-1 ring-black/80">
-        <div className="px-2 py-1 border-b border-zinc-800/80 flex items-center justify-between">
+      <div className="relative overflow-hidden bg-zinc-950/95 border border-amber-500/40 rounded-2xl rounded-tr-none p-2 shadow-2xl backdrop-blur-xl flex flex-col gap-1.5 w-36 border-r-2 border-r-amber-500 ring-1 ring-black/80">
+        {/* Subtle Background Art Accent at the Top of Menu */}
+        <div
+          className="absolute top-0 left-0 right-0 h-16 bg-cover bg-center opacity-25 pointer-events-none"
+          style={{ backgroundImage: `url('/backgrounds/crimson_canyon.jpg')` }}
+        />
+        <div className="absolute top-0 left-0 right-0 h-16 bg-gradient-to-b from-transparent to-zinc-950/95 pointer-events-none" />
+
+        <div className="relative z-10 px-2 py-1 border-b border-zinc-800/80 flex items-center justify-between">
           <span className="text-[9px] font-mono-pip font-extrabold uppercase text-amber-400 tracking-widest flex items-center gap-1">
             <Menu className="w-2.5 h-2.5" /> МЕНЮ
           </span>

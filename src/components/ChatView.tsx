@@ -96,8 +96,15 @@ export const ChatView: React.FC<ChatViewProps> = ({
   };
 
   return (
-    <section className="chat-surface min-h-[65dvh] flex flex-col border border-zinc-800 bg-zinc-950/80 overflow-hidden">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800 px-4 py-3">
+    <section className="chat-surface relative min-h-[65dvh] flex flex-col border border-zinc-800 bg-zinc-950/80 overflow-hidden">
+      <div
+        className="absolute inset-0 bg-cover bg-center pointer-events-none opacity-25 filter blur-[2.5px] scale-105"
+        style={{ backgroundImage: `url('/backgrounds/chat_bg.jpg')` }}
+      />
+      <div className="absolute inset-0 bg-gradient-to-b from-zinc-950/85 via-zinc-950/70 to-zinc-950/85 pointer-events-none" />
+
+      <div className="relative z-10 flex flex-col flex-1">
+        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800 px-4 py-3">
         <div className="flex min-w-0 items-center gap-2">
           <MessageCircle className="h-5 w-5 text-emerald-400" />
           <div className="min-w-0">
@@ -127,8 +134,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
         </div>
       </header>
 
-      {mode === 'private' && !selectedRecipient ? (
-        <div className="flex-1 p-4">
+        {mode === 'private' && !selectedRecipient ? (
+          <div className="flex-1 p-4">
           <label className="mb-3 flex items-center gap-2 border-b border-zinc-800 pb-2 text-zinc-400">
             <Search className="h-4 w-4" />
             <input
@@ -156,18 +163,18 @@ export const ChatView: React.FC<ChatViewProps> = ({
             {visibleProfiles.length === 0 && <p className="py-8 text-center text-sm text-zinc-500">Игроки не найдены</p>}
           </div>
         </div>
-      ) : (
-        <>
+        ) : (
+          <>
           {mode === 'private' && selectedRecipient && (
             <div className="flex items-center gap-2 border-b border-zinc-900 px-4 py-2">
               <button onClick={() => onRecipientChange(null)} className="flex items-center gap-1 text-xs text-cyan-300 hover:text-white">
                 <ArrowLeft className="h-3.5 w-3.5" /> Другой игрок
               </button>
-              <span className="ml-auto text-[11px] text-zinc-500">Переписка видна только вам двоим</span>
-            </div>
-          )}
+                <span className="ml-auto text-[11px] text-zinc-500">Переписка видна только вам двоим</span>
+              </div>
+            )}
 
-          <div className="chat-message-list min-h-64 flex-1 space-y-3 overflow-y-auto px-3 py-4 sm:px-5" aria-live="polite">
+            <div className="chat-message-list min-h-64 flex-1 space-y-3 overflow-y-auto px-3 py-4 sm:px-5" aria-live="polite">
             {messages.map(message => {
               const sender = profiles.find(profile => profile.id === message.senderId);
               const isMine = message.senderId === currentUser.id;
@@ -263,9 +270,10 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 </button>
               </div>
             </div>
-          </form>
-        </>
-      )}
+            </form>
+          </>
+        )}
+      </div>
     </section>
   );
 };

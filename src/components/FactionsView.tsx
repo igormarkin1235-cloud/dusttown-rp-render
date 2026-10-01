@@ -128,8 +128,15 @@ export const FactionsView: React.FC<FactionsViewProps> = ({
           </div>
         </div>
       ) : (
-        <div className="p-4 sm:p-5 rounded-3xl border border-zinc-800 bg-zinc-950/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
+        <div className="relative overflow-hidden p-4 sm:p-5 rounded-3xl border border-zinc-800 bg-zinc-950/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xl">
+          {/* Background art */}
+          <div
+            className="absolute inset-0 bg-cover bg-center opacity-25 pointer-events-none"
+            style={{ backgroundImage: `url('/backgrounds/stable_tec.jpg')` }}
+          />
+          <div className="absolute inset-0 bg-gradient-to-r from-zinc-950/95 via-zinc-950/85 to-zinc-950/90 pointer-events-none" />
+
+          <div className="relative z-10 flex items-center gap-3">
             <div className="w-12 h-12 rounded-2xl bg-zinc-900 border border-zinc-700 flex items-center justify-center text-zinc-400 shrink-0">
               <Shield className="w-6 h-6" />
             </div>

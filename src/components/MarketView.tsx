@@ -200,8 +200,15 @@ export const MarketView: React.FC<MarketViewProps> = ({
   return (
     <div className="space-y-6">
       {/* Header Banner */}
-      <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-r from-amber-950/40 via-zinc-900 to-zinc-950 border border-amber-500/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xl">
-        <div>
+      <div className="relative overflow-hidden p-5 sm:p-6 rounded-3xl border border-amber-500/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xl">
+        {/* Background art */}
+        <div
+          className="absolute inset-0 bg-cover bg-center opacity-30 transform scale-105 pointer-events-none"
+          style={{ backgroundImage: `url('/backgrounds/sparkle_cola.jpg')` }}
+        />
+        <div className="absolute inset-0 bg-gradient-to-r from-zinc-950/95 via-zinc-950/85 to-zinc-950/90 pointer-events-none" />
+
+        <div className="relative z-10">
           <div className="flex items-center gap-2">
             <ShoppingBag className="w-5 h-5 text-amber-400" />
             <h2 className="text-xl font-black font-heading text-amber-400 uppercase tracking-wider">

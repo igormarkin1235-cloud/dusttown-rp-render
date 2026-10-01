@@ -38,17 +38,36 @@ test('recognizes a casual direct address and Telegram commands addressed to the 
   assert.equal(parseLittlepipCommand('/support@DustTown_RP_bot'), 'support');
 });
 
-test('does not substitute a canned reply when the shared Gemini model is unavailable', async () => {
+test('generates a local reply without either Gemini API key', async () => {
   const geminiKey = process.env.GEMINI_API_KEY;
   const googleKey = process.env.GOOGLE_API_KEY;
   delete process.env.GEMINI_API_KEY;
   delete process.env.GOOGLE_API_KEY;
 
   try {
-    await assert.rejects(
-      generateLittlepipText('Пипка, как дела?', '@tester', 'chat'),
-      /GEMINI_API_KEY is not configured/
-    );
+    const reply = await generateLittlepipText('Пипка, привет!', '@tester', 'chat');
+
+    assert.match(reply, /Привет, @tester/);
+    assert.match(reply, /на связи/);
+  } finally {
+    if (geminiKey === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = geminiKey;
+    if (googleKey === undefined) delete process.env.GOOGLE_API_KEY;
+    else process.env.GOOGLE_API_KEY = googleKey;
+  }
+});
+
+test('provides embedded technical support without an API key', async () => {
+  const geminiKey = process.env.GEMINI_API_KEY;
+  const googleKey = process.env.GOOGLE_API_KEY;
+  delete process.env.GEMINI_API_KEY;
+  delete process.env.GOOGLE_API_KEY;
+
+  try {
+    const reply = await generateLittlepipText('Пипка, бот не работает, вот ошибка', '@tester', 'support');
+
+    assert.match(reply, /не вижу журналы/);
+    assert.match(reply, /точный текст ошибки/);
   } finally {
     if (geminiKey === undefined) delete process.env.GEMINI_API_KEY;
     else process.env.GEMINI_API_KEY = geminiKey;

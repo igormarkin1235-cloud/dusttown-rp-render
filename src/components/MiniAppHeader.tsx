@@ -43,8 +43,14 @@ export const MiniAppHeader: React.FC<MiniAppHeaderProps> = ({
   };
 
   return (
-    <header className="w-full bg-zinc-950/95 border-b border-zinc-800/80 sticky top-0 z-30 backdrop-blur-md px-3 py-2.5">
-      <div className="max-w-4xl mx-auto flex items-center justify-between gap-3">
+    <header className="relative overflow-hidden w-full bg-zinc-950/95 border-b border-zinc-800/80 sticky top-0 z-30 backdrop-blur-md px-3 py-2.5">
+      <div
+        className="absolute inset-0 bg-cover bg-center opacity-35 transform scale-105 pointer-events-none"
+        style={{ backgroundImage: `url('/backgrounds/foe_heroes.jpg')` }}
+      />
+      <div className="absolute inset-0 bg-gradient-to-r from-zinc-950/95 via-zinc-950/85 to-zinc-950/95 backdrop-blur-[2px] pointer-events-none" />
+
+      <div className="relative z-10 max-w-4xl mx-auto flex items-center justify-between gap-3">
         {/* Logo & Brand */}
         <div className="flex items-center gap-2.5">
           <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-amber-700 p-0.5 shadow-lg shadow-amber-900/30 flex items-center justify-center">

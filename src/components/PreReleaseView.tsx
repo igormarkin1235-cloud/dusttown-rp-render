@@ -115,6 +115,13 @@ export const PreReleaseView: React.FC<PreReleaseViewProps> = ({
 
     return (
       <div className="relative rounded-3xl bg-zinc-950 border border-purple-500/50 p-6 sm:p-10 shadow-2xl overflow-hidden text-center space-y-6 animate-fade-in my-4">
+        {/* Background art */}
+        <div
+          className="absolute inset-0 bg-cover bg-center opacity-25 transform scale-105 pointer-events-none"
+          style={{ backgroundImage: `url('/backgrounds/mop_poster.jpg')` }}
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-zinc-950/95 via-purple-950/80 to-zinc-950/95 pointer-events-none" />
+
         {/* Glow ambient background */}
         <div className="absolute -top-24 -left-24 w-72 h-72 rounded-full bg-purple-600/20 blur-3xl pointer-events-none" />
         <div className="absolute -bottom-24 -right-24 w-72 h-72 rounded-full bg-amber-500/20 blur-3xl pointer-events-none" />
@@ -201,8 +208,15 @@ export const PreReleaseView: React.FC<PreReleaseViewProps> = ({
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Top Exclusive VIP Header */}
-      <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-r from-purple-950 via-zinc-950 to-amber-950 border border-purple-500/50 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="space-y-1">
+      <div className="relative overflow-hidden p-5 sm:p-6 rounded-3xl border border-purple-500/50 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        {/* Background art */}
+        <div
+          className="absolute inset-0 bg-cover bg-center opacity-30 transform scale-105 pointer-events-none"
+          style={{ backgroundImage: `url('/backgrounds/mowt_halo.jpg')` }}
+        />
+        <div className="absolute inset-0 bg-gradient-to-r from-purple-950/95 via-zinc-950/85 to-amber-950/90 pointer-events-none" />
+
+        <div className="relative z-10 space-y-1">
           <div className="flex items-center gap-2">
             <span className="px-2.5 py-0.5 rounded-full bg-gradient-to-r from-amber-500 to-purple-600 text-black text-[9px] font-mono-pip font-extrabold uppercase tracking-wider flex items-center gap-1 shadow">
               <Crown className="w-3 h-3 text-black" />

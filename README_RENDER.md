@@ -28,7 +28,7 @@
    * **Instance Type:** `Free` (бесплатно)
 5. В разделе **Environment Variables** (переменные окружения) добавьте:
    * `TELEGRAM_BOT_TOKEN` = значение, выданное BotFather. Добавьте его напрямую в Environment Variables на Render, не храните в GitHub.
-   * `GEMINI_API_KEY` = ключ Google Gemini для ответов AI-агента и озвучки Littlepip. Для голоса используется `gemini-3.8-flash-lite-tts` с бесплатной квотой Google AI Studio; при превышении квоты Mini App использует системный голос браузера.
+   * `GEMINI_API_KEY` = необязательный ключ Google Gemini для улучшенных ответов и озвучки Littlepip. Без него текстовые ответы Telegram и Mini App работают на встроенном локальном генераторе; для голоса используется системный голос браузера.
    * `YOUTUBE_API_KEY` = необязательный server-side ключ Google Cloud для YouTube Data API v3. Без него используется поиск по публичной странице YouTube; Google API key не требуется.
    * `NODE_ENV` = `production`
 6. Нажмите **«Deploy Web Service»**.

@@ -44,8 +44,15 @@ export const PlannedRPView: React.FC<PlannedRPViewProps> = ({
   return (
     <div className="space-y-6">
       {/* Header Banner with Rainbow Shimmering Accents */}
-      <div className="p-5 rounded-3xl bg-gradient-to-r from-purple-950/40 via-zinc-900 to-zinc-950 border border-purple-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
+      <div className="relative overflow-hidden p-5 sm:p-6 rounded-3xl border border-purple-500/40 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        {/* Background art */}
+        <div
+          className="absolute inset-0 bg-cover bg-center opacity-30 transform scale-105 pointer-events-none"
+          style={{ backgroundImage: `url('/backgrounds/moonlit_forest.jpg')` }}
+        />
+        <div className="absolute inset-0 bg-gradient-to-r from-zinc-950/95 via-purple-950/80 to-zinc-950/90 pointer-events-none" />
+
+        <div className="relative z-10">
           <div className="flex items-center gap-2">
             <span className="text-xl">✨</span>
             <h2 className="text-xl font-bold font-heading rainbow-shimmer-text uppercase tracking-wide">
