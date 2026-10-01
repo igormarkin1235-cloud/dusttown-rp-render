@@ -1525,7 +1525,7 @@ export default function App() {
                 unreadNotificationsCount={(appState.notifications || []).filter(n => !n.isRead).length}
               />
 
-              <RadioMusicPlayer />
+              <RadioMusicPlayer username={currentUser.username} />
 
               {/* Only the sleek side/corner HUD panel */}
               <NavigationDock
@@ -1739,7 +1739,7 @@ export default function App() {
             />
 
             {/* Sleek Right-Corner HUD Navigation Panel («на угол правый, половина сверху половина сбоку») */}
-            <RadioMusicPlayer />
+            <RadioMusicPlayer username={currentUser.username} />
 
             <NavigationDock
               activeTab={activeTab}

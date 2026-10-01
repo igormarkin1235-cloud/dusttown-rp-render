@@ -12,7 +12,10 @@ import {
   ChevronLeft,
   ChevronDown,
   Sparkles,
-  ExternalLink
+  ExternalLink,
+  MessageCircle,
+  Send,
+  X
 } from 'lucide-react';
 
 export interface RadioTrack {
@@ -20,6 +23,15 @@ export interface RadioTrack {
   url: string;
   title: string;
   author: string;
+}
+
+interface RadioMusicPlayerProps {
+  username?: string;
+}
+
+interface AssistantMessage {
+  role: 'user' | 'assistant';
+  text: string;
 }
 
 const DEFAULT_TRACKS: RadioTrack[] = [
@@ -61,7 +73,7 @@ const DEFAULT_TRACKS: RadioTrack[] = [
   }
 ];
 
-export const RadioMusicPlayer: React.FC = () => {
+export const RadioMusicPlayer: React.FC<RadioMusicPlayerProps> = ({ username = 'сталкер' }) => {
   const [tracks, setTracks] = useState<RadioTrack[]>(DEFAULT_TRACKS);
   const [currentTrackIndex, setCurrentTrackIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true); // Autoplay on app start
@@ -69,9 +81,18 @@ export const RadioMusicPlayer: React.FC = () => {
   const [isExpanded, setIsExpanded] = useState(true); // Retractable on the left
   const [showPlaylist, setShowPlaylist] = useState(false);
   const [showVideo, setShowVideo] = useState(true);
+  const [isAssistantOpen, setIsAssistantOpen] = useState(false);
+  const [assistantMessages, setAssistantMessages] = useState<AssistantMessage[]>([]);
+  const [assistantDraft, setAssistantDraft] = useState('');
+  const [isAssistantSending, setIsAssistantSending] = useState(false);
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const assistantEndRef = useRef<HTMLDivElement>(null);
   const currentTrack = tracks[currentTrackIndex] || tracks[0];
+
+  useEffect(() => {
+    assistantEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [assistantMessages, isAssistantOpen]);
 
   // 1. Fetch fresh official titles via YouTube oEmbed API
   useEffect(() => {
@@ -152,6 +173,60 @@ export const RadioMusicPlayer: React.FC = () => {
     setShowPlaylist(false);
   };
 
+  const handleSendAssistantMessage = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const text = assistantDraft.trim();
+    if (!text || isAssistantSending) return;
+
+    const previousMessages = assistantMessages.slice(-10);
+    setAssistantMessages(previous => [...previous, { role: 'user', text }].slice(-20));
+    setAssistantDraft('');
+    setIsAssistantSending(true);
+
+    try {
+      const response = await fetch('/api/littlepip/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, username, mode: 'chat', history: previousMessages })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Пипка сейчас не может ответить.');
+
+      setAssistantMessages(previous => [
+        ...previous,
+        { role: 'assistant', text: data.reply || 'Я тут, но эфир что-то проглотил мой ответ.' }
+      ].slice(-20));
+
+      if (data.track?.id && data.track?.title) {
+        const track: RadioTrack = {
+          id: String(data.track.id),
+          url: String(data.track.url || `https://www.youtube.com/watch?v=${data.track.id}`),
+          title: String(data.track.title),
+          author: String(data.track.author || 'YouTube')
+        };
+        const existingIndex = tracks.findIndex(item => item.id === track.id);
+        if (existingIndex >= 0) {
+          const updatedTracks = [...tracks];
+          updatedTracks[existingIndex] = track;
+          setTracks(updatedTracks);
+          setCurrentTrackIndex(existingIndex);
+        } else {
+          setTracks(previous => [...previous, track]);
+          setCurrentTrackIndex(tracks.length);
+        }
+        setIsPlaying(true);
+        setShowVideo(true);
+      }
+    } catch (error: any) {
+      setAssistantMessages(previous => [
+        ...previous,
+        { role: 'assistant', text: error?.message || 'Связь с радио прервалась. Попробуй ещё раз.' }
+      ].slice(-20));
+    } finally {
+      setIsAssistantSending(false);
+    }
+  };
+
   // Listen to postMessage from YouTube for state updates
   useEffect(() => {
     const handleMsg = (e: MessageEvent) => {
@@ -197,7 +272,7 @@ export const RadioMusicPlayer: React.FC = () => {
       aria-label="Музыкальный плеер Радио Даст Таун"
     >
       {/* Player Main Body */}
-      <div className="bg-zinc-950/95 border border-amber-500/50 rounded-2xl rounded-tl-none p-2 shadow-2xl backdrop-blur-xl flex flex-col gap-1.5 w-48 border-l-2 border-l-amber-500 ring-1 ring-black/80 text-zinc-200">
+      <div className={`bg-zinc-950/95 border border-amber-500/50 rounded-2xl rounded-tl-none p-2 shadow-2xl backdrop-blur-xl flex flex-col gap-1.5 ${isAssistantOpen ? 'w-[min(19rem,calc(100vw-3rem))]' : 'w-48'} border-l-2 border-l-amber-500 ring-1 ring-black/80 text-zinc-200`}>
         {/* Radio Header & Equalizer */}
         <div className="px-1 py-0.5 border-b border-zinc-800/80 flex items-center justify-between">
           <div className="flex items-center gap-1.5">
@@ -228,6 +303,79 @@ export const RadioMusicPlayer: React.FC = () => {
             )}
           </div>
         </div>
+
+        <div className="flex items-center gap-2 border-b border-zinc-800/80 pb-1.5">
+          <span className="relative w-9 h-9 rounded-full shrink-0 overflow-hidden border border-emerald-400/70 bg-zinc-900 flex items-center justify-center text-[10px] font-mono-pip font-bold text-emerald-300">
+            <span aria-hidden="true">LP</span>
+            <img
+              src="/avatars/littlepip.gif"
+              alt="Литлпип"
+              className="absolute inset-0 w-full h-full object-contain"
+              onError={event => { event.currentTarget.style.display = 'none'; }}
+            />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="text-[11px] font-heading font-bold text-emerald-300 truncate">Литлпип</div>
+            <div className="text-[8px] font-mono-pip text-zinc-500 truncate">НА СВЯЗИ • РАДИО 98.7</div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsAssistantOpen(open => !open)}
+            className={`w-8 h-8 grid place-items-center rounded-lg border transition-colors ${isAssistantOpen ? 'border-emerald-400/60 bg-emerald-500/15 text-emerald-300' : 'border-zinc-700 bg-zinc-900 text-zinc-300 hover:text-emerald-300'}`}
+            title={isAssistantOpen ? 'Закрыть чат с Литлпип' : 'Открыть чат с Литлпип'}
+            aria-label={isAssistantOpen ? 'Закрыть чат с Литлпип' : 'Открыть чат с Литлпип'}
+            aria-expanded={isAssistantOpen}
+          >
+            {isAssistantOpen ? <X className="w-4 h-4" /> : <MessageCircle className="w-4 h-4" />}
+          </button>
+        </div>
+
+        {isAssistantOpen && (
+          <section className="rounded-lg border border-emerald-500/25 bg-black/70 p-2 space-y-2" aria-label="Чат с Литлпип">
+            <div className="max-h-44 min-h-20 overflow-y-auto space-y-2 pr-1 scrollbar-thin" role="log" aria-live="polite">
+              {assistantMessages.length === 0 && (
+                <p className="text-[10px] leading-relaxed text-zinc-400">
+                  Привет, {username}! Я тут. Спрашивай про Даст Таун или попроси найти песню.
+                </p>
+              )}
+              {assistantMessages.map((message, index) => (
+                <div
+                  key={`${index}-${message.role}`}
+                  className={`max-w-[92%] rounded-lg px-2 py-1.5 text-[10px] leading-relaxed whitespace-pre-wrap break-words ${
+                    message.role === 'user'
+                      ? 'ml-auto bg-amber-500/15 border border-amber-500/25 text-amber-100'
+                      : 'bg-zinc-900 border border-zinc-800 text-zinc-200'
+                  }`}
+                >
+                  {message.text}
+                </div>
+              ))}
+              {isAssistantSending && (
+                <div className="text-[9px] font-mono-pip text-emerald-400 animate-pulse">ПИПКА ОТВЕЧАЕТ...</div>
+              )}
+              <div ref={assistantEndRef} />
+            </div>
+            <form onSubmit={handleSendAssistantMessage} className="flex items-center gap-1.5">
+              <input
+                value={assistantDraft}
+                onChange={event => setAssistantDraft(event.target.value)}
+                placeholder="Скажи Пипке..."
+                aria-label="Сообщение для Литлпип"
+                maxLength={1000}
+                className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-2 text-[11px] text-zinc-100 placeholder:text-zinc-600 outline-none focus:border-emerald-500/70"
+              />
+              <button
+                type="submit"
+                disabled={isAssistantSending || !assistantDraft.trim()}
+                className="w-9 h-9 grid place-items-center rounded-lg bg-emerald-600 text-zinc-950 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Отправить сообщение"
+                aria-label="Отправить сообщение"
+              >
+                <Send className="w-4 h-4" />
+              </button>
+            </form>
+          </section>
+        )}
 
         {/* Pip-Buck CRT Video Screen (Pure React Iframe, never mutating React DOM) */}
         <div

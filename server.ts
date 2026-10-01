@@ -5,6 +5,9 @@ import fs from 'fs';
 import { exec } from 'child_process';
 import { fileURLToPath } from 'url';
 import { handleLittlepipUpdate, getLittlepipStats, generateLittlepipText } from './src/services/littlepipAgent';
+import { CloudChatState, FirebaseCloudStore } from './src/services/firebaseCloud';
+import { AppStateData } from './src/types';
+import { extractSongSearchQuery, searchYouTubeTrack } from './src/services/youtubeSearch';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,6 +25,13 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 // Persistent state cache file path
 const DATA_FILE = path.join(__dirname, '.dusttown_data.json');
 const BACKUP_FILE = path.join(__dirname, 'backup_seed_data.json');
+const firebaseCloudStore = new FirebaseCloudStore();
+const firebaseConfigured = Boolean(process.env.FIREBASE_SERVICE_ACCOUNT_JSON && process.env.FIREBASE_STORAGE_BUCKET);
+let firebaseConnected = false;
+let firebaseHealthy = false;
+let firebaseLastError: string | null = null;
+let firebaseLastSyncedAt: string | null = null;
+let cloudSaveQueue: Promise<void> = Promise.resolve();
 
 function getDefaultData() {
   return {
@@ -284,8 +294,69 @@ function saveData(data: any) {
     } catch (bErr) {
       // backup best-effort
     }
+
+    if (firebaseConnected) {
+      const snapshot = JSON.parse(str);
+      cloudSaveQueue = cloudSaveQueue.then(async () => {
+        await firebaseCloudStore.saveAppState(snapshot as AppStateData);
+        const chatState: CloudChatState = {
+          messages: snapshot.chatMessages || [],
+          nukeAlerts: snapshot.nukeAlert ? [snapshot.nukeAlert] : []
+        };
+        await firebaseCloudStore.saveChatState(chatState);
+        firebaseHealthy = true;
+        firebaseLastError = null;
+        firebaseLastSyncedAt = new Date().toISOString();
+      }).catch((error: any) => {
+        firebaseHealthy = false;
+        firebaseLastError = error?.message || 'Firebase write failed';
+        console.error('[Firebase persistence] Save failed; local JSON remains available:', firebaseLastError);
+      });
+    }
   } catch (e) {
     console.error('Failed to write DATA_FILE:', e);
+  }
+}
+
+async function initializeFirebasePersistence() {
+  if (!firebaseConfigured) {
+    console.info('[Persistence] Firebase credentials not configured; using local JSON storage');
+    return;
+  }
+
+  try {
+    firebaseConnected = await firebaseCloudStore.connect();
+    if (!firebaseConnected) return;
+
+    const localState = getOrInitData();
+    const [cloudState, cloudChat] = await Promise.all([
+      firebaseCloudStore.loadAppState(),
+      firebaseCloudStore.loadChatState()
+    ]);
+
+    if (cloudState) {
+      const restored = {
+        ...localState,
+        ...cloudState,
+        chatMessages: cloudChat?.messages ?? localState.chatMessages ?? [],
+        nukeAlert: cloudChat?.nukeAlerts?.[0] ?? null
+      };
+      fs.writeFileSync(DATA_FILE, JSON.stringify(restored, null, 2), 'utf-8');
+      firebaseHealthy = true;
+      firebaseLastSyncedAt = new Date().toISOString();
+      console.info('[Persistence] Restored application state from Firebase');
+      return;
+    }
+
+    console.info('[Persistence] Firebase is empty; seeding it from the local data snapshot');
+    saveData(localState);
+    await cloudSaveQueue;
+    if (!firebaseHealthy) throw new Error(firebaseLastError || 'Initial Firebase save failed');
+  } catch (error: any) {
+    firebaseConnected = false;
+    firebaseHealthy = false;
+    firebaseLastError = error?.message || 'Firebase initialization failed';
+    console.error('[Persistence] Firebase unavailable; continuing with local JSON storage:', firebaseLastError);
   }
 }
 
@@ -403,7 +474,7 @@ async function startTelegramPolling() {
         if (data.ok && Array.isArray(data.result)) {
           for (const update of data.result) {
             lastUpdateId = update.update_id;
-            handleTelegramUpdate(update);
+            await handleTelegramUpdate(update);
           }
         } else if (!data.ok) {
           lastBotError = data.description || 'Polling error';
@@ -429,6 +500,28 @@ function stopTelegramPolling() {
 
 // Handle Bot Messages
 async function handleTelegramUpdate(update: any) {
+  const callback = update.callback_query;
+  if (callback) {
+    const callbackCommand = callback.data === 'talk_littlepip'
+      ? '/pip_start'
+      : callback.data === 'support_littlepip'
+        ? '/support'
+        : null;
+    if (callbackCommand) {
+      await tgApi('answerCallbackQuery', { callback_query_id: callback.id });
+      if (callback.message?.chat?.id) {
+        await handleTelegramUpdate({
+          message: {
+            ...callback.message,
+            from: callback.from,
+            text: callbackCommand
+          }
+        });
+      }
+    }
+    return;
+  }
+
   const msg = update.message;
   if (!msg || !msg.text) return;
 
@@ -578,8 +671,35 @@ app.post('/api/littlepip/chat', async (req, res) => {
     const text = req.body?.text || '';
     const username = req.body?.username || 'сталкер';
     const mode = req.body?.mode || (text.toLowerCase().includes('support') ? 'support' : 'chat');
+    const conversationHistory = Array.isArray(req.body?.history)
+      ? req.body.history.slice(-10).filter((message: any) =>
+        ['user', 'assistant'].includes(message?.role) && typeof message?.text === 'string'
+      ).map((message: any) => ({
+        username: message.role === 'assistant' ? 'Литлпип' : username,
+        text: message.text.slice(0, 1000),
+        timestamp: Date.now()
+      }))
+      : [];
 
-    const reply = await generateLittlepipText(text, username, mode);
+    const songQuery = mode === 'chat' ? extractSongSearchQuery(text) : null;
+    if (songQuery) {
+      const apiKey = process.env.YOUTUBE_API_KEY;
+      if (!apiKey) {
+        return res.status(503).json({ error: 'YouTube-поиск не настроен: добавьте YOUTUBE_API_KEY на сервере.' });
+      }
+      const track = await searchYouTubeTrack(songQuery, apiKey);
+      if (!track) {
+        return res.status(404).json({ error: `Не нашла подходящую песню по запросу «${songQuery}». Попробуй назвать исполнителя или точнее описать трек.` });
+      }
+      return res.json({
+        success: true,
+        mode,
+        track,
+        reply: `Нашла «${track.title}» у ${track.author}. Добавляю в радио и включаю. 🎵`
+      });
+    }
+
+    const reply = await generateLittlepipText(text, username, mode, conversationHistory);
     res.json({
       success: true,
       reply,
@@ -1022,7 +1142,14 @@ app.get('/api/version', (req, res) => {
     ...buildInfo,
     currentTime: new Date().toISOString(),
     telegramBot: 'active',
-    port: PORT
+    port: PORT,
+    persistence: {
+      provider: firebaseConnected ? 'firebase' : 'local-json',
+      configured: firebaseConfigured,
+      healthy: firebaseHealthy,
+      lastSyncedAt: firebaseLastSyncedAt,
+      error: firebaseLastError ? 'Firebase sync failed; see server logs' : null
+    }
   });
 });
 
@@ -1988,11 +2115,12 @@ app.post('/api/data', (req, res) => {
   }
 });
 
-// Bot is hosted externally on Render. Do not auto-start polling here to avoid conflicts.
-// startTelegramPolling().catch(err => { console.error('Initial telegram polling error:', err); });
+// Production polling is started from startServer; local development stays disconnected by default.
 
 // Mount Vite or serve static
 async function startServer() {
+  await initializeFirebasePersistence();
+
   const distDir = path.join(__dirname, 'dist');
   const indexHtmlPath = path.join(distDir, 'index.html');
   const hasBuiltDist = fs.existsSync(indexHtmlPath);
@@ -2067,6 +2195,12 @@ async function startServer() {
   app.listen(PORT, () => {
     console.log(`DustTown RP Server running on http://localhost:${PORT}`);
   });
+
+  if (process.env.NODE_ENV === 'production' && process.env.DISABLE_TELEGRAM_POLLING !== 'true') {
+    startTelegramPolling().catch(error => {
+      console.error('Failed to start Telegram polling:', error);
+    });
+  }
 }
 
 startServer();

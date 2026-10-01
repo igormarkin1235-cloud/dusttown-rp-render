@@ -72,6 +72,39 @@ function saveState(state: LittlepipState): void {
 }
 
 let agentState: LittlepipState = loadState();
+export interface LittlepipConversationMessage {
+  username: string;
+  text: string;
+  timestamp: number;
+}
+
+const recentConversations = new Map<string, LittlepipConversationMessage[]>();
+
+export function parseLittlepipCommand(text: string): string | null {
+  const firstToken = text.trim().split(/\s+/, 1)[0] || '';
+  const match = firstToken.match(/^\/([a-z0-9_]+)(?:@[a-z0-9_]+)?$/i);
+  return match?.[1].toLowerCase() || null;
+}
+
+export function getRecentLittlepipMessages(
+  chatId: number | string,
+  threadId?: number
+): LittlepipConversationMessage[] {
+  return [...(recentConversations.get(getBindingKey(chatId, threadId)) || [])];
+}
+
+function rememberConversationMessage(
+  chatId: number | string,
+  threadId: number | undefined,
+  username: string,
+  text: string
+): void {
+  if (!text || text.startsWith('/')) return;
+  const key = getBindingKey(chatId, threadId);
+  const messages = recentConversations.get(key) || [];
+  messages.push({ username, text, timestamp: Date.now() });
+  recentConversations.set(key, messages.slice(-10));
+}
 
 export function getBindingKey(chatId: number | string, threadId?: number): string {
   return `${chatId}:${threadId || 'root'}`;
@@ -150,48 +183,9 @@ export function readFileSnippet(relativePath: string, maxLines = 150): string | 
 // 4. ТРИГГЕРЫ ИМЕНИ ЛИТЛПИП
 // ==========================================
 
-const PIP_NAME_PATTERNS = [
-  /\bлитлпип\b/i,
-  /\bлитлпипа\b/i,
-  /\bпипка\b/i,
-  /\bпипке\b/i,
-  /\bпипку\b/i,
-  /\bпипкой\b/i,
-  /\bпип\b/i,
-  /\bлитка\b/i,
-  /\bлитке\b/i,
-  /\bлитку\b/i,
-  /\bлиткой\b/i,
-  /\bлилька\b/i,
-  /\bлильке\b/i,
-  /\bлильку\b/i,
-  /\bлилькой\b/i,
-  /\blittlepip\b/i,
-  /\bpip\b/i,
-  /\bпип-бак\b/i,
-  /\bпипбак\b/i
-];
-
 export function hasPipMention(text: string): boolean {
   if (!text) return false;
-  const normalized = text.toLowerCase();
-
-  if (PIP_NAME_PATTERNS.some(regex => regex.test(normalized))) return true;
-
-  const directAddress = /^(пипка|литлпип|литка|лилька|littlepip)[\s,!?-]/i.test(normalized);
-  const callByName = /(?:^|[\s,(])(?:пипка|литлпип|литка|лилька|littlepip)(?:[\s,!?-]|$)/i.test(normalized);
-  return directAddress || callByName;
-}
-
-function isPipConversationTrigger(text: string): boolean {
-  const clean = (text || '').trim();
-  if (!clean) return false;
-  const lower = clean.toLowerCase();
-
-  const nameMention = hasPipMention(lower);
-  const botRequest = /(помоги|подскажи|ты тут|ты здесь|отвечай|шо|что думаешь|ты знаешь|что такое|фоэ|foe|fallout equestria|другое? форумы?)/i.test(lower);
-  const forumRequest = /(форум|вики|сайт|ссылк[а-я]?|обсужд|сообщество)/i.test(lower);
-  return nameMention || botRequest || forumRequest;
+  return /(^|[^\p{L}\p{N}_])(?:литлпип(?:а|у|е|ом)?|пипка(?:и|е|у|ой)?|пип(?:а|ке|ку|кой)?|литка(?:и|е|у|ой)?|лилька(?:и|е|у|ой)?|малышка(?:и|е|у|ой)?|littlepip|lily)(?=$|[^\p{L}\p{N}_])/iu.test(text);
 }
 
 // ==========================================
@@ -212,6 +206,8 @@ function buildSystemPrompt(mode: AgentMode): string {
 • Не зацикливайся на одном слове, не повторяй «пип-бак» или «я поправлю свой пип-бак» в каждом сообщении. Это не смешно и ломает вайб.
 • Если не знаешь точный канон Fallout: Equestria или конкретный факт — не выдумывай. Скажи честно: "я не хочу гадать" или "по этому канону не уверен". Лучше честно уточнить, чем наврать.
 • Если собеседник спрашивает про форум или сообщество — давай прямую ссылку в конце сообщения: ${DUSTTOWN_FORUM_URL}
+• Когда к тебе обращаются по имени, учитывай до 10 последних реплик этого же чата/топика: можешь ответить на предыдущую мысль, подхватить шутку или поддержать разговор. Не приписывай людям слова и не отвечай так, будто прочитала то, чего нет в контексте.
+• Меняй ритм и формулировки: иногда короткая реплика, иногда уточняющий вопрос, иногда сочувствие или уместная шутка. Не вставляй Pip-Buck, сидр или оружие в каждый ответ.
 
 ТЕКУЩИЙ РЕЖИМ: ${isSupport ? 'ТЕХПОДДЕРЖКА И КОД БОТА (/support)' : 'ОБЫЧНЫЙ СТАЛКЕРСКИЙ ДИАЛОГ (/pip_start)'}
 
@@ -363,16 +359,31 @@ function generateDynamicConversationalReply(text: string, mode: AgentMode, usern
 }
 
 // Единый оркестратор генерации реплики Литлпип
-export async function generateLittlepipText(
+export function buildLittlepipPrompt(
   cleanText: string,
   username: string,
-  mode: AgentMode
-): Promise<string> {
-  const systemInstruction = buildSystemPrompt(mode);
-  let promptText = `Собеседник @${username} пишет: "${cleanText}"`;
+  mode: AgentMode,
+  conversationHistory: LittlepipConversationMessage[] = []
+): string {
+  const recentContext = conversationHistory.slice(-10);
+  let promptText = recentContext.length
+    ? `Последние сообщения в чате перед обращением к тебе (от старых к новым):\n${recentContext.map(message => `${message.username}: ${message.text}`).join('\n')}\n\n`
+    : '';
+  promptText += `Текущее обращение от ${username}: "${cleanText}"`;
   if (mode === 'support') {
     promptText += `\n\nКонтекст архитектуры проекта Даст Таун:\n${getBotArchitectureOverview()}`;
   }
+  return promptText;
+}
+
+export async function generateLittlepipText(
+  cleanText: string,
+  username: string,
+  mode: AgentMode,
+  conversationHistory: LittlepipConversationMessage[] = []
+): Promise<string> {
+  const systemInstruction = buildSystemPrompt(mode);
+  const promptText = buildLittlepipPrompt(cleanText, username, mode, conversationHistory);
 
   // 1. Попытка через Gemini 3.8 / 3.1 Flash Lite
   const geminiResult = await generateGeminiReply(systemInstruction, promptText);
@@ -417,6 +428,9 @@ export async function handleLittlepipUpdate(
   const { chatId, threadId, text, username, messageId, replyToMessage, botUsername } = ctx;
   const cleanText = (text || '').trim();
   const lower = cleanText.toLowerCase();
+  const command = parseLittlepipCommand(cleanText);
+  const conversationHistory = getRecentLittlepipMessages(chatId, threadId);
+  if (!command) rememberConversationMessage(chatId, threadId, username, cleanText);
 
   // Helper options with thread_id for forum topics
   const sendOpts: any = {
@@ -428,10 +442,10 @@ export async function handleLittlepipUpdate(
   }
 
   // 1. КОМАНДА /pip_start (или /littlepip, /pip, /ai_start) — ОБЫЧНЫЙ СТАРТ ДИАЛОГА
-  if (lower.startsWith('/pip_start') || lower.startsWith('/littlepip') || lower.startsWith('/ai_start') || lower === '/pip') {
+  if (command && ['pip_start', 'littlepip', 'ai_start', 'pip'].includes(command)) {
     bindTopic(chatId, threadId, 'chat', username);
     const greeting = `👋 **Хэээй! Литлпип на связи!** 🦄✨\n\n` +
-      `Pip-Buck откалиброван, Макинтош начищен, копытца готовы к приключениям! Я привязалась к этому диалогу${threadId ? ' (в этой вкладке/топике)' : ''}.\n\n` +
+      `Я привязалась к этому диалогу${threadId ? ' (в этой вкладке/топике)' : ''}. Что у вас тут происходит — мне уже нравятся первые подозрительные детали.\n\n` +
       `💬 **Как со мной общаться:**\n` +
       `• Зови меня по имени в репликах: *Литлпип*, *Пипка*, *Литка*, *Лилька*\n` +
       `• Или просто пиши сюда — я внимательно слежу за контекстом!\n` +
@@ -444,10 +458,10 @@ export async function handleLittlepipUpdate(
   }
 
   // 2. КОМАНДА /support (или /pip_support, /tech_support) — ЗАПУСК ТЕХПОДДЕРЖКИ
-  if (lower.startsWith('/support') || lower.startsWith('/pip_support') || lower.startsWith('/tech_support')) {
+  if (command && ['support', 'pip_support', 'tech_support'].includes(command)) {
     bindTopic(chatId, threadId, 'support', username);
     const supportGreeting = `🛠️ **Литлпип: Режим Техподдержки активирован!** 🔧⚡\n\n` +
-      `Так-так, подключаю свой Pip-Buck к серверным терминалам и базе данных Даст Таун!\n\n` +
+      `Так-так, открываю терминалы Даст Таун. Показывай, где именно система решила устроить драму.\n\n` +
       `📋 **Чем могу помочь:**\n` +
       `• **Архитектура бота:** расскажу, как устроен \`server.ts\`, роуты чата, ядерка и хостинг на Render\n` +
       `• **Экономика ℰQ:** разберём начисление зарплат, кейсы, аукцион и профили\n` +
@@ -460,7 +474,7 @@ export async function handleLittlepipUpdate(
   }
 
   // 3. КОМАНДА /pip_bind — ПРИВЯЗКА К ВКЛАДКЕ/ТОПИКУ
-  if (lower.startsWith('/pip_bind') || lower.startsWith('/bind_topic')) {
+  if (command && ['pip_bind', 'bind_topic'].includes(command)) {
     const mode: AgentMode = lower.includes('support') ? 'support' : 'chat';
     bindTopic(chatId, threadId, mode, username);
     const bindText = `📌 **Литлпип успешно привязана к этой вкладке!**\n\n` +
@@ -474,8 +488,7 @@ export async function handleLittlepipUpdate(
   }
 
   // 4. КОМАНДА /stop (или /pip_stop, /ai_stop) — ОСТАНОВКА ИИ
-  if (lower.startsWith('/stop') || lower.startsWith('/pip_stop') || lower.startsWith('/ai_stop')) {
-    const wasActive = isLittlepipActive(chatId, threadId);
+  if (command && ['stop', 'pip_stop', 'ai_stop'].includes(command)) {
     unbindTopic(chatId, threadId);
     const stopText = `📻 **Ухожу на радиомолчание!**\n\n` +
       `Pip-Buck переведён в спящий режим. Я больше не буду автоматически встревать в разговор${threadId ? ' в этой вкладке' : ''}.\n\n` +
@@ -486,7 +499,7 @@ export async function handleLittlepipUpdate(
   }
 
   // 5. КОМАНДА /pip_status — ПРОВЕРКА СТАТУСА
-  if (lower.startsWith('/pip_status')) {
+  if (command === 'pip_status') {
     const binding = getBinding(chatId, threadId);
     const statusText = `📊 **Статус Литлпип:**\n\n` +
       `• Активность: ${binding?.isActive ? '🟢 В сети и слушает эфир' : '⚪ В спящем режиме'}\n` +
@@ -499,6 +512,8 @@ export async function handleLittlepipUpdate(
     return { handled: true, replyText: statusText };
   }
 
+  if (command) return { handled: false };
+
   // 6. ПРОВЕРКА, ДОЛЖНА ЛИ ЛИТЛПИП ОТВЕТИТЬ НА СООБЩЕНИЕ
   const binding = getBinding(chatId, threadId);
   const isMentioned = hasPipMention(cleanText);
@@ -508,23 +523,7 @@ export async function handleLittlepipUpdate(
       replyToMessage.from?.is_bot
     )
   );
-  const isBoundAndActive = Boolean(binding && binding.isActive);
-  const isTriggerMessage = isPipConversationTrigger(cleanText);
-
-  // Если не упомянута, не реплай и не есть явный триггер — пропускаем.
-  // В активной привязке Литлпип не отвечает на мусорный поток без имени и контекста.
-  if (!isMentioned && !isReplyToMe && !isTriggerMessage && !isBoundAndActive) {
-    return { handled: false };
-  }
-
-  if (!isMentioned && !isReplyToMe && !isTriggerMessage) {
-    return { handled: false };
-  }
-
-  // Если сообщение является другой бот-командой (например, /market, /start) — не перебиваем
-  if (cleanText.startsWith('/') && !cleanText.startsWith('/pip') && !cleanText.startsWith('/support')) {
-    return { handled: false };
-  }
+  if (!isMentioned && !isReplyToMe) return { handled: false };
 
   // 7. ФОРМИРОВАНИЕ ОТВЕТА ЛИТЛПИП
   const activeMode: AgentMode = binding?.mode || (lower.includes('ошибк') || lower.includes('помоги') || lower.includes('код') ? 'support' : 'chat');
@@ -536,7 +535,12 @@ export async function handleLittlepipUpdate(
   }
 
   // Запуск многоуровневой генерации (Gemini -> Свободная нейросеть -> Контекстный синтезатор)
-  const finalReply = await generateLittlepipText(cleanText, username || 'сталкер', activeMode);
+  const finalReply = await generateLittlepipText(
+    cleanText,
+    username || 'сталкер',
+    activeMode,
+    conversationHistory
+  );
 
   // Отправляем ответ в тот же чат и тему
   await sendMessageFn(chatId, finalReply, sendOpts);
