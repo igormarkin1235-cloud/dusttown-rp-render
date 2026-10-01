@@ -20,7 +20,8 @@ import {
   ChevronRight,
   ArrowRight,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Award
 } from 'lucide-react';
 
 interface NotificationModalProps {
@@ -52,7 +53,7 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
     if (filterType === 'bot') return n.type === 'bot_update';
     if (filterType === 'market') return n.type === 'auction' || n.type === 'case';
     if (filterType === 'events') return n.type === 'event';
-    if (filterType === 'community') return n.type === 'new_user' || n.type === 'new_vip' || n.type === 'new_admin' || n.type === 'faction';
+    if (filterType === 'community') return n.type === 'new_user' || n.type === 'new_vip' || n.type === 'new_admin' || n.type === 'faction' || n.type === 'achievement';
     return true;
   });
 
@@ -70,6 +71,8 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
         return <Shield className="w-4 h-4 text-emerald-400" />;
       case 'case':
         return <Package className="w-4 h-4 text-cyan-400" />;
+      case 'achievement':
+        return <Award className="w-4 h-4 text-amber-300" />;
       case 'new_vip':
         return <Crown className="w-4 h-4 text-amber-300" />;
       case 'new_admin':

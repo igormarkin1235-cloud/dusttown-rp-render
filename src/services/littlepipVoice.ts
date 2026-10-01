@@ -14,7 +14,7 @@ export function buildLittlepipSpeechRequest(text: string) {
       speechConfig: {
         languageCode: 'ru-RU',
         voiceConfig: {
-          prebuiltVoiceConfig: { voiceName: 'Leda' }
+          prebuiltVoiceConfig: { voiceName: 'Aoede' }
         }
       }
     }

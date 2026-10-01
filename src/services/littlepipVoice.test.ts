@@ -10,6 +10,8 @@ test('sends only the Russian reply as speech content, not English voice directio
 
   assert.equal(spokenContent, reply);
   assert.match(request.config.systemInstruction, /Произнеси только текст пользователя/);
+  assert.match(request.config.systemInstruction, /молодой женский/);
+  assert.equal(request.config.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName, 'Aoede');
   assert.doesNotMatch(spokenContent, /Read this Russian message|warm|feminine voice/i);
 });
 

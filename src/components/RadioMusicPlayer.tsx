@@ -204,7 +204,9 @@ export const RadioMusicPlayer: React.FC<RadioMusicPlayerProps> = ({ username = '
     const synth = window.speechSynthesis;
     const utterance = new SpeechSynthesisUtterance(text);
     const russianVoices = synth.getVoices().filter(voice => voice.lang.toLowerCase().startsWith('ru'));
-    utterance.voice = russianVoices.find(voice => /female|жен|milena|alena|irina/i.test(voice.name)) || russianVoices[0] || null;
+    const feminineVoice = russianVoices.find(voice => /female|жен|milena|alena|irina|tatyana|svetlana|oksana|daria|polina/i.test(voice.name));
+    if (!feminineVoice) return;
+    utterance.voice = feminineVoice;
     utterance.lang = 'ru-RU';
     utterance.pitch = 1.22;
     utterance.rate = 1.02;

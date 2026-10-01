@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { UserProfile, AdminInfo } from '../types';
+import { UserProfile, AdminInfo, ActivityLogEntry } from '../types';
 import { AvatarWithFrame } from './AvatarWithFrame';
 import { Users, Search, Shield, Crown } from 'lucide-react';
 
 interface ProfilesTopBarProps {
   profiles: UserProfile[];
   admins: AdminInfo[];
+  activityLogs?: ActivityLogEntry[];
   currentUserId: string;
   onSelectProfile: (profile: UserProfile) => void;
 }
@@ -13,6 +14,7 @@ interface ProfilesTopBarProps {
 export const ProfilesTopBar: React.FC<ProfilesTopBarProps> = ({
   profiles,
   admins,
+  activityLogs = [],
   currentUserId,
   onSelectProfile
 }) => {
@@ -39,7 +41,30 @@ export const ProfilesTopBar: React.FC<ProfilesTopBarProps> = ({
     return result;
   }, [profiles]);
 
-  const filtered = uniqueProfiles.filter(
+  const { rankedProfiles, ranks } = React.useMemo(() => {
+    const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const scores = new Map<string, number>();
+    for (const log of activityLogs) {
+      if (new Date(log.timestamp).getTime() < cutoff) continue;
+      const key = (log.userId || log.username || '').toLowerCase();
+      if (key) scores.set(key, (scores.get(key) || 0) + 1);
+    }
+
+    const ranked = uniqueProfiles
+      .map((profile, index) => ({
+        profile,
+        index,
+        score: scores.get(profile.id.toLowerCase()) || scores.get(profile.username.toLowerCase()) || 0
+      }))
+      .sort((left, right) => right.score - left.score || left.index - right.index);
+    const rankedIds = new Map<string, number>();
+    ranked.filter(item => item.score > 0).slice(0, 3).forEach((item, index) => {
+      rankedIds.set(item.profile.id, index + 1);
+    });
+    return { rankedProfiles: ranked.map(item => item.profile), ranks: rankedIds };
+  }, [uniqueProfiles, activityLogs]);
+
+  const filtered = rankedProfiles.filter(
     p =>
       (p.displayName || '').toLowerCase().includes(search.toLowerCase()) ||
       (p.username || '').toLowerCase().includes(search.toLowerCase())
@@ -83,6 +108,8 @@ export const ProfilesTopBar: React.FC<ProfilesTopBarProps> = ({
                 a => (a.username || '').toLowerCase() === (profile.username || '').toLowerCase()
               );
             const itemKey = profileId || profile.username || `profile-${index}`;
+            const rank = ranks.get(profileId);
+            const rankFrame = rank === 1 ? 'frame_rad_pulse' : rank === 2 ? 'frame_rainbow_neon' : rank === 3 ? 'frame_gold_3d' : profile.activeAvatarFrame;
 
             return (
               <button
@@ -99,7 +126,7 @@ export const ProfilesTopBar: React.FC<ProfilesTopBarProps> = ({
                   <div className="relative">
                     <AvatarWithFrame
                       avatarUrl={profile.avatarUrl}
-                      frameId={profile.activeAvatarFrame}
+                      frameId={rankFrame}
                       size="sm"
                     />
                     {isOwner && (
@@ -119,6 +146,11 @@ export const ProfilesTopBar: React.FC<ProfilesTopBarProps> = ({
                   {isAdmin && (
                     <span className="badge-admin-shimmer text-white text-[8px] font-black uppercase px-1.5 py-0.5 rounded-full tracking-wider mt-1 scale-95 shadow">
                       Админ
+                    </span>
+                  )}
+                  {rank && (
+                    <span className={`mt-1 rounded-full border px-1.5 py-0.5 text-[8px] font-black ${rank === 1 ? 'border-emerald-400/60 text-emerald-300' : rank === 2 ? 'border-cyan-300/60 text-cyan-200' : 'border-amber-400/60 text-amber-300'}`}>
+                      АКТИВ #{rank}
                     </span>
                   )}
                 </div>

@@ -458,6 +458,7 @@ export type NotificationType =
   | 'new_user'
   | 'faction'
   | 'case'
+  | 'achievement'
   | 'new_vip'
   | 'new_admin';
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   AppStateData,
   UserProfile,
@@ -99,6 +99,8 @@ export default function App() {
   const [selectedCollab, setSelectedCollab] = useState<RPEvent | null>(null);
   const [salaryNotice, setSalaryNotice] = useState<{ amount: number; days: number; factionName: string } | null>(null);
   const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
+  const [activeToast, setActiveToast] = useState<AppNotification | null>(null);
+  const seenNotificationIds = useRef(new Set((appState.notifications || []).map(notification => notification.id)));
   const [selectedArtIdForFocus, setSelectedArtIdForFocus] = useState<string | null>(null);
   const [chatRecipient, setChatRecipient] = useState<UserProfile | null>(null);
 
@@ -107,6 +109,20 @@ export default function App() {
   }, [soundEnabled]);
 
   useEffect(() => installGlobalButtonSounds(), []);
+
+  useEffect(() => {
+    const notifications = appState.notifications || [];
+    const fresh = notifications.filter(notification => !seenNotificationIds.current.has(notification.id));
+    notifications.forEach(notification => seenNotificationIds.current.add(notification.id));
+    const recent = fresh.filter(notification => Date.now() - new Date(notification.timestamp).getTime() < 60_000);
+    if (recent.length) setActiveToast(recent[0]);
+  }, [appState.notifications]);
+
+  useEffect(() => {
+    if (!activeToast) return;
+    const timer = window.setTimeout(() => setActiveToast(null), 7000);
+    return () => window.clearTimeout(timer);
+  }, [activeToast]);
 
   // Initial Sync + Background Polling of shared server state
   useEffect(() => {
@@ -893,15 +909,16 @@ export default function App() {
 
   // Profile Update Handler
   const handleUpdateProfile = async (updated: UserProfile) => {
-    updateState(prev => ({
-      ...prev,
-      profiles: prev.profiles.map(p => (p.id === updated.id ? updated : p))
-    }));
-    // Sync single profile directly to server so all other players see changes immediately
     const serverResult = await updateUserProfileOnServer(updated.id, updated);
     if (serverResult && Array.isArray(serverResult.profiles) && serverResult.profiles.length > 0) {
       setAppState(serverResult);
+      return;
     }
+
+    updateState(prev => ({
+      ...prev,
+      profiles: prev.profiles.map(profile => profile.id === updated.id ? updated : profile)
+    }));
   };
 
   // Case Opening Handler (Server-Side Handshake Verification)
@@ -1432,6 +1449,26 @@ export default function App() {
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col relative selection:bg-amber-500 selection:text-black">
       <NukeBroadcastOverlay />
+      {activeToast && (
+        <div role="status" className="fixed top-4 right-4 z-[80] w-[min(24rem,calc(100vw-2rem))] overflow-hidden border border-emerald-400/50 bg-zinc-950/95 shadow-2xl shadow-emerald-950/50 backdrop-blur-xl animate-fade-in">
+          <div className="flex items-start gap-3 border-l-4 border-emerald-400 p-4">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center border border-emerald-400/30 bg-emerald-400/10 text-lg" aria-hidden="true">
+              {activeToast.iconEmoji || '📡'}
+            </span>
+            <button
+              onClick={() => { handleNotificationClick(activeToast); setActiveToast(null); }}
+              className="min-w-0 flex-1 text-left"
+            >
+              <span className="block text-[10px] font-mono-pip font-bold uppercase text-emerald-300">Пипка · входящее сообщение</span>
+              <span className="mt-1 block text-sm font-bold text-white">{activeToast.title}</span>
+              <span className="mt-1 block line-clamp-2 text-xs leading-relaxed text-zinc-300">{activeToast.message}</span>
+            </button>
+            <button onClick={() => setActiveToast(null)} aria-label="Закрыть уведомление" className="shrink-0 p-1 text-zinc-500 hover:text-white">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
       {/* Top Mode Switcher Bar: STRICTLY VISIBLE ONLY TO OWNER */}
       {isOwner && (
         <div className="w-full bg-zinc-900 border-b border-zinc-800 px-3 py-2 text-xs flex items-center justify-between">
@@ -1511,6 +1548,7 @@ export default function App() {
               <ProfilesTopBar
                 profiles={appState.profiles}
                 admins={appState.admins}
+                activityLogs={appState.activityLogs || []}
                 currentUserId={currentUserId}
                 onSelectProfile={profile => setInspectedProfile(profile)}
               />
@@ -1723,6 +1761,7 @@ export default function App() {
             <ProfilesTopBar
               profiles={appState.profiles}
               admins={appState.admins}
+              activityLogs={appState.activityLogs || []}
               currentUserId={currentUserId}
               onSelectProfile={profile => setInspectedProfile(profile)}
             />

@@ -43,7 +43,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
         return;
       }
       try {
-        const fresh = await fetchChatMessages(mode === 'private' ? selectedRecipient?.id : undefined);
+        const fresh = await fetchChatMessages(currentUser.id, mode === 'private' ? selectedRecipient?.id : undefined);
         if (isMounted) {
           setMessages(fresh);
           setError('');
@@ -77,17 +77,26 @@ export const ChatView: React.FC<ChatViewProps> = ({
     setIsSending(true);
     setError('');
     try {
+      const messageStyle = {
+        customBgUrl: currentUser.customBgUrl,
+        customBgEffect: currentUser.customBgEffect || 'none',
+        customBgPosition: currentUser.customBgPosition || 'center',
+        profileTextBg: currentUser.activeTextBg,
+        profileTextColor: currentUser.activeTextColor
+      };
       if (isNukeMode && mode === 'public') {
-        await sendNukeMessage(content);
+        await sendNukeMessage(content, currentUser.id, messageStyle);
         setIsNukeMode(false);
       } else {
         await sendChatMessage({
           content,
+          senderId: currentUser.id,
+          style: messageStyle,
           ...(mode === 'private' && selectedRecipient ? { recipientId: selectedRecipient.id } : {})
         });
       }
       setDraft('');
-      setMessages(await fetchChatMessages(mode === 'private' ? selectedRecipient?.id : undefined));
+      setMessages(await fetchChatMessages(currentUser.id, mode === 'private' ? selectedRecipient?.id : undefined));
     } catch (sendError: any) {
       setError(sendError.message || 'Не удалось отправить сообщение');
     } finally {
@@ -179,6 +188,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
               const sender = profiles.find(profile => profile.id === message.senderId);
               const isMine = message.senderId === currentUser.id;
               const isNuke = message.type === 'nuke';
+              const isSystem = message.type === 'system';
               return (
                 <article key={message.id} className={`flex gap-2 ${isMine ? 'flex-row-reverse' : ''}`}>
                   {sender ? (
@@ -197,6 +207,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
                       className={`chat-message-bubble inline-block max-w-full break-words rounded-xl border px-3 py-2 text-left text-sm ${!isNuke ? message.style?.profileTextBg || '' : ''} ${!isNuke ? message.style?.profileTextColor || '' : ''} ${
                         isNuke
                           ? 'chat-nuke-message border-emerald-300/70 font-bold text-emerald-50'
+                          : isSystem
+                          ? 'border-emerald-500/60 bg-gradient-to-br from-emerald-950/80 via-zinc-900 to-amber-950/40 text-emerald-100 shadow-[0_0_20px_rgba(16,185,129,0.12)]'
                           : isMine
                           ? 'border-emerald-700/50 bg-emerald-950/40'
                           : 'border-zinc-700 bg-zinc-900'
@@ -208,6 +220,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                       } : undefined}
                     >
                       {isNuke && <span className="mb-1 flex items-center gap-1 text-[10px] font-black uppercase tracking-wide text-emerald-200"><ShieldAlert className="h-3.5 w-3.5" /> Ядерное сообщение</span>}
+                      {isSystem && <span className="mb-1 flex items-center gap-1 text-[10px] font-black uppercase text-emerald-300"><Radio className="h-3.5 w-3.5" /> Сообщение Пипки</span>}
                       {message.content}
                     </div>
                   </div>

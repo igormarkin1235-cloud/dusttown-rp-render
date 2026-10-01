@@ -17,7 +17,7 @@ const app = express();
 // In AI Studio, dev server must run on port 3000. On external production (Render), use process.env.PORT
 const PORT = process.env.NODE_ENV === 'production' && process.env.PORT && Number(process.env.PORT) !== 8080
   ? Number(process.env.PORT)
-  : 3000;
+  : Number(process.env.DEV_PORT) || 3000;
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '8987511998:AAFZ5TWBa1w855MH23LmD9y5SV2z9jOjGVA';
 
 app.use(express.json({ limit: '50mb' }));
@@ -230,6 +230,147 @@ function appendActivityLog(data: any, log: {
   return entry;
 }
 
+function appendPipAnnouncement(data: any, announcement: {
+  id: string;
+  type: string;
+  title: string;
+  message: string;
+  targetTab: string;
+  targetId?: string;
+  iconEmoji?: string;
+}) {
+  data.notifications = Array.isArray(data.notifications) ? data.notifications : [];
+  if (data.notifications.some((notification: any) => notification.id === announcement.id)) return false;
+
+  const timestamp = new Date().toISOString();
+  data.notifications.unshift({
+    id: announcement.id,
+    type: announcement.type,
+    title: announcement.title,
+    message: announcement.message,
+    timestamp,
+    isRead: false,
+    targetTab: announcement.targetTab,
+    targetId: announcement.targetId,
+    iconEmoji: announcement.iconEmoji || '📡'
+  });
+  data.notifications = data.notifications.slice(0, 150);
+
+  data.chatMessages = Array.isArray(data.chatMessages) ? data.chatMessages : [];
+  data.chatMessages.push({
+    id: `msg_pip_${announcement.id}`,
+    senderId: 'littlepip',
+    senderUsername: '@Pip',
+    senderDisplayName: 'Пипка · Радио Даст Таун',
+    senderAvatarUrl: 'https://images.unsplash.com/photo-1535268647677-300dbf3d78d1?auto=format&fit=crop&w=160&q=80',
+    senderRole: 'Радио Даст Таун',
+    content: `${announcement.title}\n${announcement.message}`,
+    timestamp,
+    type: 'system',
+    style: {
+      customBgEffect: 'radiation',
+      bubbleBorderTheme: 'border-emerald-400/60 shadow-[0_0_18px_rgba(52,211,153,0.18)]',
+      textColorClass: 'text-emerald-100'
+    }
+  });
+  if (data.chatMessages.length > 250) data.chatMessages = data.chatMessages.slice(-250);
+  return true;
+}
+
+function announceNewStateRecords(previous: any, next: any) {
+  const announceAdded = (key: string, create: (item: any) => Parameters<typeof appendPipAnnouncement>[1] | null) => {
+    const knownIds = new Set((previous[key] || []).map((item: any) => item.id));
+    for (const item of next[key] || []) {
+      if (item.id && !knownIds.has(item.id)) {
+        const announcement = create(item);
+        if (announcement) appendPipAnnouncement(next, announcement);
+      }
+    }
+  };
+
+  announceAdded('events', event => ({
+    id: `notif_event_${event.id}`,
+    type: 'event',
+    title: event.type === 'planned_rp' ? 'Опубликовано новое РП' : 'Опубликовано новое событие',
+    message: `Пипка передаёт: «${event.title}»${event.startTime ? ` · начало ${new Date(event.startTime).toLocaleString('ru-RU')}` : ''}. Подробности уже в списке событий.`,
+    targetTab: event.type === 'planned_rp' ? 'planned_rp' : 'events',
+    targetId: event.id,
+    iconEmoji: '☢️'
+  }));
+  announceAdded('auctionListings', listing => ({
+    id: `notif_auction_${listing.id}`,
+    type: 'auction',
+    title: 'Новый лот на аукционе',
+    message: `На торги выставлено «${listing.item?.name || 'новый товар'}» за ${listing.price} ℰQ.`,
+    targetTab: 'market',
+    targetId: listing.id,
+    iconEmoji: '🔨'
+  }));
+  announceAdded('weeklyShopItems', item => ({
+    id: `notif_shop_${item.id}`,
+    type: 'auction',
+    title: 'Новинка в магазине',
+    message: `Пипка заметила новый товар: «${item.name}»${typeof item.price === 'number' ? ` · ${item.price} ℰQ` : ''}.`,
+    targetTab: 'market',
+    targetId: item.id,
+    iconEmoji: '🛒'
+  }));
+  announceAdded('caseItems', item => ({
+    id: `notif_case_item_${item.id}`,
+    type: 'case',
+    title: 'Новый предмет в запасах кейсов',
+    message: `В кейсы добавлен предмет «${item.name}».`,
+    targetTab: 'cases',
+    targetId: item.id,
+    iconEmoji: '📦'
+  }));
+  announceAdded('cases', item => ({
+    id: `notif_case_${item.id}`,
+    type: 'case',
+    title: 'Поступил новый кейс',
+    message: `Доступен кейс «${item.name}» за ${item.price} ℰQ.`,
+    targetTab: 'cases',
+    targetId: item.id,
+    iconEmoji: '📦'
+  }));
+  announceAdded('awards', award => ({
+    id: `notif_award_${award.id}`,
+    type: 'achievement',
+    title: `${award.icon || '🏅'} Новая заслуга`,
+    message: `Игроку ${award.recipientUsername} вручена заслуга «${award.title}».`,
+    targetTab: 'profile',
+    targetId: award.recipientUsername,
+    iconEmoji: award.icon || '🏅'
+  }));
+  announceAdded('achievements', achievement => ({
+    id: `notif_achievement_${achievement.id}`,
+    type: 'achievement',
+    title: 'Новая цель для сталкеров',
+    message: `Добавлено достижение «${achievement.title}».`,
+    targetTab: 'profile',
+    iconEmoji: '🏆'
+  }));
+}
+
+function announceEventsStartingSoon(data: any) {
+  const now = Date.now();
+  let changed = false;
+  for (const event of data.events || []) {
+    const start = new Date(event.startTime).getTime();
+    if (event.isCompleted || event.isPaused || !Number.isFinite(start) || start < now || start > now + 15 * 60_000) continue;
+    changed = appendPipAnnouncement(data, {
+      id: `notif_starting_${event.id}`,
+      type: 'event',
+      title: 'Скоро начало!',
+      message: `Через несколько минут начинается «${event.title}». Пипка уже передала координаты в чат.`,
+      targetTab: event.type === 'planned_rp' ? 'planned_rp' : 'events',
+      targetId: event.id,
+      iconEmoji: '⏳'
+    }) || changed;
+  }
+  return changed;
+}
+
 function getOrInitData() {
   const tryFile = (filePath: string) => {
     if (fs.existsSync(filePath)) {
@@ -284,7 +425,7 @@ function getOrInitData() {
   return initial;
 }
 
-function saveData(data: any) {
+function saveData(data: any): Promise<void> {
   try {
     data.lastUpdated = new Date().toISOString();
     data.syncVersion = (data.syncVersion || 0) + 1;
@@ -314,8 +455,10 @@ function saveData(data: any) {
         console.error('[Firebase persistence] Save failed; local JSON remains available:', firebaseLastError);
       });
     }
+    return firebaseConnected ? cloudSaveQueue : Promise.resolve();
   } catch (e) {
     console.error('Failed to write DATA_FILE:', e);
+    return Promise.resolve();
   }
 }
 
@@ -398,6 +541,18 @@ function registerOrUpdateUser(user: { id: number | string; first_name?: string; 
       inventory: []
     };
     data.profiles.push(profile);
+  }
+
+  if (!data.notifications?.some((notification: any) => notification.id === `notif_user_${profile.id}`)) {
+    appendPipAnnouncement(data, {
+      id: `notif_user_${profile.id}`,
+      type: 'new_user',
+      title: 'Новый сталкер в Даст Таун',
+      message: `Пипка приветствует ${profile.displayName}, нового жителя Пустоши.`,
+      targetTab: 'profile',
+      targetId: profile.id,
+      iconEmoji: '👋'
+    });
   }
 
   saveData(data);
@@ -769,6 +924,7 @@ app.get('/api/chat/messages', (req, res) => {
   try {
     const data = getOrInitData();
     const userId = req.query.userId as string | undefined;
+    const recipientId = req.query.recipientId as string | undefined;
 
     if (!Array.isArray(data.chatMessages) || data.chatMessages.length === 0) {
       data.chatMessages = [
@@ -811,7 +967,14 @@ app.get('/api/chat/messages', (req, res) => {
 
     // Filter: public messages (no recipientId) OR DMs where user is sender or recipient
     let relevantMessages = data.chatMessages;
-    if (userId) {
+    if (userId && recipientId) {
+      relevantMessages = data.chatMessages.filter(
+        (message: any) => message.recipientId && (
+          (message.senderId === userId && message.recipientId === recipientId) ||
+          (message.senderId === recipientId && message.recipientId === userId)
+        )
+      );
+    } else if (userId) {
       relevantMessages = data.chatMessages.filter(
         (m: any) => !m.recipientId || m.recipientId === userId || m.senderId === userId
       );
@@ -872,18 +1035,9 @@ app.post('/api/chat/send', (req, res) => {
     data.chatMessages = Array.isArray(data.chatMessages) ? data.chatMessages : [];
     data.profiles = Array.isArray(data.profiles) ? data.profiles : [];
 
-    let sender = data.profiles.find((p: any) => p.userId === senderId);
+    const sender = data.profiles.find((profile: any) => profile.id === senderId);
     if (!sender) {
-      // Create minimal sender profile if not registered
-      sender = {
-        userId: senderId,
-        username: '@Wanderer',
-        displayName: 'Житель Пустоши',
-        equivaxes: 100,
-        role: 'user',
-        activeFrameId: 'frame_none'
-      };
-      data.profiles.push(sender);
+      return res.status(404).json({ error: 'Профиль отправителя не найден' });
     }
 
     const trimmedContent = content.trim();
@@ -917,7 +1071,7 @@ app.post('/api/chat/send', (req, res) => {
         senderUsername: sender.username || '@Wanderer',
         senderDisplayName: sender.displayName || 'Житель Пустоши',
         senderAvatarUrl: sender.avatarUrl || '',
-        senderFrameId: sender.activeFrameId || '',
+        senderFrameId: sender.activeAvatarFrame || '',
         message: trimmedContent,
         timestamp: new Date().toISOString(),
         expiresAt: Date.now() + 22000 // 22 seconds display
@@ -961,6 +1115,15 @@ app.post('/api/chat/send', (req, res) => {
       data.chatMessages.push(newNukeMessage);
       if (data.chatMessages.length > 250) data.chatMessages.shift();
 
+      appendPipAnnouncement(data, {
+        id: `notif_nuke_${nukeAlertObj.id}`,
+        type: 'event',
+        title: 'Ядерный сигнал в эфире',
+        message: `${sender.displayName} запустил Ядерку. Послание: «${trimmedContent.slice(0, 140)}»`,
+        targetTab: 'chat',
+        iconEmoji: '☢️'
+      });
+
       data.lastUpdated = new Date().toISOString();
       saveData(data);
 
@@ -979,7 +1142,7 @@ app.post('/api/chat/send', (req, res) => {
       senderUsername: sender.username || '@Wanderer',
       senderDisplayName: sender.displayName || 'Житель Пустоши',
       senderAvatarUrl: sender.avatarUrl || '',
-      senderFrameId: sender.activeFrameId || '',
+      senderFrameId: sender.activeAvatarFrame || '',
       senderRole: sender.role || 'user',
       content: trimmedContent,
       timestamp: new Date().toISOString(),
@@ -1314,6 +1477,7 @@ app.get('/api/data', (req, res) => {
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
   const data = getOrInitData();
+  if (announceEventsStartingSoon(data)) saveData(data);
   res.json(data);
 });
 
@@ -1363,12 +1527,24 @@ app.post('/api/admin/toggle', (req, res) => {
     }
   }
 
+  if (action !== 'remove') {
+    const grantedProfile = data.profiles.find((profile: any) => profile.username?.toLowerCase() === formattedTarget.toLowerCase());
+    appendPipAnnouncement(data, {
+      id: `notif_admin_${formattedTarget.toLowerCase()}`,
+      type: 'new_admin',
+      title: 'Назначен администратор',
+      message: `Пипка сообщает: ${formattedTarget} получил права администратора Даст Таун.`,
+      targetTab: 'profile',
+      targetId: grantedProfile?.id || formattedTarget,
+      iconEmoji: '🛡️'
+    });
+  }
   saveData(data);
   res.json({ success: true, admins: data.admins });
 });
 
 // Dedicated Profile Update Endpoint
-app.post('/api/profile/update', (req, res) => {
+app.post('/api/profile/update', async (req, res) => {
   try {
     const { userId, updates } = req.body;
     if (!userId || !updates) {
@@ -1404,7 +1580,10 @@ app.post('/api/profile/update', (req, res) => {
     });
 
     data.lastUpdated = new Date().toISOString();
-    saveData(data);
+    await saveData(data);
+    if (firebaseConnected && !firebaseHealthy) {
+      return res.status(503).json({ error: 'Firebase не подтвердил сохранение профиля', persistence: 'firebase' });
+    }
     res.json({ success: true, profile: data.profiles[profileIndex], fullData: data });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -2128,9 +2307,16 @@ app.post('/api/data', (req, res) => {
         artworks: Array.from(artMap.values()),
         factions: Array.from(factionMap.values()),
         auctionListings: Array.from(auctionMap.values()),
+        notifications: Array.from(new Map([
+          ...(current.notifications || []),
+          ...(incoming.notifications || [])
+        ].map((notification: any) => [notification.id, notification])).values())
+          .sort((left: any, right: any) => new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime())
+          .slice(0, 150),
         lastUpdated: new Date().toISOString()
       };
 
+      announceNewStateRecords(current, mergedData);
       saveData(mergedData);
       return res.json({ success: true, count: mergedData.profiles.length, lastUpdated: mergedData.lastUpdated });
     }
