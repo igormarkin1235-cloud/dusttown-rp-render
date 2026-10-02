@@ -22,11 +22,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-// In AI Studio, dev server must run on port 3000. On external production (Render), use process.env.PORT
-const PORT = process.env.NODE_ENV === 'production' && process.env.PORT && Number(process.env.PORT) !== 8080
-  ? Number(process.env.PORT)
-  : Number(process.env.DEV_PORT) || 3000;
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '8987511998:AAFZ5TWBa1w855MH23LmD9y5SV2z9jOjGVA';
+const PORT = Number(process.env.PORT) || Number(process.env.DEV_PORT) || 3000;
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
@@ -590,6 +587,9 @@ function addBotLog(type: 'info' | 'message' | 'error', text: string) {
 // Telegram API Helper
 async function tgApi(method: string, body?: any) {
   try {
+    if (!TELEGRAM_BOT_TOKEN) {
+      throw new Error('TELEGRAM_BOT_TOKEN is not configured');
+    }
     const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/${method}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -646,6 +646,9 @@ async function sendLittlepipReply(
   }
 
   try {
+    if (!TELEGRAM_BOT_TOKEN) {
+      throw new Error('TELEGRAM_BOT_TOKEN is not configured');
+    }
     const image = await fs.promises.readFile(meme.filePath);
     const extension = path.extname(meme.fileName).toLowerCase();
     const mimeType = extension === '.png'
@@ -686,6 +689,12 @@ async function sendLittlepipReply(
 let lastUpdateId = 0;
 
 async function startTelegramPolling() {
+  if (!TELEGRAM_BOT_TOKEN) {
+    lastBotError = 'TELEGRAM_BOT_TOKEN is not configured';
+    addBotLog('error', 'Не задан TELEGRAM_BOT_TOKEN в переменных окружения');
+    return;
+  }
+
   if (pollingAbortController) {
     pollingAbortController.abort();
   }
@@ -999,7 +1008,7 @@ app.get('/api/bot/status', (req, res) => {
     botInfo,
     logs: botLogs,
     lastError: lastBotError,
-    tokenMasked: `${TELEGRAM_BOT_TOKEN.substring(0, 10)}...${TELEGRAM_BOT_TOKEN.substring(TELEGRAM_BOT_TOKEN.length - 6)}`,
+    telegramBotConfigured: Boolean(TELEGRAM_BOT_TOKEN),
     appUrl: process.env.APP_URL || '',
     hostedOnRender: true,
     renderStatus: 'Active on Render Cloud 🚀'
@@ -1007,6 +1016,9 @@ app.get('/api/bot/status', (req, res) => {
 });
 
 app.post('/api/bot/start', async (req, res) => {
+  if (!TELEGRAM_BOT_TOKEN) {
+    return res.status(503).json({ error: 'TELEGRAM_BOT_TOKEN is not configured' });
+  }
   if (!isBotPolling) {
     await startTelegramPolling();
   }
@@ -1469,7 +1481,8 @@ app.get('/api/version', (req, res) => {
   res.json({
     ...buildInfo,
     currentTime: new Date().toISOString(),
-    telegramBot: 'active',
+    telegramBot: isBotPolling ? 'active' : 'inactive',
+    telegramBotConfigured: Boolean(TELEGRAM_BOT_TOKEN),
     port: PORT,
     persistence: {
       provider: firebaseConnected ? 'firebase' : 'local-json',

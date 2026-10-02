@@ -10,12 +10,9 @@ import {
   CheckCircle2,
   AlertTriangle,
   RefreshCw,
-  Eye,
-  EyeOff,
   Sparkles,
   Download,
   Check,
-  Copy,
   FileArchive,
   Globe,
   Server,
@@ -39,16 +36,15 @@ interface BotControlPanelProps {
 }
 
 export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp }) => {
-  const [isPolling, setIsPolling] = useState(true);
+  const [isPolling, setIsPolling] = useState(false);
+  const [telegramBotConfigured, setTelegramBotConfigured] = useState(false);
   const [botInfo, setBotInfo] = useState<any>(null);
   const [logs, setLogs] = useState<Array<{ id: string; time: string; type: string; text: string }>>([
     { id: '1', time: '12:00:00', type: 'info', text: 'Сервер DustTown RP запущен' },
-    { id: '2', time: '12:00:01', type: 'info', text: 'Telegram Long-Polling активен (Токен: 8987511998...)' }
+    { id: '2', time: '12:00:01', type: 'info', text: 'Ожидание статуса Telegram polling' }
   ]);
-  const [showToken, setShowToken] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadDone, setDownloadDone] = useState(false);
-  const [copiedToken, setCopiedToken] = useState(false);
 
   const [chatMessages, setChatMessages] = useState<Array<{ id: string; sender: 'user' | 'bot'; text: string; buttons?: any[] }>>([
     {
@@ -69,8 +65,6 @@ export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp 
   const [inputMsg, setInputMsg] = useState('/start');
   const [loading, setLoading] = useState(false);
 
-  const BOT_TOKEN = '8987511998:AAFZ5TWBa1w855MH23LmD9y5SV2z9jOjGVA';
-
   // Fetch status from server
   const fetchStatus = async () => {
     try {
@@ -78,6 +72,7 @@ export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp 
       if (res.ok) {
         const data = await res.json();
         setIsPolling(data.isPolling);
+        setTelegramBotConfigured(Boolean(data.telegramBotConfigured));
         if (data.botInfo) setBotInfo(data.botInfo);
         if (Array.isArray(data.logs) && data.logs.length > 0) setLogs(data.logs);
       }
@@ -159,12 +154,6 @@ export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp 
     } finally {
       setIsDownloading(false);
     }
-  };
-
-  const handleCopyToken = () => {
-    navigator.clipboard.writeText(BOT_TOKEN);
-    setCopiedToken(true);
-    setTimeout(() => setCopiedToken(false), 3000);
   };
 
   // Incremental Update / GitHub Patch states
@@ -381,15 +370,17 @@ export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp 
                   className={`px-2 py-0.5 rounded-full text-[10px] font-mono-pip font-bold flex items-center gap-1 ${
                     isPolling
                       ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
-                      : 'bg-red-500/20 text-red-400 border border-red-500/40'
+                      : telegramBotConfigured
+                        ? 'bg-red-500/20 text-red-400 border border-red-500/40'
+                        : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
                   }`}
                 >
-                  <span className={`w-1.5 h-1.5 rounded-full ${isPolling ? 'bg-emerald-400 animate-ping' : 'bg-red-400'}`} />
-                  {isPolling ? 'ПОДКЛЮЧЕН (ПОЛЛИНГ)' : 'ОСТАНОВЛЕН'}
+                  <span className={`w-1.5 h-1.5 rounded-full ${isPolling ? 'bg-emerald-400 animate-ping' : telegramBotConfigured ? 'bg-red-400' : 'bg-amber-300'}`} />
+                  {isPolling ? 'ПОДКЛЮЧЕН (ПОЛЛИНГ)' : telegramBotConfigured ? 'ОСТАНОВЛЕН' : 'НЕТ TELEGRAM_BOT_TOKEN'}
                 </span>
               </div>
               <p className="text-xs text-zinc-400 font-mono-pip mt-0.5">
-                DustTown RP Bot • Токен: {showToken ? BOT_TOKEN : '8987511998:AAFZ5TWBa1w855...'}
+                DustTown RP Bot • токен задаётся в Render Environment Variables
               </p>
             </div>
           </div>
@@ -463,14 +454,6 @@ export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp 
                   <span>Скачать для Render (.ZIP)</span>
                 </>
               )}
-            </button>
-
-            <button
-              onClick={() => setShowToken(!showToken)}
-              className="p-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-zinc-800 transition"
-              title={showToken ? 'Скрыть токен' : 'Показать токен'}
-            >
-              {showToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
 
             <button
@@ -708,30 +691,10 @@ export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp 
           </ul>
         </div>
 
-        {/* Ready Environment Variables Snippet */}
-        <div className="p-4 rounded-2xl bg-black/60 border border-zinc-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs font-mono-pip relative z-10">
-          <div className="space-y-1">
-            <span className="text-zinc-500 uppercase text-[10px]">Переменная окружения для Render (Environment Variables):</span>
-            <div className="text-zinc-200 font-bold">
-              <span className="text-indigo-400">TELEGRAM_BOT_TOKEN</span> = <span className="text-amber-300">{BOT_TOKEN}</span>
-            </div>
-          </div>
-          <button
-            onClick={handleCopyToken}
-            className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 flex items-center gap-1.5 transition text-[11px]"
-          >
-            {copiedToken ? (
-              <>
-                <Check className="w-3.5 h-3.5 text-emerald-400" />
-                <span className="text-emerald-400 font-bold">Скопировано!</span>
-              </>
-            ) : (
-              <>
-                <Copy className="w-3.5 h-3.5 text-zinc-400" />
-                <span>Скопировать токен</span>
-              </>
-            )}
-          </button>
+        <div className="p-4 rounded-2xl bg-black/60 border border-zinc-800 text-xs font-mono-pip relative z-10">
+          <span className="text-zinc-300">
+            Добавьте <strong className="text-indigo-400">TELEGRAM_BOT_TOKEN</strong> в Environment Variables сервиса Render. Не вставляйте токен в чат или исходный код.
+          </span>
         </div>
       </div>
 

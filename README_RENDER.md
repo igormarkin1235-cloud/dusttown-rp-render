@@ -1,38 +1,25 @@
 # 🚀 Инструкция по запуску и обновлению DustTown RP на Render.com
 
-Этот архив содержит готовый проект **DustTown RP — Telegram Bot & Mini App** для развертывания на бесплатном хостинге Render.com со всеми свежими исходниками и скомпилированной production-сборкой в папке `dist/`.
+Проект **DustTown RP — Telegram Bot & Mini App** настроен для развертывания на Render.com через `render.yaml`. Render устанавливает зависимости, проверяет типы, собирает production-клиент и запускает сервер; health check выполняется через `/api/version`.
 
 ---
 
-### 1. Подготовка репозитория (1 минута)
-1. Распакуйте скачанный ZIP-архив в отдельную папку.
-2. Загрузите файлы в ваш репозиторий на [GitHub](https://github.com). Если репозиторий уже есть — просто скопируйте файлы поверх с заменой и сделайте коммит:
-   ```bash
-   git add .
-   git commit -m "Update DustTown RP to latest version"
-   git push
-   ```
+### 1. Подготовка Render
+1. Подключите этот GitHub-репозиторий к Render через **New + → Blueprint** (или примените изменения к существующему Web Service).
+2. Проверьте, что сервис собирается по `render.yaml`. Новые коммиты в подключённую ветку будут запускать deployment автоматически.
+3. Добавьте переменные окружения, перечисленные ниже. Секреты храните только в Render Dashboard, не в GitHub.
 
----
+> **Важно:** токен Telegram ранее находился в исходном коде и истории Git. Отзовите его через BotFather (`/revoke`), выпустите новый и задайте новый `TELEGRAM_BOT_TOKEN` в Render до запуска бота.
 
-### 2. Настройки на Render.com
-Если вы создаете новый сервис:
-1. Перейдите на сайт **[Render.com](https://render.com)** и войдите через ваш GitHub-аккаунт.
-2. Нажмите синюю кнопку **«New +»** → выберите **«Web Service»**.
-3. Выберите ваш репозиторий с проектом DustTown RP.
-4. Заполните настройки:
-   * **Name:** `dusttown-rp` (или любое имя)
-   * **Language / Environment:** `Node`
-   * **Build Command:** `npm install && npm run build`
-   * **Start Command:** `npm start`
-   * **Instance Type:** `Free` (бесплатно)
-5. В разделе **Environment Variables** (переменные окружения) добавьте:
+### 2. Переменные окружения
+В разделе **Environment Variables** добавьте:
    * `TELEGRAM_BOT_TOKEN` = значение, выданное BotFather. Добавьте его напрямую в Environment Variables на Render, не храните в GitHub.
    * `TELEGRAM_GROUP_ID` = username группы (например, `@DustTownCollective`) или числовой ID группы. Добавьте бота в эту группу с правом отправлять сообщения; сюда же приходят объявления ивентов и ядерный сигнал Пипки.
    * `GEMINI_API_KEY` = необязательный ключ Google Gemini для улучшенных ответов и озвучки Littlepip. Без него текстовые ответы Telegram и Mini App работают на встроенном локальном генераторе; для голоса используется системный голос браузера.
    * `YOUTUBE_API_KEY` = необязательный server-side ключ Google Cloud для YouTube Data API v3. Без него используется поиск по публичной странице YouTube; Google API key не требуется.
+   * `APP_URL` = публичный HTTPS URL сервиса Render (используется в ссылках бота).
    * `NODE_ENV` = `production`
-6. Нажмите **«Deploy Web Service»**.
+   * `FIREBASE_SERVICE_ACCOUNT_JSON` и `FIREBASE_STORAGE_BUCKET` = для постоянного хранения данных; инструкции ниже.
 
 Бот автоматически запускает Telegram polling в production. Используйте один активный экземпляр сервиса; чтобы отключить polling, задайте `DISABLE_TELEGRAM_POLLING=true`. Для контекста Литлпип по последним сообщениям группы откройте `@BotFather` → `/setprivacy` → выберите бота → `Disable`, затем удалите бота из группы и добавьте снова. При включённой Group Privacy Telegram не передаёт боту обычные сообщения; личные чаты и команды продолжают работать.
 
