@@ -642,7 +642,11 @@ async function sendLittlepipReply(
 ) {
   const { meme, ...telegramOptions } = options as { meme?: LittlepipMeme; [key: string]: any };
   if (!meme) {
-    return tgApi('sendMessage', { chat_id: chatId, text, ...telegramOptions });
+    const result = await tgApi('sendMessage', { chat_id: chatId, text, ...telegramOptions });
+    if (!result.ok) {
+      throw new Error(`Telegram could not send Littlepip message: ${result.description || 'unknown error'}`);
+    }
+    return result;
   }
 
   try {

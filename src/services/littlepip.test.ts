@@ -54,6 +54,48 @@ test('warns about a rule violation even when Pipka is not mentioned', async () =
   assert.match(sentText, /остановись/);
 });
 
+test('warns on a banned dictator mention without requiring a Pipka mention', async () => {
+  let sentText = '';
+  const result = await handleLittlepipUpdate(
+    {
+      chatId: `dictator-moderation-test-${Date.now()}`,
+      messageId: 431,
+      userId: 1241,
+      username: '@tester',
+      text: 'Гитлер'
+    },
+    async (_chatId, text) => {
+      sentText = text;
+    }
+  );
+
+  assert.equal(result.handled, true);
+  assert.equal(result.action, 'moderation_warning');
+  assert.match(sentText, /нарушение правила №6/i);
+});
+
+test('answers group-rules requests from the configured rules instead of the lore forum', async () => {
+  let sentText = '';
+  const result = await handleLittlepipUpdate(
+    {
+      chatId: `rules-question-test-${Date.now()}`,
+      messageId: 432,
+      userId: 1242,
+      username: '@tester',
+      text: 'Пипка, напомни правила группы'
+    },
+    async (_chatId, text) => {
+      sentText = text;
+    }
+  );
+
+  assert.equal(result.handled, true);
+  assert.match(sentText, /Правила Telegram-группы DustTown/);
+  assert.match(sentText, /диктаторов XX века/);
+  assert.match(sentText, /4\./);
+  assert.doesNotMatch(sentText, /fallout-equestria\.com/i);
+});
+
 test('does not mistake casual profanity or constructive project feedback for a violation', async () => {
   for (const text of ['мда, опять это говно', 'В проекте неудобно устроены уведомления, это стоит улучшить']) {
     const result = await handleLittlepipUpdate(

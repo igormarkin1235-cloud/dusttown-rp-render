@@ -109,6 +109,15 @@ export function parseLittlepipCommand(text: string): string | null {
   return match?.[1].toLowerCase() || null;
 }
 
+function isChannelRulesRequest(text: string, command: string | null): boolean {
+  return command === 'rules' || /(?:^|[^\p{L}\p{N}_])(?:правил\p{L}*|что запрещен\p{L}*|что нельзя|за что бан)(?=$|[^\p{L}\p{N}_])/iu.test(text);
+}
+
+function buildChannelRulesReply(): string {
+  return `🔣 **Правила Telegram-группы DustTown** 🔣\n\n` +
+    CHANNEL_RULES.map(rule => `${rule.number}. ${rule.description}`).join('\n\n');
+}
+
 export function getRecentLittlepipMessages(
   chatId: number | string,
   threadId?: number
@@ -495,6 +504,12 @@ export async function handleLittlepipUpdate(
   if (violation.isViolation && violation.warningText) {
     await sendMessageFn(chatId, violation.warningText, sendOpts);
     return { handled: true, replyText: violation.warningText, action: 'moderation_warning' };
+  }
+
+  if (isChannelRulesRequest(cleanText, command)) {
+    const rulesReply = buildChannelRulesReply();
+    await sendMessageFn(chatId, rulesReply, sendOpts);
+    return { handled: true, replyText: rulesReply };
   }
 
   // 1. КОМАНДА /pip_start (или /littlepip, /pip, /ai_start) — ОБЫЧНЫЙ СТАРТ ДИАЛОГА
