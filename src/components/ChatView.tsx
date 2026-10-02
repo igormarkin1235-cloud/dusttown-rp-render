@@ -325,17 +325,15 @@ export const NukeBroadcastOverlay: React.FC = () => {
   return (
     <>
       <div className="nuke-screen-frame" aria-hidden="true">
-        <span className="nuke-orbit-light nuke-orbit-top" />
-        <span className="nuke-orbit-light nuke-orbit-right" />
-        <span className="nuke-orbit-light nuke-orbit-bottom" />
-        <span className="nuke-orbit-light nuke-orbit-left" />
+        <span className="nuke-orbit-light nuke-orbit-first" />
+        <span className="nuke-orbit-light nuke-orbit-second" />
       </div>
       <div className="pointer-events-none fixed inset-0 z-[100] flex flex-col items-center justify-center gap-3 p-4" aria-live="assertive">
         {alerts.map(alert => (
-          <div key={alert.id} className="chat-nuke-overlay w-full max-w-2xl border border-emerald-200/80 px-5 py-5 text-center shadow-[0_0_60px_rgba(16,185,129,.55)] sm:px-10 sm:py-8">
-            <p className="mb-2 flex items-center justify-center gap-2 text-xs font-black uppercase text-emerald-200"><ShieldAlert className="h-4 w-4" /> Глобальный сигнал Пустоши</p>
+          <div key={alert.id} className="chat-nuke-overlay w-full max-w-2xl border border-red-300/90 px-5 py-5 text-center shadow-[0_0_60px_rgba(239,68,68,.55)] sm:px-10 sm:py-8">
+            <p className="mb-2 flex items-center justify-center gap-2 text-xs font-black uppercase text-red-200"><ShieldAlert className="h-4 w-4" /> Воздушная тревога · сигнал Пипки</p>
             <p className="chat-nuke-title break-words text-2xl font-black sm:text-4xl">{alert.message}</p>
-            <p className="mt-3 text-xs text-emerald-100/80">{alert.senderDisplayName} · {new Date(alert.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+            <p className="mt-3 text-xs text-red-100/80">{alert.senderDisplayName} · {new Date(alert.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
           </div>
         ))}
       </div>

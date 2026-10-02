@@ -28,6 +28,7 @@
    * **Instance Type:** `Free` (бесплатно)
 5. В разделе **Environment Variables** (переменные окружения) добавьте:
    * `TELEGRAM_BOT_TOKEN` = значение, выданное BotFather. Добавьте его напрямую в Environment Variables на Render, не храните в GitHub.
+   * `TELEGRAM_GROUP_ID` = username группы (например, `@DustTownCollective`) или числовой ID группы. Добавьте бота в эту группу с правом отправлять сообщения; сюда же приходят объявления ивентов и ядерный сигнал Пипки.
    * `GEMINI_API_KEY` = необязательный ключ Google Gemini для улучшенных ответов и озвучки Littlepip. Без него текстовые ответы Telegram и Mini App работают на встроенном локальном генераторе; для голоса используется системный голос браузера.
    * `YOUTUBE_API_KEY` = необязательный server-side ключ Google Cloud для YouTube Data API v3. Без него используется поиск по публичной странице YouTube; Google API key не требуется.
    * `NODE_ENV` = `production`

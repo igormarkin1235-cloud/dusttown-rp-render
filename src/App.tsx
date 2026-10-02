@@ -142,7 +142,24 @@ export default function App() {
           const { profile, fullData } = await syncUserWithServer(tgUser);
           if (isMounted) {
             if (fullData) {
-              setAppState(fullData);
+              const collectionKeys = [
+                'profiles', 'admins', 'characters', 'events', 'awards', 'cases', 'caseItems',
+                'weeklyShopItems', 'auctionListings', 'preReleasePosts', 'achievements',
+                'factions', 'artworks', 'activityLogs', 'notifications', 'botVersions', 'chatMessages'
+              ] as const;
+              const cachedStateIsRicher = collectionKeys.some(key => {
+                const cachedItems = (appState as any)[key];
+                const serverItems = (fullData as any)[key];
+                return Array.isArray(cachedItems) && cachedItems.length > (Array.isArray(serverItems) ? serverItems.length : 0);
+              });
+
+              if (cachedStateIsRicher) {
+                await restoreServerData(appState);
+                const restoredState = await fetchServerState();
+                setAppState(restoredState || fullData);
+              } else {
+                setAppState(fullData);
+              }
             }
             if (profile) {
               setCurrentUserId(profile.id);

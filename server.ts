@@ -1117,8 +1117,24 @@ app.get('/api/chat/nuke-status', (req, res) => {
   }
 });
 
+app.get('/api/chat/nuke-alerts', (req, res) => {
+  try {
+    const data = getOrInitData();
+    if (data.nukeAlert && data.nukeAlert.expiresAt > Date.now()) {
+      return res.json({ alerts: [data.nukeAlert] });
+    }
+    if (data.nukeAlert) {
+      data.nukeAlert = null;
+      saveData(data);
+    }
+    return res.json({ alerts: [] });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Send Chat Message or Nuclear Strike
-app.post('/api/chat/send', (req, res) => {
+app.post('/api/chat/send', async (req, res) => {
   try {
     const data = getOrInitData();
     const {
@@ -1230,11 +1246,32 @@ app.post('/api/chat/send', (req, res) => {
       data.lastUpdated = new Date().toISOString();
       saveData(data);
 
+      const targetChat = process.env.TELEGRAM_GROUP_ID || '@DustTownCollective';
+      const appUrl = process.env.APP_URL || 'https://t.me/DustTown_RP_bot/app';
+      let groupDelivered = false;
+      try {
+        const telegramResult = await tgApi('sendMessage', {
+          chat_id: targetChat,
+          text: `☢️ СРОЧНОЕ СООБЩЕНИЕ ОТ ПИПКИ\n\n${sender.displayName} (${sender.username || '@Wanderer'}) запустил Ядерку в Даст Таун.\n\n📡 Передача:\n${trimmedContent}\n\nВоздушная тревога активирована во всех терминалах Пустоши.`,
+          reply_markup: {
+            inline_keyboard: [[{ text: 'Открыть DustTown RP', url: appUrl }]]
+          }
+        });
+        groupDelivered = Boolean(telegramResult?.ok);
+        if (!groupDelivered) {
+          throw new Error(telegramResult?.description || 'Telegram не подтвердил доставку сообщения');
+        }
+        addBotLog('info', `Ядерное сообщение от ${sender.username} отправлено в группу ${targetChat}`);
+      } catch (telegramError: any) {
+        addBotLog('error', `Не удалось отправить ядерное сообщение в группу ${targetChat}: ${telegramError.message}`);
+      }
+
       return res.json({
         success: true,
         message: newNukeMessage,
         nukeAlert: nukeAlertObj,
-        senderProfile: sender
+        senderProfile: sender,
+        groupDelivered
       });
     }
 
@@ -2301,31 +2338,35 @@ app.post('/api/data/restore', (req, res) => {
     const incoming = req.body;
 
     if (incoming && typeof incoming === 'object') {
-      const profileMap = new Map();
-      (current.profiles || []).forEach((p: any) => profileMap.set(p.id, p));
-      (incoming.profiles || []).forEach((p: any) => {
-        if (!profileMap.has(p.id)) profileMap.set(p.id, p);
-      });
+      const mergedData = { ...current } as Record<string, any>;
+      const collectionKeys = [
+        'profiles', 'admins', 'characters', 'events', 'awards', 'cases', 'caseItems',
+        'weeklyShopItems', 'auctionListings', 'preReleasePosts', 'achievements',
+        'factions', 'artworks', 'activityLogs', 'notifications', 'botVersions', 'chatMessages'
+      ];
 
-      const eventMap = new Map();
-      (current.events || []).forEach((e: any) => eventMap.set(e.id, e));
-      (incoming.events || []).forEach((e: any) => {
-        if (!eventMap.has(e.id)) eventMap.set(e.id, e);
-      });
+      for (const key of collectionKeys) {
+        const currentItems = Array.isArray(current[key]) ? current[key] : [];
+        const incomingItems = Array.isArray(incoming[key]) ? incoming[key] : [];
+        const mergedItems = [...currentItems];
+        const identities = new Set(currentItems.map((item: any) =>
+          item?.id ?? item?.username ?? item?.version ?? JSON.stringify(item)
+        ));
 
-      const charMap = new Map();
-      (current.characters || []).forEach((c: any) => charMap.set(c.id, c));
-      (incoming.characters || []).forEach((c: any) => {
-        if (!charMap.has(c.id)) charMap.set(c.id, c);
-      });
+        for (const item of incomingItems) {
+          const identity = item?.id ?? item?.username ?? item?.version ?? JSON.stringify(item);
+          if (!identities.has(identity)) {
+            identities.add(identity);
+            mergedItems.push(item);
+          }
+        }
+        mergedData[key] = mergedItems;
+      }
 
-      const mergedData = {
-        ...current,
-        profiles: Array.from(profileMap.values()),
-        events: Array.from(eventMap.values()),
-        characters: Array.from(charMap.values()),
-        lastUpdated: new Date().toISOString()
-      };
+      if (!mergedData.nukeAlert && incoming.nukeAlert?.expiresAt > Date.now()) {
+        mergedData.nukeAlert = incoming.nukeAlert;
+      }
+      mergedData.lastUpdated = new Date().toISOString();
 
       saveData(mergedData);
       return res.json({ success: true, restored: true, count: mergedData.profiles.length });
