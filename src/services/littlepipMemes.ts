@@ -4,6 +4,7 @@ import path from 'node:path';
 import { GoogleGenAI } from '@google/genai';
 
 const MEME_DIRECTORY = path.join(process.cwd(), 'assets', 'littlepip-memes');
+const CATALOG_FILE = path.join(MEME_DIRECTORY, 'catalog.json');
 const INDEX_FILE = path.join(process.cwd(), '.littlepip_meme_index.json');
 const OCR_MODEL = 'gemini-3.8-flash';
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
@@ -91,23 +92,26 @@ function hashFile(filePath: string): string {
 }
 
 function loadIndex(): MemeIndexFile {
-  if (!fs.existsSync(INDEX_FILE)) return { memes: [] };
-  try {
-    const parsed: unknown = JSON.parse(fs.readFileSync(INDEX_FILE, 'utf8'));
-    if (
-      parsed &&
-      typeof parsed === 'object' &&
-      'memes' in parsed &&
-      Array.isArray(parsed.memes) &&
-      parsed.memes.every(isIndexedMeme)
-    ) {
-      return { memes: parsed.memes };
+  const memesById = new Map<string, IndexedMeme>();
+  for (const indexPath of [INDEX_FILE, CATALOG_FILE]) {
+    if (!fs.existsSync(indexPath)) continue;
+    try {
+      const parsed: unknown = JSON.parse(fs.readFileSync(indexPath, 'utf8'));
+      if (
+        !parsed ||
+        typeof parsed !== 'object' ||
+        !('memes' in parsed) ||
+        !Array.isArray(parsed.memes) ||
+        !parsed.memes.every(isIndexedMeme)
+      ) {
+        throw new Error('Meme index has an invalid shape');
+      }
+      for (const meme of parsed.memes) memesById.set(meme.id, meme);
+    } catch (error) {
+      console.warn(`[Littlepip Memes] Could not read ${path.basename(indexPath)}:`, error);
     }
-    throw new Error('Meme index has an invalid shape');
-  } catch (error) {
-    console.warn('[Littlepip Memes] Could not read OCR cache; rebuilding it:', error);
-    return { memes: [] };
   }
+  return { memes: [...memesById.values()] };
 }
 
 function parseOcrResults(responseText: string, expectedIds: Set<string>): MemeOcrResult[] {

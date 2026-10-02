@@ -1,4 +1,4 @@
-import { GoogleGenAI, Modality } from '@google/genai';
+import { GoogleGenAI } from '@google/genai';
 
 const TTS_MODEL = 'gemini-3.8-flash-lite-tts';
 const TTS_VOICES = ['Kore', 'Aoede', 'Zephyr'];
@@ -19,19 +19,20 @@ export function sanitizeTextForSpeech(text: string): string {
 
 export function buildLittlepipSpeechRequest(text: string, voiceName = 'Kore') {
   return {
-    contents: [{
-      role: 'user' as const,
-      parts: [{ text }]
+    input: [{
+      type: 'user_input' as const,
+      content: [{
+        type: 'text' as const,
+        text,
+        annotations: [{
+          type: 'speech_metadata' as const,
+          style: 'Speak in natural, clear, warm, lightly playful Russian with a youthful feminine voice.'
+        }]
+      }]
     }],
-    config: {
-      systemInstruction: 'Ты синтезируешь русскую речь. Произнеси только текст пользователя, без перевода, вступления, комментариев и добавленных слов. Голос молодой женский, тёплый и живой, с лёгкой игривой звонкостью; говори естественно, уверенно и разборчиво, без чрезмерно высокого или детского звучания.',
-      responseModalities: [Modality.AUDIO],
-      speechConfig: {
-        languageCode: 'ru-RU',
-        voiceConfig: {
-          prebuiltVoiceConfig: { voiceName }
-        }
-      }
+    response_format: { type: 'audio' as const, mime_type: 'audio/wav' as const },
+    generation_config: {
+      speech_config: [{ voice: voiceName, language: 'ru-RU' }]
     }
   };
 }
@@ -66,22 +67,24 @@ export async function generateLittlepipVoice(text: string, apiKey: string): Prom
   let lastError: unknown;
   for (const voiceName of TTS_VOICES) {
     try {
-      const response = await client.models.generateContent({
+      const response = await client.interactions.create({
         model: TTS_MODEL,
         ...buildLittlepipSpeechRequest(speechText, voiceName)
       });
-      const audioPart = response.candidates?.[0]?.content?.parts?.find(part => part.inlineData?.data);
-      const inlineData = audioPart?.inlineData;
-      if (!inlineData?.data) throw new Error(`Gemini TTS returned no audio data for ${voiceName}`);
+      const outputAudio = response.output_audio;
+      if (!outputAudio?.data) throw new Error(`Gemini TTS returned no audio data for ${voiceName}`);
 
-      const audio = Buffer.from(inlineData.data, 'base64');
-      if (inlineData.mimeType?.includes('wav')) return audio;
+      const audio = Buffer.from(outputAudio.data, 'base64');
+      if (outputAudio.mime_type?.includes('wav')) return audio;
 
-      const sampleRate = Number(inlineData.mimeType?.match(/rate=(\d+)/)?.[1] || 24000);
+      const sampleRate = outputAudio.sample_rate || 24000;
       return pcmToWav(audio, sampleRate);
     } catch (error) {
       lastError = error;
       console.warn(`[Littlepip TTS] Voice ${voiceName} failed:`, error);
+      if (typeof error === 'object' && error !== null && 'status' in error && error.status === 429) {
+        break;
+      }
     }
   }
 

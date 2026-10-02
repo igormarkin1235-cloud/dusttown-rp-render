@@ -6,12 +6,16 @@ import { buildLittlepipSpeechRequest, pcmToWav, sanitizeTextForSpeech } from './
 test('sends only the Russian reply as speech content, not English voice directions', () => {
   const reply = 'Привет, я рада тебя слышать!';
   const request = buildLittlepipSpeechRequest(reply);
-  const spokenContent = request.contents.flatMap(content => content.parts.map(part => part.text)).join(' ');
+  const spokenContent = request.input
+    .flatMap(input => input.content)
+    .map(content => content.text)
+    .join(' ');
 
   assert.equal(spokenContent, reply);
-  assert.match(request.config.systemInstruction, /Произнеси только текст пользователя/);
-  assert.match(request.config.systemInstruction, /молодой женский/);
-  assert.equal(request.config.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName, 'Kore');
+  assert.match(request.input[0].content[0].annotations[0].style, /feminine voice/);
+  assert.equal(request.generation_config.speech_config[0].voice, 'Kore');
+  assert.equal(request.generation_config.speech_config[0].language, 'ru-RU');
+  assert.deepEqual(request.response_format, { type: 'audio', mime_type: 'audio/wav' });
   assert.doesNotMatch(spokenContent, /Read this Russian message|warm|feminine voice/i);
 });
 

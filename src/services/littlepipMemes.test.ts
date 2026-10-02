@@ -6,6 +6,7 @@ import test from 'node:test';
 
 import {
   extractLittlepipMemeTag,
+  getLittlepipMemeCatalog,
   listLittlepipMemeFiles,
   LittlepipMeme
 } from './littlepipMemes';
@@ -24,6 +25,14 @@ test('finds newly added supported meme photos and ignores unrelated files', () =
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+test('uses the checked-in annotated catalog without Gemini OCR', async () => {
+  const memes = await getLittlepipMemeCatalog('unused-api-key');
+
+  assert.equal(memes.length, 27);
+  assert.ok(memes.every(meme => meme.ocrText && meme.description));
+  assert.ok(memes.some(meme => meme.ocrText === 'Это шедевр'));
 });
 
 test('extracts only a known meme marker and cleans it from the spoken reply', () => {
