@@ -7,6 +7,7 @@ test('detects representative violations for the text-based rules', () => {
   const cases: Array<[string, number]> = [
     ['Ты дебил', 1],
     ['Порно в общий чат', 2],
+    ['Видео только для 18+', 2],
     ['Подписывайтесь на мой канал t.me/example_channel', 3],
     ['DustTown — помойка', 5],
     ['DustTown — скам', 8],
@@ -15,7 +16,9 @@ test('detects representative violations for the text-based rules', () => {
     ['Сталин упомянут в истории', 6],
     ['Сжечь Коран', 7],
     ['Админы украли все деньги проекта DustTown', 8],
-    ['Где купить кокаин', 9]
+    ['Где купить кокаин', 9],
+    ['Рассказ о зависимости и насилии в реальной жизни', 9],
+    ['Обсудим преступление вне лора', 9]
   ];
 
   for (const [text, expectedRule] of cases) {
@@ -32,6 +35,10 @@ test('does not flag constructive feedback or Fallout-lore references as violatio
   );
   assert.equal(
     checkMessageForViolations('В Fallout лоре есть ментаты и психо', '@tester').isViolation,
+    false
+  );
+  assert.equal(
+    checkMessageForViolations('В игровом лоре герой переживает зависимость', '@tester').isViolation,
     false
   );
 });
