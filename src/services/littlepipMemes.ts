@@ -9,6 +9,10 @@ const OCR_MODEL = 'gemini-3.8-flash';
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 const OCR_BATCH_SIZE = 8;
 const OCR_TIMEOUT_MS = 45_000;
+const OCR_RATE_LIMIT_COOLDOWN_MS = 6 * 60 * 60 * 1000;
+const OCR_ERROR_COOLDOWN_MS = 5 * 60 * 1000;
+
+let ocrRetryAfter = 0;
 
 export interface LittlepipMeme {
   id: string;
@@ -229,9 +233,30 @@ export async function getLittlepipMemeCatalog(apiKey: string): Promise<Littlepip
   const changedFiles = currentFiles.filter(file => cachedById.get(file.id)?.fileHash !== file.fileHash);
 
   if (changedFiles.length > 0) {
+    if (Date.now() < ocrRetryAfter) {
+      return currentFiles.flatMap(file => {
+        const indexed = cachedById.get(file.id);
+        return indexed?.fileHash === file.fileHash
+          ? [{ ...indexed, filePath: file.filePath }]
+          : [];
+      });
+    }
+
     console.info(`[Littlepip Memes] OCR indexing ${changedFiles.length} new or changed image(s)`);
     const client = new GoogleGenAI({ apiKey });
-    const recognized = await recognizeChangedMemes(client, changedFiles);
+    let recognized: IndexedMeme[];
+    try {
+      recognized = await recognizeChangedMemes(client, changedFiles);
+    } catch (error) {
+      const status = typeof error === 'object' && error !== null && 'status' in error
+        ? error.status
+        : undefined;
+      ocrRetryAfter = Date.now() + (status === 429
+        ? OCR_RATE_LIMIT_COOLDOWN_MS
+        : OCR_ERROR_COOLDOWN_MS);
+      throw error;
+    }
+    ocrRetryAfter = 0;
     for (const meme of recognized) cachedById.set(meme.id, meme);
   }
 
