@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { buildLittlepipSpeechRequest, pcmToWav } from './littlepipVoice';
+import { buildLittlepipSpeechRequest, pcmToWav, sanitizeTextForSpeech } from './littlepipVoice';
 
 test('sends only the Russian reply as speech content, not English voice directions', () => {
   const reply = 'Привет, я рада тебя слышать!';
@@ -11,8 +11,15 @@ test('sends only the Russian reply as speech content, not English voice directio
   assert.equal(spokenContent, reply);
   assert.match(request.config.systemInstruction, /Произнеси только текст пользователя/);
   assert.match(request.config.systemInstruction, /молодой женский/);
-  assert.equal(request.config.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName, 'Aoede');
+  assert.equal(request.config.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName, 'Kore');
   assert.doesNotMatch(spokenContent, /Read this Russian message|warm|feminine voice/i);
+});
+
+test('cleans markup and links before speech synthesis', () => {
+  assert.equal(
+    sanitizeTextForSpeech('**Привет!** Подробности: https://example.com'),
+    'Привет! Подробности:'
+  );
 });
 
 test('wraps generated PCM as a mono 24 kHz WAV file', () => {

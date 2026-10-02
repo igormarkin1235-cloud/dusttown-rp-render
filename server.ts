@@ -4,7 +4,15 @@ import path from 'path';
 import fs from 'fs';
 import { exec } from 'child_process';
 import { fileURLToPath } from 'url';
-import { handleLittlepipUpdate, getLittlepipStats, generateLittlepipText, hasPipMention, LITTLEPIP_GEMINI_MODEL } from './src/services/littlepipAgent';
+import {
+  handleLittlepipUpdate,
+  getLittlepipStats,
+  generateLittlepipText,
+  hasPipMention,
+  LITTLEPIP_GEMINI_MODEL,
+  ChatAdminInfo
+} from './src/services/littlepipAgent';
+import { LittlepipMeme } from './src/services/littlepipMemes';
 import { CloudChatState, FirebaseCloudStore } from './src/services/firebaseCloud';
 import { AppStateData } from './src/types';
 import { extractSongSearchQuery, searchYouTubeTrack } from './src/services/youtubeSearch';
@@ -596,6 +604,84 @@ async function tgApi(method: string, body?: any) {
   }
 }
 
+const chatAdminsCache = new Map<string, { admins: ChatAdminInfo[]; cachedAt: number }>();
+
+async function getTelegramChatAdmins(chatId: number | string): Promise<ChatAdminInfo[]> {
+  if (typeof chatId === 'number' && chatId > 0) return [];
+
+  const key = String(chatId);
+  const cached = chatAdminsCache.get(key);
+  if (cached && Date.now() - cached.cachedAt < 10 * 60 * 1000) return cached.admins;
+
+  try {
+    const response = await tgApi('getChatAdministrators', { chat_id: chatId });
+    if (!response.ok || !Array.isArray(response.result)) {
+      console.warn(`[Telegram Admins] Could not load administrators for chat ${key}: ${response.description || 'invalid response'}`);
+      return [];
+    }
+
+    const admins: ChatAdminInfo[] = response.result.map((member: any) => ({
+      userId: member.user.id,
+      username: member.user.username ? `@${member.user.username}` : undefined,
+      displayName: [member.user.first_name, member.user.last_name].filter(Boolean).join(' ') || 'Администратор',
+      isOwner: member.status === 'creator',
+      customTitle: member.custom_title
+    }));
+    chatAdminsCache.set(key, { admins, cachedAt: Date.now() });
+    return admins;
+  } catch (error) {
+    console.warn(`[Telegram Admins] Failed to load administrators for chat ${key}:`, error);
+    return cached?.admins || [];
+  }
+}
+
+async function sendLittlepipReply(
+  chatId: number | string,
+  text: string,
+  options: Record<string, any> = {}
+) {
+  const { meme, ...telegramOptions } = options as { meme?: LittlepipMeme; [key: string]: any };
+  if (!meme) {
+    return tgApi('sendMessage', { chat_id: chatId, text, ...telegramOptions });
+  }
+
+  try {
+    const image = await fs.promises.readFile(meme.filePath);
+    const extension = path.extname(meme.fileName).toLowerCase();
+    const mimeType = extension === '.png'
+      ? 'image/png'
+      : extension === '.webp'
+        ? 'image/webp'
+        : 'image/jpeg';
+    const form = new FormData();
+    form.append('chat_id', String(chatId));
+    form.append('photo', new Blob([new Uint8Array(image)], { type: mimeType }), meme.fileName);
+    if (text) form.append('caption', text.slice(0, 1024));
+    for (const [key, value] of Object.entries(telegramOptions)) {
+      if (value !== undefined && value !== null) {
+        form.append(key, typeof value === 'string' ? value : String(value));
+      }
+    }
+
+    const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`, {
+      method: 'POST',
+      body: form
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) {
+      throw new Error(result.description || `Telegram sendPhoto failed with status ${response.status}`);
+    }
+    return result;
+  } catch (error) {
+    console.warn(`[Littlepip Memes] Could not send ${meme.fileName}; sending the text reply instead:`, error);
+    const fallback = await tgApi('sendMessage', { chat_id: chatId, text, ...telegramOptions });
+    if (!fallback.ok) {
+      throw new Error(fallback.description || 'Telegram could not send the Littlepip reply');
+    }
+    return fallback;
+  }
+}
+
 // Start Telegram Polling Loop
 let lastUpdateId = 0;
 
@@ -679,12 +765,24 @@ async function handleTelegramUpdate(update: any) {
   }
 
   const msg = update.message;
-  if (!msg || !msg.text) return;
+  if (!msg) return;
+
+  const isMedia = Boolean(
+    msg.photo || msg.video || msg.animation || msg.document || msg.audio ||
+    msg.voice || msg.video_note || msg.sticker
+  );
+  const messageText = typeof msg.text === 'string'
+    ? msg.text
+    : typeof msg.caption === 'string'
+      ? msg.caption
+      : '';
+  if (!messageText && !isMedia) return;
 
   const chatId = msg.chat.id;
   const user = msg.from;
+  if (!user || user.is_bot) return;
   const userTag = user.username ? `@${user.username}` : user.first_name;
-  const text = msg.text.trim();
+  const text = messageText.trim();
 
   // Automatic registration of Telegram user in the shared database
   if (user) {
@@ -694,11 +792,15 @@ async function handleTelegramUpdate(update: any) {
   addBotLog('message', `[${userTag}]: ${text}`);
 
   const appUrl = process.env.APP_URL || 'https://t.me/DustTown_RP_bot/app';
+  const isPipAddressed = hasPipMention(text) ||
+    Boolean(msg.reply_to_message?.from?.is_bot);
+  const chatAdmins = isPipAddressed ? await getTelegramChatAdmins(chatId) : [];
+  const senderAdmin = chatAdmins.find(admin => String(admin.userId) === String(user.id));
 
   // 1. Littlepip AI Agent processing (commands /pip_start, /support, /pip_bind, /stop, /pip_status, and dialogue)
   try {
     // Send typing action so Telegram shows that Littlepip is typing
-    tgApi('sendChatAction', { chat_id: chatId, action: 'typing' }).catch(() => {});
+    if (!isMedia) tgApi('sendChatAction', { chat_id: chatId, action: 'typing' }).catch(() => {});
 
     const littlepipResult = await handleLittlepipUpdate(
       {
@@ -709,14 +811,14 @@ async function handleTelegramUpdate(update: any) {
         username: user?.username ? `@${user.username}` : (user?.first_name || 'сталкер'),
         text,
         replyToMessage: msg.reply_to_message,
-        botUsername: botInfo?.username || 'DustTown_RP_bot'
+        botUsername: botInfo?.username || 'DustTown_RP_bot',
+        isMedia,
+        chatAdmins,
+        isSenderAdmin: Boolean(senderAdmin),
+        isSenderOwner: Boolean(senderAdmin?.isOwner)
       },
       async (targetChatId, replyText, options) => {
-        return tgApi('sendMessage', {
-          chat_id: targetChatId,
-          text: replyText,
-          ...options
-        });
+        return sendLittlepipReply(targetChatId, replyText, options);
       }
     );
 
@@ -724,6 +826,7 @@ async function handleTelegramUpdate(update: any) {
       addBotLog('info', `[Литлпип ИИ]: ответ в чат ${chatId} (${littlepipResult.mode || 'диалог'})`);
       return;
     }
+    if (isMedia) return;
   } catch (pipErr: any) {
     console.error('[Littlepip Error]:', pipErr);
     if (hasPipMention(text) || msg.reply_to_message?.from?.is_bot) {

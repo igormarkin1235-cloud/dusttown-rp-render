@@ -13,6 +13,7 @@ RUN npm install -g tsx
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/server.ts ./server.ts
 COPY --from=builder /app/src ./src
+COPY --from=builder /app/assets ./assets
 
 ENV NODE_ENV=production
 ENV PORT=8080

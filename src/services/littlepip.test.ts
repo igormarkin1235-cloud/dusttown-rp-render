@@ -9,6 +9,7 @@ import {
   hasPipMention,
   parseLittlepipCommand
 } from './littlepipAgent';
+import { LittlepipMeme } from './littlepipMemes';
 
 test('does not treat unrelated messages as Pipka mentions', () => {
   assert.equal(hasPipMention('мда, опять это говно'), false);
@@ -30,6 +31,46 @@ test('does not reply to unrelated messages unless the name is mentioned', async 
   );
 
   assert.equal(result.handled, false);
+});
+
+test('warns about a rule violation even when Pipka is not mentioned', async () => {
+  let sentText = '';
+  const result = await handleLittlepipUpdate(
+    {
+      chatId: `moderation-test-${Date.now()}`,
+      messageId: 43,
+      userId: 124,
+      username: '@tester',
+      text: 'Ты идиот'
+    },
+    async (_chatId, text) => {
+      sentText = text;
+    }
+  );
+
+  assert.equal(result.handled, true);
+  assert.equal(result.action, 'moderation_warning');
+  assert.match(sentText, /правила №1/i);
+  assert.match(sentText, /остановись/);
+});
+
+test('does not mistake casual profanity or constructive project feedback for a violation', async () => {
+  for (const text of ['мда, опять это говно', 'В проекте неудобно устроены уведомления, это стоит улучшить']) {
+    const result = await handleLittlepipUpdate(
+      {
+        chatId: `moderation-safe-${Date.now()}-${text.length}`,
+        messageId: 44,
+        userId: 125,
+        username: '@tester',
+        text
+      },
+      async () => {
+        throw new Error('sendMessage should not be called');
+      }
+    );
+
+    assert.equal(result.handled, false);
+  }
 });
 
 test('recognizes a casual direct address and Telegram commands addressed to the bot username', () => {
@@ -110,4 +151,29 @@ test('keeps the ten latest preceding messages for conversation context', async (
   const botQuestion = buildLittlepipPrompt('Пипка, какие функции у бота?', '@tester', 'chat');
   assert.match(botQuestion, /server\.ts/);
   assert.match(botQuestion, /src\/services\/storage\.ts/);
+
+  const adminPrompt = buildLittlepipPrompt(
+    'Пипка, привет!',
+    '@admin',
+    'chat',
+    [],
+    '',
+    [{ userId: 7, username: '@admin', displayName: 'Admin', isOwner: true }],
+    true,
+    true
+  );
+  assert.match(adminPrompt, /администраторы чата/i);
+  assert.match(adminPrompt, /иногда легко флиртуй/);
+
+  const meme: LittlepipMeme = {
+    id: 'meme-1',
+    fileName: 'meme-1.jpg',
+    filePath: '/unused/meme-1.jpg',
+    fileHash: 'hash',
+    ocrText: 'Когда починил сервер с первого раза',
+    description: 'Смешанная реакция удивления и радости'
+  };
+  const memePrompt = buildLittlepipPrompt('Пипка, бот заработал!', '@tester', 'chat', [], '', [], false, false, [meme]);
+  assert.match(memePrompt, /Когда починил сервер с первого раза/);
+  assert.match(memePrompt, /\[MEME:ID\]/);
 });

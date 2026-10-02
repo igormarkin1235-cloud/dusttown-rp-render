@@ -1,20 +1,35 @@
 import { GoogleGenAI, Modality } from '@google/genai';
 
 const TTS_MODEL = 'gemini-3.8-flash-lite-tts';
+const TTS_VOICES = ['Kore', 'Aoede', 'Zephyr'];
 
-export function buildLittlepipSpeechRequest(text: string) {
+export function sanitizeTextForSpeech(text: string): string {
+  return text
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/__([^_]+)__/g, '$1')
+    .replace(/_([^_]+)_/g, '$1')
+    .replace(/https?:\/\/\S+/g, '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function buildLittlepipSpeechRequest(text: string, voiceName = 'Kore') {
   return {
     contents: [{
       role: 'user' as const,
       parts: [{ text }]
     }],
     config: {
-      systemInstruction: 'Ты синтезируешь русскую речь. Произнеси только текст пользователя, без перевода, вступления, комментариев и добавленных слов. Голос мягкий, тёплый, молодой женский, с лёгкой игривой звонкостью и чуть повышенной высотой; говори естественно и разборчиво, не детским голосом.',
+      systemInstruction: 'Ты синтезируешь русскую речь. Произнеси только текст пользователя, без перевода, вступления, комментариев и добавленных слов. Голос молодой женский, тёплый и живой, с лёгкой игривой звонкостью; говори естественно, уверенно и разборчиво, без чрезмерно высокого или детского звучания.',
       responseModalities: [Modality.AUDIO],
       speechConfig: {
         languageCode: 'ru-RU',
         voiceConfig: {
-          prebuiltVoiceConfig: { voiceName: 'Aoede' }
+          prebuiltVoiceConfig: { voiceName }
         }
       }
     }
@@ -44,19 +59,31 @@ export function pcmToWav(pcm: Buffer, sampleRate = 24000, channels = 1): Buffer 
 }
 
 export async function generateLittlepipVoice(text: string, apiKey: string): Promise<Buffer> {
+  const speechText = sanitizeTextForSpeech(text).slice(0, 500);
+  if (!speechText) throw new Error('Текст для озвучки пустой');
+
   const client = new GoogleGenAI({ apiKey });
-  const response = await client.models.generateContent({
-    model: TTS_MODEL,
-    ...buildLittlepipSpeechRequest(text)
-  });
+  let lastError: unknown;
+  for (const voiceName of TTS_VOICES) {
+    try {
+      const response = await client.models.generateContent({
+        model: TTS_MODEL,
+        ...buildLittlepipSpeechRequest(speechText, voiceName)
+      });
+      const audioPart = response.candidates?.[0]?.content?.parts?.find(part => part.inlineData?.data);
+      const inlineData = audioPart?.inlineData;
+      if (!inlineData?.data) throw new Error(`Gemini TTS returned no audio data for ${voiceName}`);
 
-  const audioPart = response.candidates?.[0]?.content?.parts?.find(part => part.inlineData?.data);
-  const inlineData = audioPart?.inlineData;
-  if (!inlineData?.data) throw new Error('Gemini TTS returned no audio data');
+      const audio = Buffer.from(inlineData.data, 'base64');
+      if (inlineData.mimeType?.includes('wav')) return audio;
 
-  const audio = Buffer.from(inlineData.data, 'base64');
-  if (inlineData.mimeType?.includes('wav')) return audio;
+      const sampleRate = Number(inlineData.mimeType?.match(/rate=(\d+)/)?.[1] || 24000);
+      return pcmToWav(audio, sampleRate);
+    } catch (error) {
+      lastError = error;
+      console.warn(`[Littlepip TTS] Voice ${voiceName} failed:`, error);
+    }
+  }
 
-  const sampleRate = Number(inlineData.mimeType?.match(/rate=(\d+)/)?.[1] || 24000);
-  return pcmToWav(audio, sampleRate);
+  throw new Error('All configured Littlepip TTS voices failed', { cause: lastError });
 }
