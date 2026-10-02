@@ -1,22 +1,21 @@
-FROM node:20-slim AS builder
+FROM node:22-slim AS builder
 WORKDIR /app
 COPY package*.json ./
-RUN npm install
+RUN npm ci
 COPY . .
-RUN npm run build
+RUN npm run lint && npm run build
 
-FROM node:20-slim AS runner
+FROM node:22-slim AS runner
 WORKDIR /app
 COPY package*.json ./
-RUN npm install --omit=dev
-RUN npm install -g tsx
+RUN npm ci --omit=dev
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/server.ts ./server.ts
 COPY --from=builder /app/src ./src
 COPY --from=builder /app/assets ./assets
 
 ENV NODE_ENV=production
-ENV PORT=8080
-EXPOSE 8080
+ENV PORT=10000
+EXPOSE 10000
 
-CMD ["tsx", "server.ts"]
+CMD ["npm", "start"]

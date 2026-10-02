@@ -14,7 +14,7 @@
     "import-firebase-state": "tsx scripts/import-firebase-state.ts"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.0.0"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

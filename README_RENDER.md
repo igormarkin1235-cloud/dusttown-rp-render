@@ -2,6 +2,8 @@
 
 Проект **DustTown RP — Telegram Bot & Mini App** настроен для развертывания на Render.com через `render.yaml`. Render устанавливает зависимости, проверяет типы, собирает production-клиент и запускает сервер; health check выполняется через `/api/version`.
 
+Проект требует **Node.js 22 или новее**: текущая версия Firebase Admin SDK и Firestore SDK не поддерживает Node 20. При Docker-развертывании используйте репозиторный `Dockerfile`, который устанавливает runtime-зависимости, включая Firestore, на Node 22.
+
 ---
 
 ### 1. Подготовка Render
