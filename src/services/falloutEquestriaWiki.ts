@@ -1,8 +1,11 @@
 export const FALLOUT_EQUISTRIA_FORUM_URL = 'https://falloutequestria.fandom.com/ru/wiki/%D0%A4%D0%BE%D1%80%D1%83%D0%BC:%D0%94%D0%BE%D0%B1%D1%80%D0%BE_%D0%BF%D0%BE%D0%B6%D0%B0%D0%BB%D0%BE%D0%B2%D0%B0%D1%82%D1%8C_%D0%B2_%D1%84%D0%BE%D1%80%D1%83%D0%BC_%D1%81%D0%BE%D0%BE%D0%B1%D1%89%D0%B5%D1%81%D1%82%D0%B2%D0%B0';
+export const LITTLEPIP_FANDOM_PAGE_URL = 'https://falloutequestria.fandom.com/ru/wiki/%D0%9B%D0%B8%D1%82%D0%BB%D0%BF%D0%B8%D0%BF';
 
 const WIKI_API_URL = 'https://falloutequestria.fandom.com/ru/api.php';
-const WIKI_USER_AGENT = 'DustTownRP-Littlepip/1.0 (Fallout Equestria lore context)';
-const loreTerms = /(?:fallout|эквестр|ф[оэ]е|канон|литлпип|пипка|стойл|анклав|братств|рейдер|грифон|аликорн|смотрител|супермутант|северн|содружест)/iu;
+const WIKI_USER_AGENT = 'DustTownRP-Littlepip/2.0 (Fallout Equestria lore engine)';
+
+// Expanded lore triggers including companions, locations, technology, and factions
+const loreTerms = /(?:fallout|эквестр|ф[оэ]е|канон|литлпип|пипка|стойл|анклав|братств|рейдер|грифон|аликорн|смотрител|супермутант|северн|содружест|вельвет|каламити|стилхувз|хомэйдж|ксэнит|арба|тенпони|минталки|пипбак|макинтош|тостер)/iu;
 
 export interface FalloutEquestriaReference {
   title: string;
@@ -10,11 +13,15 @@ export interface FalloutEquestriaReference {
   extract: string;
 }
 
+// In-memory cache of fetched wiki articles
+const wikiCache = new Map<string, { data: FalloutEquestriaReference[]; timestamp: number }>();
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
 export function shouldSearchFalloutEquestriaWiki(text: string): boolean {
   const query = text
     .trim()
     .replace(/^(?:пипка|литлпип|литка|лилька|littlepip)[\s,:!?-]*/iu, '');
-  return loreTerms.test(query) || /(?:кто такая|кто такой|что такое|расскажи (?:про|о)|объясни)/iu.test(query);
+  return loreTerms.test(query) || /(?:кто такая|кто такой|что такое|расскажи (?:про|о)|объясни|где находится|кто этот)/iu.test(query);
 }
 
 function removeNestedTemplates(wikitext: string): string {
@@ -71,6 +78,52 @@ export function cleanFalloutEquestriaWikitext(wikitext: string): string {
     .trim();
 }
 
+/**
+ * Direct lookup of the canonical Littlepip page from Fandom
+ */
+export async function fetchLittlepipFandomArticle(fetcher: typeof fetch = fetch): Promise<FalloutEquestriaReference | null> {
+  const cached = wikiCache.get('__canonical_littlepip__');
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS && cached.data[0]) {
+    return cached.data[0];
+  }
+
+  try {
+    const url = new URL(WIKI_API_URL);
+    url.searchParams.set('action', 'query');
+    url.searchParams.set('prop', 'revisions');
+    url.searchParams.set('titles', 'Литлпип');
+    url.searchParams.set('rvslots', 'main');
+    url.searchParams.set('rvprop', 'content');
+    url.searchParams.set('format', 'json');
+    url.searchParams.set('formatversion', '2');
+
+    const res = await fetcher(url, {
+      headers: { 'User-Agent': WIKI_USER_AGENT },
+      signal: AbortSignal.timeout(8000)
+    });
+
+    if (!res.ok) return null;
+    const json = await res.json();
+    const page = json.query?.pages?.[0];
+    if (!page || page.missing) return null;
+
+    const rawContent = page.revisions?.[0]?.slots?.main?.content || '';
+    const cleanContent = cleanFalloutEquestriaWikitext(rawContent);
+
+    const ref: FalloutEquestriaReference = {
+      title: 'Литлпип (Fallout: Equestria Wiki)',
+      url: LITTLEPIP_FANDOM_PAGE_URL,
+      extract: cleanContent.slice(0, 3500)
+    };
+
+    wikiCache.set('__canonical_littlepip__', { data: [ref], timestamp: Date.now() });
+    return ref;
+  } catch (e) {
+    console.warn('[Littlepip Wiki] Failed to fetch live Fandom article:', e);
+    return null;
+  }
+}
+
 export async function searchFalloutEquestriaWiki(
   question: string,
   fetcher: typeof fetch = fetch
@@ -78,9 +131,16 @@ export async function searchFalloutEquestriaWiki(
   const query = question
     .trim()
     .replace(/^(?:пипка|литлпип|литка|лилька|littlepip)[\s,:!?-]*/iu, '')
-    .replace(/^(?:расскажи|объясни|кто такая|кто такой|что такое|где|когда|почему)\s*(?:про|о)?\s*/iu, '')
+    .replace(/^(?:расскажи|объясни|кто такая|кто такой|что такое|где|когда|почему|что за)\s*(?:про|о)?\s*/iu, '')
     .slice(0, 180);
-  if (!query || !shouldSearchFalloutEquestriaWiki(question)) return [];
+
+  if (!query) return [];
+
+  const cacheKey = query.toLowerCase();
+  const cached = wikiCache.get(cacheKey);
+  if (fetcher === fetch && cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    return cached.data;
+  }
 
   const request = (params: Record<string, string>) => {
     const url = new URL(WIKI_API_URL);
@@ -127,16 +187,19 @@ export async function searchFalloutEquestriaWiki(
       return pageData.query?.pages || [];
     }));
 
-    return pageResults.flat()
+    const refs = pageResults.flat()
       .map((page: any) => {
         const wikitext = page.revisions?.[0]?.slots?.main?.content || page.revisions?.[0]?.['*'] || '';
         return {
           title: String(page.title),
           url: `https://falloutequestria.fandom.com/ru/wiki/${encodeURIComponent(String(page.title).replace(/ /g, '_'))}`,
-          extract: cleanFalloutEquestriaWikitext(String(wikitext)).slice(0, 1800)
+          extract: cleanFalloutEquestriaWikitext(String(wikitext)).slice(0, 2000)
         };
       })
-      .filter((page: FalloutEquestriaReference) => page.extract.length > 80);
+      .filter((page: FalloutEquestriaReference) => page.extract.length > 60);
+
+    wikiCache.set(cacheKey, { data: refs, timestamp: Date.now() });
+    return refs;
   } catch (error: any) {
     console.warn('[Littlepip wiki] Fandom lookup failed:', error?.message || error);
     return [];
@@ -146,6 +209,6 @@ export async function searchFalloutEquestriaWiki(
 export function formatFalloutEquestriaReferences(references: FalloutEquestriaReference[]): string {
   if (!references.length) return '';
   return references
-    .map(reference => `Статья: ${reference.title}\nИсточник: ${reference.url}\nФрагмент: ${reference.extract}`)
-    .join('\n\n');
+    .map(reference => `Статья: ${reference.title}\nИсточник: ${reference.url}\nФрагмент:\n${reference.extract}`)
+    .join('\n\n---\n\n');
 }

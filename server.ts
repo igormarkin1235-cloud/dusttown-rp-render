@@ -17,6 +17,17 @@ import { CloudChatState, FirebaseCloudStore } from './src/services/firebaseCloud
 import { AppStateData } from './src/types';
 import { extractSongSearchQuery, searchYouTubeTrack } from './src/services/youtubeSearch';
 import { generateLittlepipVoice } from './src/services/littlepipVoice';
+import {
+  getLittlepipSettings,
+  updateLittlepipSettings,
+  setTopicConfig,
+  removeTopicConfig
+} from './src/services/littlepipConfig';
+import {
+  getAllReputations,
+  adjustPlayerReputation,
+  forgivePlayerGrudge
+} from './src/services/littlepipReputation';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -845,7 +856,7 @@ async function handleTelegramUpdate(update: any) {
     if (hasPipMention(text) || msg.reply_to_message?.from?.is_bot) {
       await tgApi('sendMessage', {
         chat_id: chatId,
-        text: 'Не смогла связаться с моделью и не хочу подменять ответ заготовкой. Попробуй обратиться ко мне чуть позже.',
+        text: '📻 *[В динамике Pip-Buck слышен треск помех и щелчок реле]*\n— Тьфу, помехи от радиационного фона частоту глушат! Дайте мне минутку подкрутить клемму в терминале, и я снова на связи!',
         reply_to_message_id: msg.message_id,
         ...(msg.message_thread_id ? { message_thread_id: msg.message_thread_id } : {})
       });
@@ -869,6 +880,9 @@ async function handleTelegramUpdate(update: any) {
 
 🦄 **ИИ-Агент Литлпип (Стойло 2):**
 • \`/pip_start\` — запустить живой диалог с Литлпип
+• \`/pip_rep\` — проверить своё досье и репутацию у Пипки
+• \`/pip_top\` — доска почёта любимчиков и розыска обидчиков
+• \`/pip_joke\` — сталкерские анекдоты и мемы
 • \`/support\` — режим техподдержки и подсказок по коду/файлам
 • \`/pip_bind\` — привязать Литлпип к текущей вкладке/топику группы
 • \`/stop\` — остановить бота (радиомолчание)`;
@@ -1003,6 +1017,86 @@ app.post('/api/littlepip/voice', async (req, res) => {
   } catch (error: any) {
     console.error('[Littlepip TTS] Generation failed:', error?.message || error);
     res.status(502).json({ error: 'Голосовое сообщение временно недоступно.' });
+  }
+});
+
+// ==========================================
+// НАСТРОЙКИ ПИПКИ, ТОПИКИ И РЕПУТАЦИЯ
+// ==========================================
+
+// Получить текущие настройки Пипки и список топиков
+app.get('/api/littlepip/config', (req, res) => {
+  res.json({
+    success: true,
+    settings: getLittlepipSettings()
+  });
+});
+
+// Обновить настройки Пипки
+app.post('/api/littlepip/config', (req, res) => {
+  try {
+    const updated = updateLittlepipSettings(req.body);
+    res.json({ success: true, settings: updated });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Добавить или обновить права для топика группы
+app.post('/api/littlepip/topics/set', (req, res) => {
+  try {
+    const { threadId, title, permission, enabled, notes } = req.body;
+    if (!threadId) return res.status(400).json({ error: 'Missing threadId' });
+    const settings = setTopicConfig(threadId, title || `Топик #${threadId}`, permission || 'read_write', enabled ?? true, notes);
+    res.json({ success: true, settings });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Удалить топик из конфига
+app.delete('/api/littlepip/topics/:threadId', (req, res) => {
+  try {
+    const settings = removeTopicConfig(req.params.threadId);
+    res.json({ success: true, settings });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Получить всю базу репутации игроков
+app.get('/api/littlepip/reputation', (req, res) => {
+  try {
+    res.json({
+      success: true,
+      players: getAllReputations()
+    });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Изменить репутацию игрока (админ)
+app.post('/api/littlepip/reputation/adjust', (req, res) => {
+  try {
+    const { userId, deltaScore, reason, clearGrudge } = req.body;
+    if (!userId) return res.status(400).json({ error: 'Missing userId' });
+    const updated = adjustPlayerReputation(userId, Number(deltaScore) || 0, reason || 'Админ-решение', Boolean(clearGrudge));
+    res.json({ success: true, player: updated });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Помиловать игрока (снять обиду Пипки)
+app.post('/api/littlepip/reputation/forgive', (req, res) => {
+  try {
+    const { userId } = req.body;
+    if (!userId) return res.status(400).json({ error: 'Missing userId' });
+    const updated = forgivePlayerGrudge(userId);
+    res.json({ success: true, player: updated });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
   }
 });
 

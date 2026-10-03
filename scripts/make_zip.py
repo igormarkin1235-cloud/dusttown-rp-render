@@ -27,7 +27,7 @@ if os.path.exists(output_path):
 
 # 2. Write build-version.json for easy verification
 build_info = {
-    "version": "1.2.5",
+    "version": "1.2.6",
     "builtAt": now_iso,
     "environment": "production",
     "appName": "DustTown RP — Telegram Bot & Mini App",
@@ -39,7 +39,12 @@ build_info = {
         "MarketView",
         "CasesView",
         "CollabEvents",
-        "BotControlPanel"
+        "BotControlPanel",
+        "LittlepipReputationEngine",
+        "LittlepipMemesVault",
+        "FalloutEquestriaFandomDossier",
+        "LittlepipControlPanel",
+        "LittlepipTopicPermissions"
     ]
 }
 
