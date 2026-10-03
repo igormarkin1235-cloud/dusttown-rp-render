@@ -20,6 +20,7 @@ export function setButtonSoundsEnabled(enabled: boolean) {
 
 export function installGlobalButtonSounds(): () => void {
   const unlockAudio = () => {
+    if (!soundEnabled) return;
     const context = getAudioContext();
     if (context?.state === 'suspended') void context.resume().catch(() => undefined);
   };
@@ -58,7 +59,7 @@ export function installGlobalButtonSounds(): () => void {
 }
 
 export function playNukeSiren() {
-  if (!audioContext || audioContext.state !== 'running') return;
+  if (!soundEnabled || !audioContext || audioContext.state !== 'running') return;
 
   const context = audioContext;
   const now = context.currentTime;

@@ -1,7 +1,10 @@
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, Modality } from '@google/genai';
+import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts';
 
 const TTS_MODEL = 'gemini-3.8-flash-lite-tts';
-const TTS_VOICES = ['Kore', 'Aoede', 'Zephyr'];
+const TTS_FALLBACK_VOICES = ['Puck', 'Zephyr', 'Kore'];
+
+export const DEFAULT_GEMINI_KEY = 'AQ.Ab8RN6LodaR4rcIYJ_qGPaBkhwc5GoLFhqvKEWm_Djx8U7XVWw';
 
 export function sanitizeTextForSpeech(text: string): string {
   return text
@@ -13,26 +16,35 @@ export function sanitizeTextForSpeech(text: string): string {
     .replace(/_([^_]+)_/g, '$1')
     .replace(/https?:\/\/\S+/g, '')
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/\[MEME(?:_[A-Z]+)?:\s*[^\]]+\]/gi, '')
+    .replace(/\( ͡° ͜ʖ ͡°\)|¯\\_\(ツ\)_/g, '')
+    .replace(/[:;]-?[)(DPpdOo3]/g, '')
+    .replace(/\b(?:xd|xD|XD)\b/g, '')
+    .replace(/\p{Extended_Pictographic}/gu, '')
+    .replace(/[«»"']/g, '')
+    .replace(/([!?.]){2,}/g, '$1')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
 export function buildLittlepipSpeechRequest(text: string, voiceName = 'Kore') {
   return {
-    input: [{
-      type: 'user_input' as const,
-      content: [{
-        type: 'text' as const,
+    contents: [{
+      role: 'user' as const,
+      parts: [{
         text,
-        annotations: [{
-          type: 'speech_metadata' as const,
-          style: 'Speak in natural, clear, warm, lightly playful Russian with a youthful feminine voice.'
-        }]
+        speechMetadata: {
+          style: 'Young, energetic, cute, slightly squeaky and sweet cheerful teenage pony girl heroine voice, enthusiastic, melodic and ringing'
+        }
       }]
     }],
-    response_format: { type: 'audio' as const, mime_type: 'audio/wav' as const },
-    generation_config: {
-      speech_config: [{ voice: voiceName, language: 'ru-RU' }]
+    config: {
+      responseModalities: [Modality.AUDIO],
+      speechConfig: {
+        voiceConfig: {
+          prebuiltVoiceConfig: { voiceName }
+        }
+      }
     }
   };
 }
@@ -59,34 +71,126 @@ export function pcmToWav(pcm: Buffer, sampleRate = 24000, channels = 1): Buffer 
   return wav;
 }
 
-export async function generateLittlepipVoice(text: string, apiKey: string): Promise<Buffer> {
-  const speechText = sanitizeTextForSpeech(text).slice(0, 500);
-  if (!speechText) throw new Error('Текст для озвучки пустой');
+// Применяет легкий питч-шифт (+15% к частоте дискретизации), делая голос звонким, чуточку писклявым и мягким
+export function tuneWavPitch(wav: Buffer, pitchMultiplier = 1.15): Buffer {
+  if (wav.length < 44 || wav.toString('ascii', 0, 4) !== 'RIFF') return wav;
+  const originalRate = wav.readUInt32LE(24) || 24000;
+  const tunedRate = Math.round(originalRate * pitchMultiplier);
+  const channels = wav.readUInt16LE(22) || 1;
+  const bitsPerSample = wav.readUInt16LE(34) || 16;
+  const blockAlign = channels * Math.floor(bitsPerSample / 8);
+  const byteRate = tunedRate * blockAlign;
 
-  const client = new GoogleGenAI({ apiKey });
-  let lastError: unknown;
-  for (const voiceName of TTS_VOICES) {
+  wav.writeUInt32LE(tunedRate, 24);
+  wav.writeUInt32LE(byteRate, 28);
+  return wav;
+}
+
+/**
+ * Синтезирует оригинальный голос Литлпип:
+ * эмоциональный, мягкий, звонкий, чуть писклявый девичий голос сталкерши из Стойла 2.
+ * Использует нейросетевую модель Microsoft Edge TTS (ru-RU-SvetlanaNeural с повышенным тоном +18%).
+ */
+async function generateEdgeTtsAudio(
+  text: string,
+  voiceName = 'ru-RU-SvetlanaNeural',
+  pitch = '+14%',
+  rate = '+4%'
+): Promise<Buffer> {
+  const tts = new MsEdgeTTS();
+  await tts.setMetadata(voiceName, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3);
+
+  return new Promise<Buffer>((resolve, reject) => {
+    let timeoutId: NodeJS.Timeout | undefined;
     try {
-      const response = await client.interactions.create({
-        model: TTS_MODEL,
-        ...buildLittlepipSpeechRequest(speechText, voiceName)
+      const { audioStream } = tts.toStream(text, { pitch, rate });
+      const chunks: Buffer[] = [];
+
+      timeoutId = setTimeout(() => {
+        try { tts.close(); } catch (_) {}
+        reject(new Error('Edge TTS generation timed out'));
+      }, 10000);
+
+      audioStream.on('data', (chunk: Buffer) => chunks.push(chunk));
+      audioStream.on('end', () => {
+        if (timeoutId) clearTimeout(timeoutId);
+        try { tts.close(); } catch (_) {}
+        const audio = Buffer.concat(chunks);
+        if (audio.length > 300) {
+          resolve(audio);
+        } else {
+          reject(new Error('Edge TTS buffer too small'));
+        }
       });
-      const outputAudio = response.output_audio;
-      if (!outputAudio?.data) throw new Error(`Gemini TTS returned no audio data for ${voiceName}`);
+      audioStream.on('error', (err: Error | unknown) => {
+        if (timeoutId) clearTimeout(timeoutId);
+        try { tts.close(); } catch (_) {}
+        reject(err instanceof Error ? err : new Error(String(err)));
+      });
+    } catch (err: unknown) {
+      if (timeoutId) clearTimeout(timeoutId);
+      try { tts.close(); } catch (_) {}
+      reject(err instanceof Error ? err : new Error(String(err)));
+    }
+  });
+}
 
-      const audio = Buffer.from(outputAudio.data, 'base64');
-      if (outputAudio.mime_type?.includes('wav')) return audio;
+export async function generateLittlepipVoice(text: string, apiKey?: string): Promise<Buffer> {
+  const clean = sanitizeTextForSpeech(text) || text;
+  if (!clean || clean.length < 2) {
+    throw new Error('Текст для озвучки пустой');
+  }
 
-      const sampleRate = outputAudio.sample_rate || 24000;
-      return pcmToWav(audio, sampleRate);
-    } catch (error) {
-      lastError = error;
-      console.warn(`[Littlepip TTS] Voice ${voiceName} failed:`, error);
-      if (typeof error === 'object' && error !== null && 'status' in error && error.status === 429) {
-        break;
+  // Ограничиваем длину реплики для стабильной и быстрой генерации звука
+  const speechText = clean.length > 500 ? clean.slice(0, 497) + '...' : clean;
+
+  // 1. ПРИОРИТЕТ 1: Нейросетевой звонкий, мягкий, чуть писклявый девичий голос Литлпип (SvetlanaNeural +18% pitch)
+  try {
+    const audio = await generateEdgeTtsAudio(speechText, 'ru-RU-SvetlanaNeural', '+18%', '+6%');
+    return audio;
+  } catch (err: any) {
+    console.warn('[Littlepip Voice] Edge SvetlanaTTS failed, trying DariyaNeural:', err?.message || err);
+  }
+
+  // 2. ПРИОРИТЕТ 2: Альтернативный женский нейроголос (DariyaNeural +16% pitch)
+  try {
+    const audio = await generateEdgeTtsAudio(speechText, 'ru-RU-DariyaNeural', '+16%', '+6%');
+    return audio;
+  } catch (err: any) {
+    console.warn('[Littlepip Voice] Edge DariyaTTS failed, checking Gemini TTS:', err?.message || err);
+  }
+
+  // 3. ПРИОРИТЕТ 3: Gemini TTS (с питч-тюнингом)
+  const candidateKeys = Array.from(
+    new Set([DEFAULT_GEMINI_KEY, apiKey, process.env.GEMINI_API_KEY, process.env.GOOGLE_API_KEY].filter(Boolean))
+  ) as string[];
+
+  let lastErr: any = null;
+
+  for (const key of candidateKeys) {
+    const client = new GoogleGenAI({ apiKey: key });
+    for (const voice of TTS_FALLBACK_VOICES) {
+      try {
+        const response = await client.models.generateContent({
+          model: TTS_MODEL,
+          ...buildLittlepipSpeechRequest(speechText, voice)
+        });
+
+        const audioPart = response.candidates?.[0]?.content?.parts?.find(part => part.inlineData?.data);
+        const inlineData = audioPart?.inlineData;
+        if (!inlineData?.data) {
+          throw new Error('Gemini TTS returned no audio data');
+        }
+
+        const audio = Buffer.from(inlineData.data, 'base64');
+        const baseRate = Number(inlineData.mimeType?.match(/rate=(\d+)/)?.[1] || 24000);
+        const wav = inlineData.mimeType?.includes('wav') ? audio : pcmToWav(audio, baseRate);
+        return tuneWavPitch(wav, 1.15);
+      } catch (err: any) {
+        lastErr = err;
       }
     }
   }
 
-  throw new Error('All configured Littlepip TTS voices failed', { cause: lastError });
+  throw lastErr || new Error('Не удалось сгенерировать голос Литлпип');
 }

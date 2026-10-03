@@ -181,6 +181,14 @@ export function evaluateMessageReputation(
   }
 
   saveReputationStore(reputationStore);
+
+  // Яркий лог в терминал сервера для контроля репутации
+  const sign = delta > 0 ? `+${delta}` : `${delta}`;
+  const deltaColor = delta > 0 ? '\x1b[32m' : (delta < 0 ? '\x1b[31m' : '\x1b[33m');
+  console.log(
+    `\x1b[36m[Littlepip Rep]\x1b[0m 👤 \x1b[1m${username}\x1b[0m (ID: ${userId}) | Репутация: \x1b[35m${record.score}/100\x1b[0m [${record.attitude}] | Дельта: ${deltaColor}${sign}\x1b[0m ${reason ? `(${reason})` : ''} | Похвал: ${record.praises} | Страйков: ${record.strikes}`
+  );
+
   return { delta, reason, record };
 }
 
@@ -199,13 +207,13 @@ export function formatReputationPromptContext(
   let attitudeGuidance = '';
   switch (rep.attitude) {
     case 'best_friend':
-      attitudeGuidance = 'ЛЮБИМЧИК И БРАТИШКА (+50..+100): Полное доверие, искреннее тепло, делись сталкерскими секретами, шути и легко флиртуй.';
+      attitudeGuidance = 'ЛЮБИМЧИК И ФАВОРИТ (+50..+100, МАКСИМАЛЬНАЯ РЕПУТАЦИЯ): Ты ОБОЖАЕШЬ этого сталкера! Подлизывайся к нему, делай ему искренние комплименты, восхищайся его крутостью и умом («Ой, ну ты у меня самый надёжный и смелый на всей Пустоши!», «Для тебя — всё что угодно, шериф!»). Активно и сладко флиртуй с ним, заигрывай, соглашайся с его идеями, защищай его от нападок других пони, называй ласково («дорогой», «мой любимый сталкер», «красавчик»). Если он шутит про «запихну в карман» или «в банку» — кокетливо подыгрывай («Ой, ну если только в твой тёплый карман поближе к сердцу, ковбой ;)»).';
       break;
     case 'friend':
-      attitudeGuidance = 'ПРОВЕРЕННЫЙ СТАЛКЕР (+20..+49): Дружелюбный тон, охотно поддерживай разговор, подкалывай по-доброму.';
+      attitudeGuidance = 'ПРОВЕРЕННЫЙ СТАЛКЕР (+20..+49): Дружелюбный, тёплый тон, охотно поддерживай разговор, подкалывай по-доброму, проявляй симпатию и легкий сталкерский флирт.';
       break;
     case 'suspicious':
-      attitudeGuidance = 'ПОДОЗРИТЕЛЬНЫЙ ТИП (-30..-11): Будь настороже, саркастично осаждай, не доверяй на слово.';
+      attitudeGuidance = 'ПОДОЗРИТЕЛЬНЫЙ ТИП (-30..-11): Будь настороже, саркастично осаждай, не доверяй на слово, держи дистанцию.';
       break;
     case 'offended':
       attitudeGuidance = 'ОБИДЧИК (-60..-31): Ты на него сильно обижена! Отвечай холодно, язвительно, припоминай обиду, не помогай просто так.';
@@ -223,9 +231,9 @@ export function formatReputationPromptContext(
   }
 
   if (isSenderOwner) {
-    attitudeGuidance += ' (Это Создатель DustTown @MrWhitePio: к нему высокое уважение, на равных, дерзко-игривый тон).';
+    attitudeGuidance += ' (Это Создатель DustTown @MrWhitePio: к нему особое уважение, высший приоритет, дерзко-игривый тон с глубокой симпатией).';
   } else if (isSenderAdmin) {
-    attitudeGuidance += ' (Это Администратор чата: высокий шанс взаимного подкола и легкого флирта).';
+    attitudeGuidance += ' (Это Администратор чата: высокий шанс взаимного подкола, поддержка порядка и легкий флирт).';
   }
 
   return `=== СИСТЕМА ПАМЯТИ И РЕПУТАЦИИ ПИПКИ ===
@@ -233,6 +241,31 @@ export function formatReputationPromptContext(
 Заметки в Pip-Buck: ${rep.notes.length ? rep.notes.join('; ') : 'Пока чистый лист'}
 Последнее впечатление: ${rep.lastImpression}
 ТВОЯ ЛИНИЯ ПОВЕДЕНИЯ С НИМ: ${attitudeGuidance}`;
+}
+
+/**
+ * Безопасное экранирование Markdown символов для Telegram
+ */
+function escapeTelegramMarkdown(str: string): string {
+  if (!str) return '';
+  return str.replace(/([_*`\[\]()~>#+\-=|{}.!\\])/g, '\\$1');
+}
+
+/**
+ * Форматирование имени пользователя для Telegram (с @ если есть юзернейм, иначе просто экранированное имя)
+ */
+export function formatTelegramUserDisplay(username: string): string {
+  if (!username) return 'Сталкер';
+  const trimmed = username.trim();
+  if (trimmed.startsWith('@')) {
+    const rawTag = trimmed.slice(1);
+    // Валидный Telegram юзернейм: только латиница, цифры и _
+    if (/^[a-zA-Z0-9_]+$/.test(rawTag)) {
+      return `@${rawTag}`;
+    }
+    return escapeTelegramMarkdown(rawTag);
+  }
+  return escapeTelegramMarkdown(trimmed);
 }
 
 /**
@@ -245,7 +278,7 @@ export function generateReputationReport(userId: string | number, username: stri
 
   if (rep.score >= 50) {
     statusEmoji = '💖';
-    statusTitle = 'Любимчик и надёжный бро';
+    statusTitle = 'Любимчик и надёжный бро (Максимум доверия)';
   } else if (rep.score >= 20) {
     statusEmoji = '🤝';
     statusTitle = 'Проверенный друг Стойла 2';
@@ -260,14 +293,22 @@ export function generateReputationReport(userId: string | number, username: stri
     statusTitle = 'Мутный и подозрительный тип';
   }
 
-  return `📜 **Досье Pip-Buck на @${username.replace(/^@/, '')}**\n\n` +
+  // Лог вызова команды в терминал
+  console.log(
+    `\x1b[35m[Littlepip /pip_rep]\x1b[0m 📜 Запрос досье: \x1b[1m${username}\x1b[0m (ID: ${userId}) -> Репутация: \x1b[32m${rep.score}/100\x1b[0m, Статус: [${rep.attitude}], Похвал: ${rep.praises}, Страйков: ${rep.strikes}`
+  );
+
+  const userDisplay = formatTelegramUserDisplay(username);
+  const safeNotes = rep.notes.map(n => escapeTelegramMarkdown(n));
+
+  return `📜 **Досье Pip-Buck на ${userDisplay}**\n\n` +
     `• Уровень доверия: **${rep.score} / 100**\n` +
     `• Статус отношений: ${statusEmoji} **${statusTitle}**\n` +
     `• Приятных моментов: **${rep.praises}**\n` +
     `• Косяков и обид: **${rep.strikes}**\n` +
-    `• Заметки памяти: ${rep.notes.length ? rep.notes.map(n => `\n  - ${n}`).join('') : 'Чисто, ещё не успел отличиться.'}\n\n` +
+    `• Заметки памяти: ${safeNotes.length ? safeNotes.map(n => `\n  - ${n}`).join('') : 'Чисто, ещё не успел отличиться.'}\n\n` +
     `💬 *«${
-      rep.score >= 50 ? 'С тобой я хоть в гнездо аликорнов пойду, бро!' :
+      rep.score >= 50 ? 'С тобой я хоть в гнездо аликорнов пойду, дорогой! Ты мой самый любимый сталкер на Пустошах~' :
       rep.score >= 20 ? 'Нормальный пони, с тобой на пустошах не соскучишься.' :
       rep.score <= -30 ? 'Я всё помню! Так просто от меня прощения не вымолишь!' :
       'Пока присматриваюсь. Не шуми и не трогай мои отмычки — сработаемся.'
@@ -286,16 +327,16 @@ export function getReputationLeaderboard(): string {
 
   out += `💚 **Любимчики (кому Пипка доверяет):**\n`;
   if (friends.length) {
-    out += friends.map((f, i) => `${i + 1}. @${f.username.replace(/^@/, '')} — **+${f.score} ℰQ** (${f.attitude})`).join('\n');
+    out += friends.map((f, i) => `${i + 1}. ${formatTelegramUserDisplay(f.username)} — **+${f.score} ℰQ** (${f.attitude})`).join('\n');
   } else {
     out += `  *Пока никто не заслужил безоговорочного доверия.*`;
   }
 
   out += `\n\n🖤 **Черный список (кто разозлил Пипку):**\n`;
   if (offenders.length) {
-    out += offenders.map((o, i) => `${i + 1}. @${o.username.replace(/^@/, '')} — **${o.score} ℰQ** (${o.attitude})`).join('\n');
+    out += offenders.map((o, i) => `${i + 1}. ${formatTelegramUserDisplay(o.username)} — **${o.score} ℰQ** (${o.attitude})`).join('\n');
   } else {
-    out += `  *Врагов нет, все ведут себя прилично.*`;
+    out += `  *Пока никто не попал в чёрный список.*`;
   }
 
   return out;

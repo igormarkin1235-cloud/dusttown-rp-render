@@ -37,6 +37,32 @@ export interface LittlepipMemoryStore {
 
 const MEMORY_FILE = path.join(process.cwd(), '.littlepip_memory.json');
 
+const DEFAULT_SEED_KNOWLEDGE: LearnedKnowledgeItem[] = [
+  {
+    id: 'seed-rule-1',
+    timestamp: Date.now() - 4 * 24 * 3600 * 1000,
+    isoDate: new Date(Date.now() - 4 * 24 * 3600 * 1000).toISOString(),
+    topicId: 'rules',
+    topicTitle: 'Правила и Законы Даст Тауна',
+    author: 'MrWhitePio',
+    userId: 101,
+    category: 'rule',
+    content: 'Запрещен немотивированный спам, воровство сидра из личных запасов без отыгрыша и токсичность к новичкам.',
+    tags: ['правила', 'спам', 'сидр']
+  },
+  {
+    id: 'seed-lore-1',
+    timestamp: Date.now() - 5 * 24 * 3600 * 1000,
+    isoDate: new Date(Date.now() - 5 * 24 * 3600 * 1000).toISOString(),
+    topicId: 'lore',
+    topicTitle: 'Лор, Архив и История Стойла',
+    author: 'Система Стойла 2',
+    category: 'lore',
+    content: 'Даст Таун — укреплённое поселение Пустоши Эквестрии вокруг разрушенного бункера и завода яблочного сидра.',
+    tags: ['лор', 'даст_таун', 'пустоши']
+  }
+];
+
 function loadMemoryStore(): LittlepipMemoryStore {
   try {
     if (fs.existsSync(MEMORY_FILE)) {
@@ -58,7 +84,7 @@ function loadMemoryStore(): LittlepipMemoryStore {
   const initialStore: LittlepipMemoryStore = {
     version: 1,
     lastUpdated: new Date().toISOString(),
-    learnedKnowledge: [],
+    learnedKnowledge: [...DEFAULT_SEED_KNOWLEDGE],
     recentDialogues: []
   };
   saveMemoryStore(initialStore);
@@ -69,9 +95,8 @@ function saveMemoryStore(store: LittlepipMemoryStore): void {
   try {
     store.lastUpdated = new Date().toISOString();
     fs.writeFileSync(MEMORY_FILE, JSON.stringify(store, null, 2), 'utf-8');
-  } catch (error) {
-    console.error('[Littlepip Memory] Ошибка сохранения .littlepip_memory.json:', error);
-    throw error;
+  } catch (e) {
+    console.error('[Littlepip Memory] Ошибка сохранения .littlepip_memory.json:', e);
   }
 }
 

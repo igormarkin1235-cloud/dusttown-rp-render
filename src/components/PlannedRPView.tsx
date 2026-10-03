@@ -67,7 +67,7 @@ export const PlannedRPView: React.FC<PlannedRPViewProps> = ({
         {isAdmin && onOpenAdminPanel && (
           <button
             onClick={onOpenAdminPanel}
-            className="px-4 py-2 rounded-xl bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500 hover:opacity-90 text-white font-heading font-bold text-xs shadow-lg shadow-purple-950/50 flex items-center gap-1.5 transition"
+            className="relative z-10 px-4 py-2 rounded-xl bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500 hover:opacity-90 text-white font-heading font-bold text-xs shadow-lg shadow-purple-950/50 flex items-center gap-1.5 transition"
           >
             <Plus className="w-4 h-4" />
             <span>Создать РП-Сессию</span>

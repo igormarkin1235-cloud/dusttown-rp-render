@@ -205,11 +205,10 @@ export const RadioMusicPlayer: React.FC<RadioMusicPlayerProps> = ({ username = '
     const utterance = new SpeechSynthesisUtterance(text);
     const russianVoices = synth.getVoices().filter(voice => voice.lang.toLowerCase().startsWith('ru'));
     const feminineVoice = russianVoices.find(voice => /female|жен|milena|alena|irina|tatyana|svetlana|oksana|daria|polina/i.test(voice.name));
-    const selectedVoice = feminineVoice || russianVoices[0];
-    if (selectedVoice) utterance.voice = selectedVoice;
+    utterance.voice = feminineVoice || russianVoices[0] || null;
     utterance.lang = 'ru-RU';
-    utterance.pitch = 1.22;
-    utterance.rate = 1.02;
+    utterance.pitch = 1.34;
+    utterance.rate = 1.05;
     utterance.volume = 0.95;
     synth.speak(utterance);
   };
@@ -240,9 +239,13 @@ export const RadioMusicPlayer: React.FC<RadioMusicPlayerProps> = ({ username = '
         voiceObjectUrlRef.current = null;
         voiceAudioRef.current = null;
       };
+      audio.onerror = () => {
+        URL.revokeObjectURL(audioUrl);
+        voiceObjectUrlRef.current = null;
+        voiceAudioRef.current = null;
+      };
       await audio.play();
-    } catch (error) {
-      console.warn('[Littlepip TTS] Neural voice failed; using browser speech synthesis:', error);
+    } catch {
       stopLittlepipVoice();
       if (voiceEnabledRef.current) speakWithBrowserVoice(text);
     }
@@ -445,18 +448,7 @@ export const RadioMusicPlayer: React.FC<RadioMusicPlayerProps> = ({ username = '
                       : 'bg-zinc-900 border border-zinc-800 text-zinc-200'
                   }`}
                 >
-                  <span>{message.text}</span>
-                  {message.role === 'assistant' && (
-                    <button
-                      type="button"
-                      onClick={() => void speakLittlepipReply(message.text)}
-                      className="ml-1 inline-flex align-middle text-emerald-400 hover:text-emerald-300"
-                      title="Озвучить ответ Пипки"
-                      aria-label="Озвучить ответ Пипки"
-                    >
-                      <Volume2 className="w-3 h-3" />
-                    </button>
-                  )}
+                  {message.text}
                 </div>
               ))}
               {isAssistantSending && (

@@ -48,6 +48,7 @@ export interface AuctionListing {
 
 export interface UserProfile {
   id: string;
+  userId?: string;
   username: string; // e.g. @MrWhitePio
   displayName: string;
   avatarUrl: string;
@@ -60,9 +61,12 @@ export interface UserProfile {
   activeTextColor?: string;
   activeTextBg?: string;
   activeAvatarFrame?: string; // 'frame_none' | 'frame_gold_3d' | 'frame_rad_pulse' | 'frame_cyber_glitch' | etc.
+  activeFrameId?: string;
+  activeCardFrame?: string; // 'card_frame_champion_gold' | 'card_frame_rad_hazard' | 'card_frame_quantum_cyan' | etc.
   // Unlocked cosmetics (Players start with 3 basic items in each category; rest must be bought or won from chests)
   unlockedThemes?: string[];
   unlockedFrames?: string[];
+  unlockedCardFrames?: string[];
   unlockedTextColors?: string[];
   unlockedTextBgs?: string[];
   // Stats
@@ -458,9 +462,9 @@ export type NotificationType =
   | 'new_user'
   | 'faction'
   | 'case'
-  | 'achievement'
   | 'new_vip'
-  | 'new_admin';
+  | 'new_admin'
+  | 'achievement';
 
 export interface BotFileChange {
   fileName: string;

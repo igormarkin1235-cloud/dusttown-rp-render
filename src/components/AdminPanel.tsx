@@ -17,7 +17,8 @@ import { AdminAwardsManager } from './AdminAwardsManager';
 import { AdminCasesManager } from './AdminCasesManager';
 import { AdminAchievementsManager } from './AdminAchievementsManager';
 import { AdminFactionsManager } from './AdminFactionsManager';
-import { Shield, Calendar, Users, Award as AwardIcon, Package, Lock, Trophy, Flag } from 'lucide-react';
+import { AdminBlackjackPanel } from './AdminBlackjackPanel';
+import { Shield, Calendar, Users, Award as AwardIcon, Package, Lock, Trophy, Flag, ShieldAlert } from 'lucide-react';
 
 interface AdminPanelProps {
   currentUser: UserProfile;
@@ -88,7 +89,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onUpdateMemberRole,
   onKickMember
 }) => {
-  const [activeTab, setActiveTab] = useState<'events' | 'factions' | 'admins' | 'users' | 'awards' | 'cases' | 'achievements'>('events');
+  const [activeTab, setActiveTab] = useState<'events' | 'blackjack' | 'factions' | 'admins' | 'users' | 'awards' | 'cases' | 'achievements'>('events');
 
   const isAdmin =
     admins.some(a => a.username.toLowerCase() === currentUser.username.toLowerCase()) ||
@@ -138,6 +139,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         >
           <Calendar className="w-3.5 h-3.5" />
           <span>События и РП</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('blackjack')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-heading font-bold whitespace-nowrap transition ${
+            activeTab === 'blackjack'
+              ? 'bg-red-600 text-white shadow-lg shadow-red-950/60'
+              : 'bg-zinc-900 text-red-400 hover:text-red-300 border border-red-900/50'
+          }`}
+        >
+          <ShieldAlert className="w-3.5 h-3.5" />
+          <span>Блэкджек (Шериф ИИ)</span>
         </button>
 
         <button
@@ -227,6 +240,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           onCompleteEvent={onCompleteEvent}
           onDeleteEvent={onDeleteEvent}
         />
+      )}
+
+      {activeTab === 'blackjack' && (
+        <AdminBlackjackPanel currentUserAdminTag={currentUser.username} />
       )}
 
       {activeTab === 'factions' && (

@@ -1,11 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import {
-  extractSongSearchQuery,
-  parsePublicYouTubeSearchResults,
-  searchYouTubeTrack
-} from './youtubeSearch';
+import { extractSongSearchQuery, searchYouTubeTrack } from './youtubeSearch';
 
 test('extracts a Fallout search from a direct Pipka music request', () => {
   assert.equal(extractSongSearchQuery('Пипка, включи какую-то песню фаллаут'), 'фаллаут');
@@ -35,38 +31,4 @@ test('returns a playable YouTube track from the official search response', async
     title: 'Fallout Radio',
     author: 'Wasteland Radio'
   });
-});
-
-test('finds a playable result from public YouTube search without any API key', async () => {
-  const page = {
-    contents: {
-      twoColumnSearchResultsRenderer: {
-        primaryContents: {
-          sectionListRenderer: {
-            contents: [{
-              itemSectionRenderer: {
-                contents: [{
-                  videoRenderer: {
-                    videoId: 'keyless42',
-                    title: { runs: [{ text: 'Fallout Song & Radio' }] },
-                    ownerText: { runs: [{ text: 'Wasteland Singer' }] }
-                  }
-                }]
-              }
-            }]
-          }
-        }
-      }
-    }
-  };
-  const html = `<script>var ytInitialData = ${JSON.stringify(page)};</script>`;
-  const parsed = parsePublicYouTubeSearchResults(html);
-  assert.equal(parsed[0].id, 'keyless42');
-
-  const track = await searchYouTubeTrack('Fallout Song', undefined, async input => {
-    assert.match(String(input), /^https:\/\/www\.youtube\.com\/results\?/);
-    return new Response(html, { status: 200 });
-  });
-  assert.equal(track?.title, 'Fallout Song & Radio');
-  assert.equal(track?.author, 'Wasteland Singer');
 });

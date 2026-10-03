@@ -1,6 +1,6 @@
 {
-  "name": "DustTown RP - Telegram Bot & Mini App",
-  "description": "Интерактивный Telegram-бот и Mini App для ролевого проекта DustTown RP (Fallout: Equestria): события, запланированные сессии, анкеты персонажей, профили, награды, кейсы и панель управления.",
+  "name": "DustTown RP - Mini App & Patch Manager",
+  "description": "Интерактивный Mini App для ролевого проекта DustTown RP (Fallout: Equestria): события, запланированные сессии, анкеты персонажей, профили, рынок, кейсы и менеджер патчей обновлений.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

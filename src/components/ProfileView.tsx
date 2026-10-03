@@ -16,6 +16,7 @@ import {
   isTextColorUnlocked,
   isTextBgUnlocked
 } from '../services/palette';
+import { PRESET_CARD_FRAMES, PlayerCardFrame } from './PlayerCardFrame';
 import {
   Coins,
   Award as AwardIcon,
@@ -39,8 +40,11 @@ import {
   Lock,
   Flame,
   Maximize2,
-  Image as ImageIcon
+  Image as ImageIcon,
+  RefreshCw,
+  Loader2
 } from 'lucide-react';
+import { syncTelegramAvatar } from '../services/storage';
 
 interface ProfileViewProps {
   currentUser: UserProfile;
@@ -73,9 +77,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   onOpenLotteryTicket,
   onClaimAchievementReward
 }) => {
+  const isOwner = currentUser.username.toLowerCase() === '@mrwhitepio' || currentUser.id === 'owner_mrwhitepio';
   const [isEditing, setIsEditing] = useState(false);
   const [activeTab, setActiveTab] = useState<'inventory' | 'customization' | 'characters' | 'awards' | 'transactions' | 'achievements'>('inventory');
-  const [customizationCategory, setCustomizationCategory] = useState<'themes' | 'frames' | 'text' | 'bg'>('themes');
+  const [customizationCategory, setCustomizationCategory] = useState<'themes' | 'frames' | 'card_frames' | 'text' | 'bg'>('themes');
 
   const [displayName, setDisplayName] = useState(currentUser.displayName);
   const [username, setUsername] = useState(currentUser.username);
@@ -89,6 +94,33 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   // In-app reliable selling confirmation (avoids window.confirm iframe blockers)
   const [confirmSellId, setConfirmSellId] = useState<string | null>(null);
   const [soldToast, setSoldToast] = useState<string | null>(null);
+  const [saveToast, setSaveToast] = useState<string | null>(null);
+  const [isSyncingTgAvatar, setIsSyncingTgAvatar] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+
+  const handleSyncTelegramAvatar = async () => {
+    setIsSyncingTgAvatar(true);
+    setSyncMessage(null);
+    try {
+      const tgUserId = (window as any).Telegram?.WebApp?.initDataUnsafe?.user?.id;
+      const res = await syncTelegramAvatar(currentUser.id, tgUserId);
+      if (res.success && res.avatarUrl) {
+        setAvatarUrl(res.avatarUrl);
+        onUpdateProfile({
+          ...currentUser,
+          avatarUrl: res.avatarUrl
+        });
+        setSyncMessage('✅ Аватарка успешно обновлена из Telegram!');
+      } else {
+        setSyncMessage(res.message || '⚠️ Не удалось получить фото из Telegram: убедитесь, что в Telegram установлена публичная фотография профиля.');
+      }
+    } catch (e: any) {
+      setSyncMessage('❌ Ошибка синхронизации фото');
+    } finally {
+      setIsSyncingTgAvatar(false);
+      setTimeout(() => setSyncMessage(null), 4000);
+    }
+  };
 
   const userAwards = awards.filter(
     a => a.recipientUsername.toLowerCase() === currentUser.username.toLowerCase()
@@ -110,6 +142,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       avatarOffsetY,
       avatarOffsetX
     });
+    setSaveToast('Изменения профиля успешно сохранены!');
+    setTimeout(() => setSaveToast(null), 3000);
     setIsEditing(false);
   };
 
@@ -682,6 +716,14 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 Рамки 3D / Неон
               </button>
               <button
+                onClick={() => setCustomizationCategory('card_frames')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-mono-pip transition ${
+                  customizationCategory === 'card_frames' ? 'bg-amber-500 text-black font-bold' : 'text-zinc-400'
+                }`}
+              >
+                Рамки в Топе
+              </button>
+              <button
                 onClick={() => setCustomizationCategory('text')}
                 className={`px-2.5 py-1 rounded-lg text-xs font-mono-pip transition ${
                   customizationCategory === 'text' ? 'bg-amber-500 text-black font-bold' : 'text-zinc-400'
@@ -985,7 +1027,96 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </div>
           )}
 
-          {/* 3. Text Colors (Extended styles: standard, animated shimmers, gradients, specials) */}
+          {/* 3. Card Frames (Рамки вокруг плашки/иконки игрока в Топе активности) */}
+          {customizationCategory === 'card_frames' && (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="text-xs font-mono-pip text-zinc-300">
+                  Выберите стиль рамки, которая будет окружать <strong className="text-amber-400">всю вашу карточку</strong> в списке Топа игроков Пустоши:
+                </div>
+                {currentUser.activeCardFrame && currentUser.activeCardFrame !== 'card_frame_none' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onUpdateProfile({ ...currentUser, activeCardFrame: 'card_frame_none' });
+                      setSaveToast('Установлен стандартный контур');
+                      setTimeout(() => setSaveToast(null), 2500);
+                    }}
+                    className="text-[11px] font-mono-pip text-zinc-400 hover:text-amber-300 underline"
+                  >
+                    Сбросить до базового
+                  </button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 max-h-[480px] overflow-y-auto pr-1">
+                {PRESET_CARD_FRAMES.map((cf, idx) => {
+                  const isSelected = (currentUser.activeCardFrame || 'card_frame_none') === cf.id;
+                  return (
+                    <div
+                      key={cf.id}
+                      onClick={() => {
+                        onUpdateProfile({ ...currentUser, activeCardFrame: cf.id });
+                        setSaveToast(`Рамка карточки «${cf.name}» надета!`);
+                        setTimeout(() => setSaveToast(null), 2500);
+                      }}
+                      className="cursor-pointer group"
+                    >
+                      <PlayerCardFrame
+                        frameId={cf.id}
+                        rank={idx + 1}
+                        isOwner={isOwner}
+                        isSelected={isSelected}
+                      >
+                        <div className="p-3 bg-zinc-950 flex flex-col gap-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-bold font-heading text-zinc-100 flex items-center gap-1.5">
+                              <span>{cf.icon}</span>
+                              <span className="truncate">{cf.name}</span>
+                            </span>
+                            {isSelected ? (
+                              <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono-pip text-[9px] font-black uppercase flex items-center gap-0.5">
+                                <Check className="w-2.5 h-2.5" /> Надето
+                              </span>
+                            ) : (
+                              <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 font-mono-pip text-[9px]">
+                                {cf.badge}
+                              </span>
+                            )}
+                          </div>
+
+                          <p className="text-[10px] text-zinc-400 font-mono-pip line-clamp-2">
+                            {cf.description}
+                          </p>
+
+                          {/* Mini Sample Preview in Card Frame */}
+                          <div className="mt-1 pt-1 border-t border-zinc-800 flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-lg overflow-hidden bg-black border border-zinc-700 shrink-0">
+                              <img
+                                src={currentUser.avatarUrl}
+                                alt="avatar"
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="text-[11px] font-bold text-white truncate font-heading">
+                                {currentUser.displayName}
+                              </div>
+                              <div className="text-[9px] text-zinc-500 font-mono-pip truncate">
+                                {currentUser.username}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </PlayerCardFrame>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* 4. Text Colors (Extended styles: standard, animated shimmers, gradients, specials) */}
           {customizationCategory === 'text' && (
             <div className="space-y-3">
               <div className="text-xs font-mono-pip text-zinc-400">

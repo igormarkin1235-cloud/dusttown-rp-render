@@ -1,0 +1,37 @@
+{
+  "mutes": [
+    {
+      "id": "mute_1791026974080_t2x7",
+      "targetUser": "@TestTroublemaker",
+      "adminUser": "@MrWhitePio",
+      "reason": "слишком дохуя умный",
+      "durationMinutes": 10,
+      "mutedAt": "2026-10-03T11:29:34.080Z",
+      "expiresAt": "2026-10-03T11:39:34.080Z",
+      "status": "revoked",
+      "revokedAt": "2026-10-03T11:29:45.365Z",
+      "revokeReason": "осознал вину и извинился"
+    }
+  ],
+  "bans": [],
+  "botBlocks": [],
+  "auditLogs": [
+    {
+      "id": "log_1791026985365",
+      "timestamp": "2026-10-03T11:29:45.365Z",
+      "action": "UNMUTE",
+      "admin": "@MrWhitePio",
+      "target": "@TestTroublemaker",
+      "reason": "осознал вину и извинился"
+    },
+    {
+      "id": "log_1791026974080",
+      "timestamp": "2026-10-03T11:29:34.080Z",
+      "action": "MUTE",
+      "admin": "@MrWhitePio",
+      "target": "@TestTroublemaker",
+      "reason": "слишком дохуя умный",
+      "details": "Длительность: 10 минут (до 11:39:34 AM)"
+    }
+  ]
+}

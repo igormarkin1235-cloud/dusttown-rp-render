@@ -116,7 +116,7 @@ export const NuclearAlertOverlay: React.FC<NuclearAlertOverlayProps> = ({ alert,
                 </span>
               </div>
               <h2 className="text-lg sm:text-xl font-black tracking-wide text-lime-300 font-mono uppercase mt-0.5">
-                ЯДЕРНЫЙ УДАР ПУСТОШИ!
+                СИРЕНА МЕГАЗАКЛИНАНИЙ: ВЫБРОС!
               </h2>
             </div>
           </div>

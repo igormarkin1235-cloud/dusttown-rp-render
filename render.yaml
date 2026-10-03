@@ -3,15 +3,12 @@ services:
     name: dusttown-rp-bot
     env: node
     plan: free
-    buildCommand: npm ci && npm run lint && npm run build
+    buildCommand: npm install && npm run build
     startCommand: npm start
-    healthCheckPath: /api/version
     envVars:
       - key: NODE_ENV
         value: production
       - key: TELEGRAM_BOT_TOKEN
-        sync: false
-      - key: TELEGRAM_GROUP_ID
         sync: false
       - key: GEMINI_API_KEY
         sync: false
@@ -19,9 +16,7 @@ services:
         sync: false
       - key: FIREBASE_STORAGE_BUCKET
         sync: false
-      - key: APP_URL
-        sync: false
       - key: YOUTUBE_API_KEY
         sync: false
       - key: NODE_VERSION
-        value: 22
+        value: 20

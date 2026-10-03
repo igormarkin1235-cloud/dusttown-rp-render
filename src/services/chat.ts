@@ -16,9 +16,8 @@ async function readJson<T>(response: Response): Promise<T> {
   return payload as T;
 }
 
-export async function fetchChatMessages(userId?: string, recipientId?: string): Promise<ChatMessage[]> {
+export async function fetchChatMessages(recipientId?: string): Promise<ChatMessage[]> {
   const params = new URLSearchParams();
-  if (userId) params.set('userId', userId);
   if (recipientId) params.set('recipientId', recipientId);
   const response = await fetch(`/api/chat/messages?${params}`, {
     cache: 'no-store',
@@ -29,12 +28,12 @@ export async function fetchChatMessages(userId?: string, recipientId?: string): 
 }
 
 export async function sendChatMessage(input: {
-  senderId: string;
   content: string;
   recipientId?: string;
-  style?: ChatMessage['style'];
+  senderId?: string;
+  style?: any;
 }): Promise<ChatMessage> {
-  const response = await fetch('/api/chat/send', {
+  const response = await fetch('/api/chat/messages', {
     method: 'POST',
     headers: telegramAuthHeaders(true),
     body: JSON.stringify(input)
@@ -43,11 +42,11 @@ export async function sendChatMessage(input: {
   return payload.message;
 }
 
-export async function sendNukeMessage(content: string, senderId: string, style?: ChatMessage['style']): Promise<ChatMessage> {
-  const response = await fetch('/api/chat/send', {
+export async function sendNukeMessage(content: string, senderId?: string, style?: any): Promise<ChatMessage> {
+  const response = await fetch('/api/chat/nuke', {
     method: 'POST',
     headers: telegramAuthHeaders(true),
-    body: JSON.stringify({ content, senderId, isNuke: true, style })
+    body: JSON.stringify({ content, senderId, style })
   });
   const payload = await readJson<{ message: ChatMessage }>(response);
   return payload.message;

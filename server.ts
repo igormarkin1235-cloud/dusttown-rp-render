@@ -8,44 +8,48 @@ import {
   handleLittlepipUpdate,
   getLittlepipStats,
   generateLittlepipText,
+  generateRandomJoke,
+  getActiveBindings,
+  updateBindingJokeTimestamp,
+  rememberConversationMessage,
   hasPipMention,
   LITTLEPIP_GEMINI_MODEL,
-  ChatAdminInfo,
-  resetRecentLittlepipMessages
+  ChatAdminInfo
 } from './src/services/littlepipAgent';
-import { LittlepipMeme } from './src/services/littlepipMemes';
+import { downloadMedia, extractMemeTag } from './src/services/littlepipMemes';
 import { CloudChatState, FirebaseCloudStore } from './src/services/firebaseCloud';
 import { AppStateData } from './src/types';
 import { extractSongSearchQuery, searchYouTubeTrack } from './src/services/youtubeSearch';
 import { generateLittlepipVoice } from './src/services/littlepipVoice';
-import {
-  getLittlepipSettings,
-  updateLittlepipSettings,
-  setTopicConfig,
-  removeTopicConfig,
-  registerDiscoveredTopic
-} from './src/services/littlepipConfig';
-import {
-  getAllReputations,
-  adjustPlayerReputation,
-  forgivePlayerGrudge
-} from './src/services/littlepipReputation';
-import {
-  getLittlepipMemory,
-  resetLittlepipMemory,
-  deleteSingleMemoryItem,
-  rememberLearnedKnowledge
-} from './src/services/littlepipMemory';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Вшитый ключ Gemini для чата и озвучки Литлпип (в группе Telegram и внутри бота)
+const DEFAULT_LITTLEPIP_GEMINI_KEY = 'AQ.Ab8RN6LodaR4rcIYJ_qGPaBkhwc5GoLFhqvKEWm_Djx8U7XVWw';
+if (!process.env.GEMINI_API_KEY && !process.env.GOOGLE_API_KEY) {
+  process.env.GEMINI_API_KEY = DEFAULT_LITTLEPIP_GEMINI_KEY;
+}
+
 const app = express();
-const PORT = Number(process.env.PORT) || Number(process.env.DEV_PORT) || 3000;
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+// In AI Studio, dev server must run on port 3000. On external production (Render), use process.env.PORT
+const PORT = process.env.NODE_ENV === 'production' && process.env.PORT && Number(process.env.PORT) !== 8080
+  ? Number(process.env.PORT)
+  : Number(process.env.DEV_PORT) || 3000;
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '8987511998:AAFZ5TWBa1w855MH23LmD9y5SV2z9jOjGVA';
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+// Uploads directory for persistent local and uploaded avatars/media
+const UPLOADS_DIR = path.join(__dirname, 'public', 'uploads');
+if (!fs.existsSync(UPLOADS_DIR)) {
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+}
+if (!fs.existsSync(path.join(UPLOADS_DIR, 'avatars'))) {
+  fs.mkdirSync(path.join(UPLOADS_DIR, 'avatars'), { recursive: true });
+}
+app.use('/uploads', express.static(UPLOADS_DIR));
 
 // Persistent state cache file path
 const DATA_FILE = path.join(__dirname, '.dusttown_data.json');
@@ -57,6 +61,58 @@ let firebaseHealthy = false;
 let firebaseLastError: string | null = null;
 let firebaseLastSyncedAt: string | null = null;
 let cloudSaveQueue: Promise<void> = Promise.resolve();
+
+function deduplicateProfiles(profiles: any[]): any[] {
+  if (!Array.isArray(profiles) || profiles.length === 0) return [];
+  const map = new Map<string, any>();
+
+  for (const p of profiles) {
+    if (!p) continue;
+    const rawUsername = (p.username || '').trim().toLowerCase();
+    const isOwner = rawUsername === '@mrwhitepio' || p.id === 'owner_mrwhitepio' || p.id === 'user_mrwhite' || p.id === 'user_pio';
+    const key = isOwner ? '@mrwhitepio' : (rawUsername || p.id);
+
+    const existing = map.get(key);
+    if (!existing) {
+      if (isOwner) {
+        map.set(key, {
+          ...p,
+          id: 'owner_mrwhitepio',
+          username: '@MrWhitePio',
+          displayName: p.displayName?.includes('MrWhitePio') ? p.displayName : 'MrWhitePio [Создатель]',
+          isInfiniteEquivaxes: true
+        });
+      } else {
+        map.set(key, { ...p });
+      }
+    } else {
+      const merged = {
+        ...existing,
+        ...p,
+        id: isOwner ? 'owner_mrwhitepio' : existing.id,
+        username: isOwner ? '@MrWhitePio' : (existing.username || p.username),
+        displayName: (existing.displayName && !existing.displayName.startsWith('Сталкер #')) ? existing.displayName : (p.displayName || existing.displayName),
+        avatarUrl: (existing.avatarUrl && !existing.avatarUrl.includes('unsplash.com/photo-1535713875002')) ? existing.avatarUrl : (p.avatarUrl || existing.avatarUrl),
+        bio: (existing.bio && existing.bio.length >= (p.bio?.length || 0)) ? existing.bio : (p.bio || existing.bio),
+        equivaxes: isOwner ? 9999999 : (typeof p.equivaxes === 'number' ? p.equivaxes : existing.equivaxes),
+        isInfiniteEquivaxes: isOwner || existing.isInfiniteEquivaxes || p.isInfiniteEquivaxes,
+        activeThemeId: (p.activeThemeId && p.activeThemeId !== 'default') ? p.activeThemeId : (existing.activeThemeId || 'default'),
+        activeAvatarFrame: (p.activeAvatarFrame && p.activeAvatarFrame !== 'frame_none') ? p.activeAvatarFrame : (existing.activeAvatarFrame || 'frame_none'),
+        activeTextColor: p.activeTextColor || existing.activeTextColor,
+        activeTextBg: p.activeTextBg || existing.activeTextBg,
+        customBgUrl: p.customBgUrl || existing.customBgUrl,
+        customBgEffect: p.customBgEffect || existing.customBgEffect,
+        eventsAttended: Math.max(existing.eventsAttended || 0, p.eventsAttended || 0),
+        plannedRpsAttended: Math.max(existing.plannedRpsAttended || 0, p.plannedRpsAttended || 0),
+        inventory: Array.from(new Map([...(existing.inventory || []), ...(p.inventory || [])].map((i: any) => [i.id || i.itemId, i])).values()),
+        transactions: Array.from(new Map([...(existing.transactions || []), ...(p.transactions || [])].map((t: any) => [t.id, t])).values())
+      };
+      map.set(key, merged);
+    }
+  }
+
+  return Array.from(map.values());
+}
 
 function getDefaultData() {
   return {
@@ -401,8 +457,9 @@ function getOrInitData() {
       try {
         const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
         if (parsed && Array.isArray(parsed.profiles) && parsed.profiles.length > 0) {
-          // Ensure owner exists
-          if (!parsed.profiles.some((p: any) => p.username?.toLowerCase() === '@mrwhitepio')) {
+          // Deduplicate and ensure owner exists
+          parsed.profiles = deduplicateProfiles(parsed.profiles);
+          if (!parsed.profiles.some((p: any) => p.username?.toLowerCase() === '@mrwhitepio' || p.id === 'owner_mrwhitepio')) {
             parsed.profiles.unshift(getDefaultData().profiles[0]);
           }
           if (!parsed.admins?.some((a: any) => a.username?.toLowerCase() === '@mrwhitepio')) {
@@ -453,6 +510,9 @@ function saveData(data: any): Promise<void> {
   try {
     data.lastUpdated = new Date().toISOString();
     data.syncVersion = (data.syncVersion || 0) + 1;
+    if (Array.isArray(data.profiles)) {
+      data.profiles = deduplicateProfiles(data.profiles);
+    }
     const str = JSON.stringify(data, null, 2);
     fs.writeFileSync(DATA_FILE, str, 'utf-8');
     try {
@@ -506,6 +566,37 @@ async function initializeFirebasePersistence() {
       const restored = {
         ...localState,
         ...cloudState,
+        // Only use cloud collections if they are non-empty! Never wipe local state with empty cloud collections
+        profiles: (Array.isArray(cloudState.profiles) && cloudState.profiles.length > 0)
+          ? deduplicateProfiles(cloudState.profiles)
+          : deduplicateProfiles(localState.profiles),
+        admins: (Array.isArray(cloudState.admins) && cloudState.admins.length > 0)
+          ? cloudState.admins
+          : localState.admins,
+        weeklyShopItems: (Array.isArray(cloudState.weeklyShopItems) && cloudState.weeklyShopItems.length > 0)
+          ? cloudState.weeklyShopItems
+          : localState.weeklyShopItems,
+        events: (Array.isArray(cloudState.events) && cloudState.events.length > 0)
+          ? cloudState.events
+          : localState.events,
+        characters: (Array.isArray(cloudState.characters) && cloudState.characters.length > 0)
+          ? cloudState.characters
+          : localState.characters,
+        awards: (Array.isArray(cloudState.awards) && cloudState.awards.length > 0)
+          ? cloudState.awards
+          : localState.awards,
+        cases: (Array.isArray(cloudState.cases) && cloudState.cases.length > 0)
+          ? cloudState.cases
+          : localState.cases,
+        achievements: (Array.isArray(cloudState.achievements) && cloudState.achievements.length > 0)
+          ? cloudState.achievements
+          : localState.achievements,
+        factions: (Array.isArray(cloudState.factions) && cloudState.factions.length > 0)
+          ? cloudState.factions
+          : localState.factions,
+        artworks: (Array.isArray(cloudState.artworks) && cloudState.artworks.length > 0)
+          ? cloudState.artworks
+          : localState.artworks,
         chatMessages: cloudChat?.messages ?? localState.chatMessages ?? [],
         nukeAlert: cloudChat?.nukeAlerts?.[0] ?? null
       };
@@ -533,27 +624,48 @@ function registerOrUpdateUser(user: { id: number | string; first_name?: string; 
   const data = getOrInitData();
   const userIdStr = String(user.id);
   const formattedUsername = user.username ? `@${user.username}` : `@id${userIdStr}`;
-  const isOwner = formattedUsername.toLowerCase() === '@mrwhitepio';
+  const isOwner = formattedUsername.toLowerCase() === '@mrwhitepio' || user.username?.toLowerCase() === 'mrwhitepio';
   const displayName = [user.first_name, user.last_name].filter(Boolean).join(' ') || (user.username ? `@${user.username}` : `Сталкер #${userIdStr.slice(-4)}`);
 
   let profile = data.profiles.find((p: any) =>
+    (isOwner && (p.id === 'owner_mrwhitepio' || p.id === 'user_mrwhite' || p.username?.toLowerCase() === '@mrwhitepio')) ||
     p.id === 'tg_user_' + userIdStr ||
+    p.telegramId === userIdStr ||
     (p.username && p.username.toLowerCase() === formattedUsername.toLowerCase())
   );
 
   if (profile) {
+    if (isOwner) {
+      profile.id = 'owner_mrwhitepio';
+      profile.username = '@MrWhitePio';
+      profile.isInfiniteEquivaxes = true;
+    } else {
+      if (user.username) profile.username = `@${user.username}`;
+    }
+    profile.telegramId = userIdStr;
     if (displayName && (!profile.displayName || profile.displayName.startsWith('Сталкер #'))) {
       profile.displayName = displayName;
     }
-    if (user.photo_url) profile.avatarUrl = user.photo_url;
-    if (user.username) profile.username = `@${user.username}`;
-    if (isOwner) {
-      profile.isInfiniteEquivaxes = true;
+    if (user.photo_url) {
+      profile.avatarUrl = user.photo_url;
+    } else if (!profile.avatarUrl || profile.avatarUrl.includes('unsplash.com/photo-1535713875002')) {
+      // Async fetch real Telegram avatar
+      fetchTelegramUserAvatar(user.id).then(fetched => {
+        if (fetched) {
+          const freshData = getOrInitData();
+          const target = freshData.profiles.find((p: any) => p.id === profile.id || p.telegramId === userIdStr);
+          if (target) {
+            target.avatarUrl = fetched;
+            saveData(freshData);
+          }
+        }
+      }).catch(() => {});
     }
   } else {
     profile = {
-      id: 'tg_user_' + userIdStr,
-      username: formattedUsername,
+      id: isOwner ? 'owner_mrwhitepio' : 'tg_user_' + userIdStr,
+      telegramId: userIdStr,
+      username: isOwner ? '@MrWhitePio' : formattedUsername,
       displayName,
       avatarUrl: user.photo_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80',
       bio: isOwner ? 'Главный Архитектор и Создатель DustTown RP.' : 'Выживший в Пустоши DustTown.',
@@ -565,7 +677,22 @@ function registerOrUpdateUser(user: { id: number | string; first_name?: string; 
       inventory: []
     };
     data.profiles.push(profile);
+
+    if (!user.photo_url) {
+      fetchTelegramUserAvatar(user.id).then(fetched => {
+        if (fetched) {
+          const freshData = getOrInitData();
+          const target = freshData.profiles.find((p: any) => p.id === profile.id || p.telegramId === userIdStr);
+          if (target) {
+            target.avatarUrl = fetched;
+            saveData(freshData);
+          }
+        }
+      }).catch(() => {});
+    }
   }
+
+  data.profiles = deduplicateProfiles(data.profiles);
 
   if (!data.notifications?.some((notification: any) => notification.id === `notif_user_${profile.id}`)) {
     appendPipAnnouncement(data, {
@@ -583,32 +710,23 @@ function registerOrUpdateUser(user: { id: number | string; first_name?: string; 
   return { profile, data };
 }
 
-// Bot state - disabled locally, hosted on Render to prevent 409 conflict
 let isBotPolling = false;
 let pollingAbortController: AbortController | null = null;
+let botInfo: any = null;
 let lastBotError: string | null = null;
-let botInfo: any = { username: 'DustTown_RP_bot', first_name: 'Dust Town RP [Render Worker]' };
-let botLogs: Array<{ id: string; time: string; type: 'info' | 'message' | 'error'; text: string }> = [
-  { id: '1', time: new Date().toLocaleTimeString(), type: 'info', text: 'Сервер DustTown RP запущен' },
-  { id: '2', time: new Date().toLocaleTimeString(), type: 'info', text: 'Бот отключен на локальном инстансе (хостинг вынесен на Render 🚀)' }
-];
+const botLogs: Array<{ timestamp: string; level: 'info' | 'warn' | 'error' | 'message'; message: string }> = [];
 
-function addBotLog(type: 'info' | 'message' | 'error', text: string) {
-  botLogs.unshift({
-    id: Math.random().toString(36).substring(7),
-    time: new Date().toLocaleTimeString(),
-    type,
-    text
-  });
-  if (botLogs.length > 50) botLogs.pop();
+function addBotLog(level: 'info' | 'warn' | 'error' | 'message', message: string) {
+  const timestamp = new Date().toISOString();
+  botLogs.unshift({ timestamp, level, message });
+  if (botLogs.length > 200) {
+    botLogs.pop();
+  }
 }
 
 // Telegram API Helper
 async function tgApi(method: string, body?: any) {
   try {
-    if (!TELEGRAM_BOT_TOKEN) {
-      throw new Error('TELEGRAM_BOT_TOKEN is not configured');
-    }
     const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/${method}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -623,123 +741,248 @@ async function tgApi(method: string, body?: any) {
   }
 }
 
-const chatAdminsCache = new Map<string, { admins: ChatAdminInfo[]; cachedAt: number }>();
-
-async function getTelegramChatAdmins(chatId: number | string): Promise<ChatAdminInfo[]> {
-  if (typeof chatId === 'number' && chatId > 0) return [];
-
-  const key = String(chatId);
-  const cached = chatAdminsCache.get(key);
-  if (cached && Date.now() - cached.cachedAt < 10 * 60 * 1000) return cached.admins;
-
+async function fetchTelegramUserAvatar(userId: number | string): Promise<string | null> {
   try {
-    const response = await tgApi('getChatAdministrators', { chat_id: chatId });
-    if (!response.ok || !Array.isArray(response.result)) {
-      console.warn(`[Telegram Admins] Could not load administrators for chat ${key}: ${response.description || 'invalid response'}`);
-      return [];
-    }
-
-    const admins: ChatAdminInfo[] = response.result.map((member: any) => ({
-      userId: member.user.id,
-      username: member.user.username ? `@${member.user.username}` : undefined,
-      displayName: [member.user.first_name, member.user.last_name].filter(Boolean).join(' ') || 'Администратор',
-      isOwner: member.status === 'creator',
-      customTitle: member.custom_title
-    }));
-    chatAdminsCache.set(key, { admins, cachedAt: Date.now() });
-    return admins;
-  } catch (error) {
-    console.warn(`[Telegram Admins] Failed to load administrators for chat ${key}:`, error);
-    return cached?.admins || [];
-  }
-}
-
-async function discoverTelegramTopic(message: any): Promise<void> {
-  const threadId = message.message_thread_id ?? (
-    message.forum_topic_created ? message.message_id : undefined
-  );
-  if (
-    message.chat?.type !== 'supergroup' ||
-    threadId === undefined ||
-    !Number.isFinite(Number(threadId)) ||
-    !botInfo?.id
-  ) {
-    return;
-  }
-
-  const admins = await getTelegramChatAdmins(message.chat.id);
-  if (!admins.some(admin => String(admin.userId) === String(botInfo.id))) return;
-
-  registerDiscoveredTopic(
-    Number(threadId),
-    message.forum_topic_created?.name || message.forum_topic_edited?.name
-  );
-}
-
-async function sendLittlepipReply(
-  chatId: number | string,
-  text: string,
-  options: Record<string, any> = {}
-) {
-  const { meme, ...telegramOptions } = options as { meme?: LittlepipMeme; [key: string]: any };
-  if (!meme) {
-    const result = await tgApi('sendMessage', { chat_id: chatId, text, ...telegramOptions });
-    if (!result.ok) {
-      throw new Error(`Telegram could not send Littlepip message: ${result.description || 'unknown error'}`);
-    }
-    return result;
-  }
-
-  try {
-    if (!TELEGRAM_BOT_TOKEN) {
-      throw new Error('TELEGRAM_BOT_TOKEN is not configured');
-    }
-    const image = await fs.promises.readFile(meme.filePath);
-    const extension = path.extname(meme.fileName).toLowerCase();
-    const mimeType = extension === '.png'
-      ? 'image/png'
-      : extension === '.webp'
-        ? 'image/webp'
-        : 'image/jpeg';
-    const form = new FormData();
-    form.append('chat_id', String(chatId));
-    form.append('photo', new Blob([new Uint8Array(image)], { type: mimeType }), meme.fileName);
-    if (text) form.append('caption', text.slice(0, 1024));
-    for (const [key, value] of Object.entries(telegramOptions)) {
-      if (value !== undefined && value !== null) {
-        form.append(key, typeof value === 'string' ? value : String(value));
+    const numId = Number(userId);
+    if (!numId || isNaN(numId)) return null;
+    const res = await tgApi('getUserProfilePhotos', { user_id: numId, limit: 1 });
+    if (res?.ok && res.result?.total_count > 0 && res.result.photos?.[0]?.length > 0) {
+      const photos = res.result.photos[0];
+      const photo = photos[photos.length - 1]; // Highest resolution
+      const fileRes = await tgApi('getFile', { file_id: photo.file_id });
+      if (fileRes?.ok && fileRes.result?.file_path) {
+        const fileUrl = `https://api.telegram.org/file/bot${TELEGRAM_BOT_TOKEN}/${fileRes.result.file_path}`;
+        try {
+          const imgRes = await fetch(fileUrl);
+          if (imgRes.ok) {
+            const buffer = Buffer.from(await imgRes.arrayBuffer());
+            const filename = `tg_${numId}.jpg`;
+            const destPath = path.join(UPLOADS_DIR, 'avatars', filename);
+            fs.writeFileSync(destPath, buffer);
+            return `/uploads/avatars/${filename}?v=${Date.now()}`;
+          }
+        } catch (downloadErr) {
+          console.warn('[Telegram Avatar] Download cache warning; using direct URL:', downloadErr);
+        }
+        return fileUrl;
       }
     }
-
-    const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`, {
-      method: 'POST',
-      body: form
-    });
-    const result = await response.json();
-    if (!response.ok || !result.ok) {
-      throw new Error(result.description || `Telegram sendPhoto failed with status ${response.status}`);
-    }
-    return result;
-  } catch (error) {
-    console.warn(`[Littlepip Memes] Could not send ${meme.fileName}; sending the text reply instead:`, error);
-    const fallback = await tgApi('sendMessage', { chat_id: chatId, text, ...telegramOptions });
-    if (!fallback.ok) {
-      throw new Error(fallback.description || 'Telegram could not send the Littlepip reply');
-    }
-    return fallback;
+  } catch (err) {
+    console.warn('[Telegram Avatar] Could not fetch avatar for user', userId, err);
   }
+  return null;
+}
+
+async function sendTelegramVoiceOrAudio(chatId: number | string, buffer: Buffer, caption?: string, threadId?: number) {
+  try {
+    const isWav = buffer.length > 4 && buffer.toString('ascii', 0, 4) === 'RIFF';
+    const mimeType = isWav ? 'audio/wav' : 'audio/mpeg';
+    const filename = isWav ? 'littlepip_voice.wav' : 'littlepip_voice.mp3';
+    const audioBlob = new Blob([new Uint8Array(buffer)], { type: mimeType });
+
+    // 1. Попытка отправить как голосовое сообщение (кругляш/войс в Telegram)
+    try {
+      const voiceFormData = new FormData();
+      voiceFormData.append('chat_id', String(chatId));
+      if (threadId) voiceFormData.append('message_thread_id', String(threadId));
+      if (caption) voiceFormData.append('caption', caption.slice(0, 1000));
+      voiceFormData.append('voice', audioBlob, filename);
+
+      const voiceRes = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendVoice`, {
+        method: 'POST',
+        body: voiceFormData
+      });
+      const voiceData = await voiceRes.json();
+      if (voiceData.ok) return voiceData;
+    } catch (_) {}
+
+    // 2. Если sendVoice не поддерживается или отклонён, отправляем как sendAudio
+    const audioFormData = new FormData();
+    audioFormData.append('chat_id', String(chatId));
+    if (threadId) audioFormData.append('message_thread_id', String(threadId));
+    if (caption) audioFormData.append('caption', caption.slice(0, 1000));
+    audioFormData.append('audio', audioBlob, filename);
+
+    const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendAudio`, {
+      method: 'POST',
+      body: audioFormData
+    });
+    const data = await res.json();
+    return data;
+  } catch (err: any) {
+    console.warn('[Telegram Audio] failed to send audio:', err?.message || err);
+  }
+}
+
+/**
+ * Отправляет сообщение Литлпип в Telegram:
+ * если прикреплен мем (картинка/GIF/аудио) — скачивает медиа и отправляет как sendPhoto / sendAnimation / sendVoice,
+ * иначе отправляет обычный sendMessage.
+ */
+async function sendTelegramLittlepipMessage(
+  chatId: number | string,
+  replyText: string,
+  options: any = {}
+) {
+  const { meme, mediaUrl, message_thread_id, threadId, reply_to_message_id, parse_mode = 'Markdown' } = options;
+  const targetThreadId = message_thread_id || threadId;
+  const targetUrl = mediaUrl || meme?.mediaUrl;
+
+  if (targetUrl) {
+    try {
+      const media = await downloadMedia(targetUrl);
+      if (media && media.buffer) {
+        const blob = new Blob([new Uint8Array(media.buffer)], { type: media.mimeType });
+        const formData = new FormData();
+        formData.append('chat_id', String(chatId));
+        if (targetThreadId) formData.append('message_thread_id', String(targetThreadId));
+        if (reply_to_message_id) formData.append('reply_to_message_id', String(reply_to_message_id));
+        if (replyText) formData.append('caption', replyText.slice(0, 1024));
+        if (parse_mode) formData.append('parse_mode', parse_mode);
+
+        if (media.isGif) {
+          formData.append('animation', blob, media.filename);
+          const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendAnimation`, {
+            method: 'POST',
+            body: formData
+          });
+          const data = await res.json();
+          if (data.ok) return data;
+        } else if (media.isAudio) {
+          formData.append('voice', blob, media.filename);
+          const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendVoice`, {
+            method: 'POST',
+            body: formData
+          });
+          const data = await res.json();
+          if (data.ok) return data;
+        } else {
+          formData.append('photo', blob, media.filename);
+          const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`, {
+            method: 'POST',
+            body: formData
+          });
+          const data = await res.json();
+          if (data.ok) return data;
+        }
+      }
+    } catch (err: any) {
+      console.warn('[Telegram Media Send Failed, falling back to text]:', err?.message || err);
+    }
+  }
+
+  // Резервная отправка обычного текстового сообщения
+  return tgApi('sendMessage', {
+    chat_id: chatId,
+    text: replyText,
+    ...(targetThreadId ? { message_thread_id: targetThreadId } : {}),
+    ...(reply_to_message_id ? { reply_to_message_id } : {}),
+    parse_mode
+  });
+}
+
+// Кэш администраторов групп Telegram (срок жизни 10 минут)
+const chatAdminsCache = new Map<string, { admins: ChatAdminInfo[]; timestamp: number }>();
+
+async function getChatAdmins(chatId: number | string): Promise<ChatAdminInfo[]> {
+  const chatKey = String(chatId);
+  const now = Date.now();
+  const cached = chatAdminsCache.get(chatKey);
+  if (cached && now - cached.timestamp < 10 * 60 * 1000) {
+    return cached.admins;
+  }
+
+  // В личных чатах администраторов нет
+  if (typeof chatId === 'number' && chatId > 0) {
+    return [];
+  }
+
+  try {
+    const res = await tgApi('getChatAdministrators', { chat_id: chatId });
+    if (res.ok && Array.isArray(res.result)) {
+      const admins: ChatAdminInfo[] = res.result.map((member: any) => {
+        const u = member.user || {};
+        const isOwner = member.status === 'creator';
+        return {
+          userId: u.id,
+          username: u.username ? `@${u.username}` : undefined,
+          displayName: [u.first_name, u.last_name].filter(Boolean).join(' ') || (u.username ? `@${u.username}` : 'Администратор'),
+          isOwner,
+          customTitle: member.custom_title || (isOwner ? 'Создатель поселения (Шериф)' : 'Администратор')
+        };
+      });
+      chatAdminsCache.set(chatKey, { admins, timestamp: now });
+      return admins;
+    }
+  } catch (err: any) {
+    console.warn('[Telegram Admins] failed to fetch admins for chat', chatId, err?.message || err);
+  }
+
+  return cached?.admins || [];
+}
+
+/**
+ * Отправка спонтанного прикола / мема / анекдота (раз в 2 часа)
+ */
+async function triggerRandomLittlepipJoke(chatId: number | string, threadId?: number) {
+  try {
+    const chatAdmins = await getChatAdmins(chatId);
+    const jokeRaw = await generateRandomJoke(chatId, threadId, chatAdmins);
+    const { cleanText: cleanJoke, meme, mediaUrl } = extractMemeTag(jokeRaw);
+
+    const sendOpts: any = {
+      meme,
+      mediaUrl,
+      threadId
+    };
+
+    await sendTelegramLittlepipMessage(chatId, cleanJoke || jokeRaw, sendOpts);
+
+    // Сохраняем в историю чата, чтобы Пипка не повторялась
+    rememberConversationMessage(chatId, threadId, 'Пипка (Литлпип)', cleanJoke || jokeRaw, true);
+
+    addBotLog('info', `[Литлпип Прикол 2ч]: отправлен в чат ${chatId}`);
+  } catch (jokeErr: any) {
+    console.warn('[Random Joke Failed]:', jokeErr?.message || jokeErr);
+  }
+}
+
+// Фоновый планировщик случайного прикола (проверка каждые 60 секунд)
+let randomJokeIntervalTimer: NodeJS.Timeout | null = null;
+function startRandomJokeScheduler() {
+  if (randomJokeIntervalTimer) clearInterval(randomJokeIntervalTimer);
+  randomJokeIntervalTimer = setInterval(async () => {
+    try {
+      const activeBindings = getActiveBindings();
+      const now = Date.now();
+
+      for (const binding of activeBindings) {
+        // Если следующее время не назначено, случайно выбираем от 90 до 130 минут (около 2 часов)
+        if (!binding.nextRandomJokeAt) {
+          const delayMs = (90 + Math.floor(Math.random() * 40)) * 60 * 1000;
+          updateBindingJokeTimestamp(binding.chatId, binding.threadId, now + delayMs);
+          continue;
+        }
+
+        // Если 2 часа прошло
+        if (now >= binding.nextRandomJokeAt) {
+          // Назначаем следующий интервал ~2 часа (100 - 140 минут)
+          const nextDelayMs = (100 + Math.floor(Math.random() * 40)) * 60 * 1000;
+          updateBindingJokeTimestamp(binding.chatId, binding.threadId, now + nextDelayMs);
+
+          await triggerRandomLittlepipJoke(binding.chatId, binding.threadId);
+        }
+      }
+    } catch (schedErr) {
+      console.warn('[Joke Scheduler Error]:', schedErr);
+    }
+  }, 60 * 1000);
 }
 
 // Start Telegram Polling Loop
 let lastUpdateId = 0;
 
 async function startTelegramPolling() {
-  if (!TELEGRAM_BOT_TOKEN) {
-    lastBotError = 'TELEGRAM_BOT_TOKEN is not configured';
-    addBotLog('error', 'Не задан TELEGRAM_BOT_TOKEN в переменных окружения');
-    return;
-  }
-
   if (pollingAbortController) {
     pollingAbortController.abort();
   }
@@ -819,26 +1062,12 @@ async function handleTelegramUpdate(update: any) {
   }
 
   const msg = update.message;
-  if (!msg) return;
-
-  await discoverTelegramTopic(msg);
-
-  const isMedia = Boolean(
-    msg.photo || msg.video || msg.animation || msg.document || msg.audio ||
-    msg.voice || msg.video_note || msg.sticker
-  );
-  const messageText = typeof msg.text === 'string'
-    ? msg.text
-    : typeof msg.caption === 'string'
-      ? msg.caption
-      : '';
-  if (!messageText && !isMedia) return;
+  if (!msg || !msg.text) return;
 
   const chatId = msg.chat.id;
   const user = msg.from;
-  if (!user || user.is_bot) return;
   const userTag = user.username ? `@${user.username}` : user.first_name;
-  const text = messageText.trim();
+  const text = msg.text.trim();
 
   // Automatic registration of Telegram user in the shared database
   if (user) {
@@ -847,16 +1076,19 @@ async function handleTelegramUpdate(update: any) {
 
   addBotLog('message', `[${userTag}]: ${text}`);
 
-  const appUrl = process.env.APP_URL || 'https://t.me/DustTown_RP_bot/app';
-  const isPipAddressed = hasPipMention(text) ||
-    Boolean(msg.reply_to_message?.from?.is_bot);
-  const chatAdmins = isPipAddressed ? await getTelegramChatAdmins(chatId) : [];
-  const senderAdmin = chatAdmins.find(admin => String(admin.userId) === String(user.id));
+  const appUrl = process.env.APP_URL || 'https://t.me/DT_Collective_bot/app';
 
   // 1. Littlepip AI Agent processing (commands /pip_start, /support, /pip_bind, /stop, /pip_status, and dialogue)
   try {
     // Send typing action so Telegram shows that Littlepip is typing
-    if (!isMedia) tgApi('sendChatAction', { chat_id: chatId, action: 'typing' }).catch(() => {});
+    tgApi('sendChatAction', { chat_id: chatId, action: 'typing' }).catch(() => {});
+
+    const chatAdmins = await getChatAdmins(chatId);
+    const userAdminRecord = chatAdmins.find(
+      a => String(a.userId) === String(user?.id) || (user?.username && a.username?.toLowerCase() === `@${user.username}`.toLowerCase())
+    );
+    const isSenderAdmin = Boolean(userAdminRecord);
+    const isSenderOwner = Boolean(userAdminRecord?.isOwner);
 
     const littlepipResult = await handleLittlepipUpdate(
       {
@@ -868,30 +1100,46 @@ async function handleTelegramUpdate(update: any) {
         text,
         replyToMessage: msg.reply_to_message,
         botUsername: botInfo?.username || 'DustTown_RP_bot',
-        isMedia,
         chatAdmins,
-        isSenderAdmin: Boolean(senderAdmin),
-        isSenderOwner: Boolean(senderAdmin?.isOwner)
+        isSenderAdmin,
+        isSenderOwner
       },
       async (targetChatId, replyText, options) => {
-        return sendLittlepipReply(targetChatId, replyText, options);
+        return sendTelegramLittlepipMessage(targetChatId, replyText, {
+          ...options,
+          message_thread_id: msg.message_thread_id,
+          reply_to_message_id: msg.message_id
+        });
       }
     );
 
     if (littlepipResult.handled) {
       addBotLog('info', `[Литлпип ИИ]: ответ в чат ${chatId} (${littlepipResult.mode || 'диалог'})`);
+      if (littlepipResult.shouldVoice && littlepipResult.replyText) {
+        const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || DEFAULT_LITTLEPIP_GEMINI_KEY;
+        const textToVoice = littlepipResult.cleanReply || littlepipResult.replyText;
+        generateLittlepipVoice(textToVoice, apiKey)
+          .then(audioBuffer => sendTelegramVoiceOrAudio(chatId, audioBuffer, undefined, msg.message_thread_id))
+          .catch(vErr => console.warn('[Littlepip Voice Gen Failed]:', vErr?.message || vErr));
+      }
       return;
     }
-    if (isMedia) return;
   } catch (pipErr: any) {
     console.error('[Littlepip Error]:', pipErr);
     if (hasPipMention(text) || msg.reply_to_message?.from?.is_bot) {
-      await tgApi('sendMessage', {
-        chat_id: chatId,
-        text: '📻 *[В динамике Pip-Buck слышен треск помех и щелчок реле]*\n— Тьфу, помехи от радиационного фона частоту глушат! Дайте мне минутку подкрутить клемму в терминале, и я снова на связи!',
-        reply_to_message_id: msg.message_id,
-        ...(msg.message_thread_id ? { message_thread_id: msg.message_thread_id } : {})
-      });
+      try {
+        const fallbackText = await generateLittlepipText(
+          text,
+          user?.username ? `@${user.username}` : (user?.first_name || 'сталкер'),
+          'chat'
+        );
+        await tgApi('sendMessage', {
+          chat_id: chatId,
+          text: fallbackText,
+          reply_to_message_id: msg.message_id,
+          ...(msg.message_thread_id ? { message_thread_id: msg.message_thread_id } : {})
+        });
+      } catch (_) {}
       return;
     }
   }
@@ -912,9 +1160,6 @@ async function handleTelegramUpdate(update: any) {
 
 🦄 **ИИ-Агент Литлпип (Стойло 2):**
 • \`/pip_start\` — запустить живой диалог с Литлпип
-• \`/pip_rep\` — проверить своё досье и репутацию у Пипки
-• \`/pip_top\` — доска почёта любимчиков и розыска обидчиков
-• \`/pip_joke\` — сталкерские анекдоты и мемы
 • \`/support\` — режим техподдержки и подсказок по коду/файлам
 • \`/pip_bind\` — привязать Литлпип к текущей вкладке/топику группы
 • \`/stop\` — остановить бота (радиомолчание)`;
@@ -923,7 +1168,7 @@ async function handleTelegramUpdate(update: any) {
       inline_keyboard: [
         [
           {
-            text: '🎮 Открыть Mini App',
+            text: '🚀 Открыть ДТ-Колектив_бот',
             web_app: { url: appUrl }
           }
         ],
@@ -994,17 +1239,19 @@ app.get('/api/littlepip/status', (req, res) => {
 });
 
 app.post('/api/littlepip/chat', async (req, res) => {
+  const text = req.body?.text || '';
+  const username = req.body?.username || 'сталкер';
+  const mode = req.body?.mode || (text.toLowerCase().includes('support') ? 'support' : 'chat');
+
   try {
-    const text = req.body?.text || '';
-    const username = req.body?.username || 'сталкер';
-    const mode = req.body?.mode || (text.toLowerCase().includes('support') ? 'support' : 'chat');
     const conversationHistory = Array.isArray(req.body?.history)
       ? req.body.history.slice(-10).filter((message: any) =>
         ['user', 'assistant'].includes(message?.role) && typeof message?.text === 'string'
       ).map((message: any) => ({
-        username: message.role === 'assistant' ? 'Литлпип' : username,
+        username: message.role === 'assistant' ? 'Ты (Литлпип)' : username,
         text: message.text.slice(0, 1000),
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        isAssistant: message.role === 'assistant'
       }))
       : [];
 
@@ -1023,13 +1270,35 @@ app.post('/api/littlepip/chat', async (req, res) => {
     }
 
     const reply = await generateLittlepipText(text, username, mode, conversationHistory);
+    const { cleanText: cleanReply, meme, mediaUrl } = extractMemeTag(reply);
     res.json({
       success: true,
-      reply,
+      reply: cleanReply || reply,
+      rawReply: reply,
+      meme,
+      mediaUrl: mediaUrl || meme?.mediaUrl,
       mode
     });
   } catch (err: any) {
-    res.status(500).json({ error: err?.message || 'Error generating Littlepip reply' });
+    console.error('[Littlepip AI Endpoint Error]:', err?.message || err);
+    try {
+      const safeReply = await generateLittlepipText(text, username, mode);
+      const { cleanText: cleanSafeReply, meme: safeMeme, mediaUrl: safeMediaUrl } = extractMemeTag(safeReply);
+      res.json({
+        success: true,
+        reply: cleanSafeReply || safeReply,
+        rawReply: safeReply,
+        meme: safeMeme,
+        mediaUrl: safeMediaUrl || safeMeme?.mediaUrl,
+        mode
+      });
+    } catch (_) {
+      res.json({
+        success: true,
+        reply: 'Ох, помехи в радиоэфире Пустошей! Но я рядом, сталкер. Повтори ещё разок.',
+        mode
+      });
+    }
   }
 });
 
@@ -1038,135 +1307,17 @@ app.post('/api/littlepip/voice', async (req, res) => {
   if (!text) return res.status(400).json({ error: 'Нечего озвучивать.' });
   if (text.length > 1000) return res.status(413).json({ error: 'Сообщение слишком длинное для озвучивания.' });
 
-  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-  if (!apiKey) return res.status(503).json({ error: 'Озвучивание не настроено.' });
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || DEFAULT_LITTLEPIP_GEMINI_KEY;
 
   try {
     const audio = await generateLittlepipVoice(text, apiKey);
-    res.setHeader('Content-Type', 'audio/wav');
-    res.setHeader('Cache-Control', 'no-store');
+    const isWav = audio.length > 4 && audio.toString('ascii', 0, 4) === 'RIFF';
+    res.setHeader('Content-Type', isWav ? 'audio/wav' : 'audio/mpeg');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
     res.send(audio);
   } catch (error: any) {
     console.error('[Littlepip TTS] Generation failed:', error?.message || error);
-    res.status(502).json({ error: 'Голосовое сообщение временно недоступно.' });
-  }
-});
-
-// ==========================================
-// НАСТРОЙКИ ПИПКИ, ТОПИКИ И РЕПУТАЦИЯ
-// ==========================================
-
-// Получить текущие настройки Пипки и список топиков
-app.get('/api/littlepip/config', (req, res) => {
-  res.json({
-    success: true,
-    settings: getLittlepipSettings()
-  });
-});
-
-// Обновить настройки Пипки
-app.post('/api/littlepip/config', (req, res) => {
-  try {
-    const updated = updateLittlepipSettings(req.body);
-    res.json({ success: true, settings: updated });
-  } catch (e: any) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// Добавить или обновить права для топика группы
-app.post('/api/littlepip/topics/set', (req, res) => {
-  try {
-    const { threadId, title, permission, enabled, notes } = req.body;
-    if (!threadId) return res.status(400).json({ error: 'Missing threadId' });
-    const settings = setTopicConfig(threadId, title || `Топик #${threadId}`, permission || 'read_write', enabled ?? true, notes);
-    res.json({ success: true, settings });
-  } catch (e: any) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// Удалить топик из конфига
-app.delete('/api/littlepip/topics/:threadId', (req, res) => {
-  try {
-    const settings = removeTopicConfig(req.params.threadId);
-    res.json({ success: true, settings });
-  } catch (e: any) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// Получить всю базу репутации игроков
-app.get('/api/littlepip/reputation', (req, res) => {
-  try {
-    res.json({
-      success: true,
-      players: getAllReputations()
-    });
-  } catch (e: any) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// Изменить репутацию игрока (админ)
-app.post('/api/littlepip/reputation/adjust', (req, res) => {
-  try {
-    const { userId, deltaScore, reason, clearGrudge } = req.body;
-    if (!userId) return res.status(400).json({ error: 'Missing userId' });
-    const updated = adjustPlayerReputation(userId, Number(deltaScore) || 0, reason || 'Админ-решение', Boolean(clearGrudge));
-    res.json({ success: true, player: updated });
-  } catch (e: any) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// Помиловать игрока (снять обиду Пипки)
-app.post('/api/littlepip/reputation/forgive', (req, res) => {
-  try {
-    const { userId } = req.body;
-    if (!userId) return res.status(400).json({ error: 'Missing userId' });
-    const updated = forgivePlayerGrudge(userId);
-    res.json({ success: true, player: updated });
-  } catch (e: any) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// ==========================================
-// 13. LITTLEPIP KNOWLEDGE & MEMORY ENDPOINTS (.littlepip_memory.json)
-// ==========================================
-
-// Получить память и базу знаний Литлпип
-app.get('/api/littlepip/memory', (req, res) => {
-  try {
-    res.json({ success: true, memory: getLittlepipMemory() });
-  } catch (e: any) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// Сброс памяти (24h, 3d, all)
-app.post('/api/littlepip/memory/reset', (req, res) => {
-  try {
-    const { scope } = req.body;
-    if (!scope || !['24h', '3d', 'all'].includes(scope)) {
-      return res.status(400).json({ error: 'Invalid scope. Must be 24h, 3d, or all' });
-    }
-    const result = resetLittlepipMemory(scope);
-    resetRecentLittlepipMessages(scope);
-    res.json({ success: true, result, memory: getLittlepipMemory() });
-  } catch (e: any) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// Удалить конкретную запись из памяти
-app.delete('/api/littlepip/memory/:id', (req, res) => {
-  try {
-    const deleted = deleteSingleMemoryItem(req.params.id);
-    res.json({ success: true, deleted, memory: getLittlepipMemory() });
-  } catch (e: any) {
-    res.status(500).json({ error: e.message });
+    res.status(502).json({ error: 'Голосовое сообщение временно недоступно: ' + (error?.message || '') });
   }
 });
 
@@ -1176,7 +1327,7 @@ app.get('/api/bot/status', (req, res) => {
     botInfo,
     logs: botLogs,
     lastError: lastBotError,
-    telegramBotConfigured: Boolean(TELEGRAM_BOT_TOKEN),
+    tokenMasked: `${TELEGRAM_BOT_TOKEN.substring(0, 10)}...${TELEGRAM_BOT_TOKEN.substring(TELEGRAM_BOT_TOKEN.length - 6)}`,
     appUrl: process.env.APP_URL || '',
     hostedOnRender: true,
     renderStatus: 'Active on Render Cloud 🚀'
@@ -1184,9 +1335,6 @@ app.get('/api/bot/status', (req, res) => {
 });
 
 app.post('/api/bot/start', async (req, res) => {
-  if (!TELEGRAM_BOT_TOKEN) {
-    return res.status(503).json({ error: 'TELEGRAM_BOT_TOKEN is not configured' });
-  }
   if (!isBotPolling) {
     await startTelegramPolling();
   }
@@ -1297,24 +1445,8 @@ app.get('/api/chat/nuke-status', (req, res) => {
   }
 });
 
-app.get('/api/chat/nuke-alerts', (req, res) => {
-  try {
-    const data = getOrInitData();
-    if (data.nukeAlert && data.nukeAlert.expiresAt > Date.now()) {
-      return res.json({ alerts: [data.nukeAlert] });
-    }
-    if (data.nukeAlert) {
-      data.nukeAlert = null;
-      saveData(data);
-    }
-    return res.json({ alerts: [] });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // Send Chat Message or Nuclear Strike
-app.post('/api/chat/send', async (req, res) => {
+app.post('/api/chat/send', (req, res) => {
   try {
     const data = getOrInitData();
     const {
@@ -1423,35 +1555,45 @@ app.post('/api/chat/send', async (req, res) => {
         iconEmoji: '☢️'
       });
 
+      // Broadcast siren alert to Telegram community group
+      const targetChat = process.env.TELEGRAM_GROUP_ID || '@DustTownCollective';
+      const botWebAppUrl = process.env.APP_URL || 'https://t.me/DT_Collective_bot/app';
+      const nukeTgText =
+        `☢️🚨 **СРАБОТАЛА СИРЕНА МЕГАЗАКЛИНАНИЙ!** 🚨☢️\n` +
+        `⚠️ **КРИТИЧЕСКИЙ РАДИАЦИОННЫЙ ВЫБРОС В СЕКТОРЕ ДАСТ ТАУН!**\n\n` +
+        `📡 Сталкер **${sender.displayName}** (${sender.username || '@Житель'}) сбросил Ядерку и запустил экстренное сообщение в эфир:\n\n` +
+        `📢 *«${trimmedContent}»*\n\n` +
+        `⚡ **ИНСТРУКЦИЯ ДЛЯ ВЫЖИВШИХ:**\n` +
+        `• Радиационный фон в Пустоши взлетел до опасных отметок!\n` +
+        `• Немедленно загерметизировать укрытия и гермолюки Стойла!\n` +
+        `• Сигнал передан через терминалы сети. Берегите сидр и патроны!`;
+
+      tgApi('sendMessage', {
+        chat_id: targetChat,
+        text: nukeTgText,
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: '🚀 Открыть ДТ-Колектив_бот',
+                web_app: { url: botWebAppUrl }
+              }
+            ]
+          ]
+        }
+      }).catch((tgErr: any) => {
+        console.warn('[Telegram Nuke Broadcast error]:', tgErr?.message || tgErr);
+      });
+
       data.lastUpdated = new Date().toISOString();
       saveData(data);
-
-      const targetChat = process.env.TELEGRAM_GROUP_ID || '@DustTownCollective';
-      const appUrl = process.env.APP_URL || 'https://t.me/DustTown_RP_bot/app';
-      let groupDelivered = false;
-      try {
-        const telegramResult = await tgApi('sendMessage', {
-          chat_id: targetChat,
-          text: `☢️ СРОЧНОЕ СООБЩЕНИЕ ОТ ПИПКИ\n\n${sender.displayName} (${sender.username || '@Wanderer'}) запустил Ядерку в Даст Таун.\n\n📡 Передача:\n${trimmedContent}\n\nВоздушная тревога активирована во всех терминалах Пустоши.`,
-          reply_markup: {
-            inline_keyboard: [[{ text: 'Открыть DustTown RP', url: appUrl }]]
-          }
-        });
-        groupDelivered = Boolean(telegramResult?.ok);
-        if (!groupDelivered) {
-          throw new Error(telegramResult?.description || 'Telegram не подтвердил доставку сообщения');
-        }
-        addBotLog('info', `Ядерное сообщение от ${sender.username} отправлено в группу ${targetChat}`);
-      } catch (telegramError: any) {
-        addBotLog('error', `Не удалось отправить ядерное сообщение в группу ${targetChat}: ${telegramError.message}`);
-      }
 
       return res.json({
         success: true,
         message: newNukeMessage,
         nukeAlert: nukeAlertObj,
-        senderProfile: sender,
-        groupDelivered
+        senderProfile: sender
       });
     }
 
@@ -1484,6 +1626,57 @@ app.post('/api/chat/send', async (req, res) => {
     data.lastUpdated = new Date().toISOString();
     saveData(data);
 
+    // Если в общем канале сталкеров обратились к Пипке — она живо отвечает в чат
+    if (!recipientId && hasPipMention(trimmedContent)) {
+      setTimeout(async () => {
+        try {
+          const freshData = getOrInitData();
+          freshData.chatMessages = Array.isArray(freshData.chatMessages) ? freshData.chatMessages : [];
+
+          // До 10 последних сообщений в качестве контекста диалога
+          const history = freshData.chatMessages.slice(-10).map((m: any) => ({
+            username: m.senderDisplayName || m.senderUsername || 'сталкер',
+            text: m.content || '',
+            timestamp: new Date(m.timestamp).getTime(),
+            isAssistant: m.senderId === 'littlepip' || /пипк|литлпип/i.test(m.senderDisplayName || '')
+          }));
+
+          const pipReply = await generateLittlepipText(
+            trimmedContent,
+            sender.displayName || sender.username || 'сталкер',
+            trimmedContent.toLowerCase().includes('support') ? 'support' : 'chat',
+            history
+          );
+
+          if (pipReply && pipReply.trim()) {
+            const pipMsg = {
+              id: 'msg_pip_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+              senderId: 'littlepip',
+              senderUsername: '@Pip',
+              senderDisplayName: 'Пипка · Радио Даст Таун',
+              senderAvatarUrl: 'https://images.unsplash.com/photo-1535268647677-300dbf3d78d1?auto=format&fit=crop&w=160&q=80',
+              senderRole: 'Радио Даст Таун',
+              content: pipReply.trim(),
+              timestamp: new Date().toISOString(),
+              type: 'system',
+              style: {
+                customBgEffect: 'none',
+                bubbleBorderTheme: 'border-emerald-500/60 shadow-[0_0_20px_rgba(16,185,129,0.12)]',
+                textColorClass: 'text-emerald-100'
+              },
+              isNuke: false
+            };
+            freshData.chatMessages.push(pipMsg);
+            if (freshData.chatMessages.length > 250) freshData.chatMessages.shift();
+            freshData.lastUpdated = new Date().toISOString();
+            saveData(freshData);
+          }
+        } catch (chatPipErr) {
+          console.error('[Web Chat Littlepip Reply Error]:', chatPipErr);
+        }
+      }, 400);
+    }
+
     res.json({
       success: true,
       message: newMsg,
@@ -1502,7 +1695,7 @@ app.post('/api/notify-group', async (req, res) => {
       return res.status(400).json({ error: 'Event object required' });
     }
 
-    const appUrl = process.env.APP_URL || 'https://t.me/DustTown_RP_bot/app';
+    const appUrl = process.env.APP_URL || 'https://t.me/DT_Collective_bot/app';
     const targetChat = process.env.TELEGRAM_GROUP_ID || '@DustTownCollective';
 
     let text = '';
@@ -1522,7 +1715,7 @@ app.post('/api/notify-group', async (req, res) => {
         `⏰ **Время сбора:** ${formattedTime}\n\n` +
         `📝 **Описание:**\n${event.description}`;
 
-      inlineKeyboard.push([{ text: '🎮 Открыть событие в Mini App', web_app: { url: appUrl } }]);
+      inlineKeyboard.push([{ text: '🚀 Открыть ДТ-Колектив_бот', web_app: { url: appUrl } }]);
       if (event.collabClanUrl) {
         inlineKeyboard.push([{ text: `🤝 Группа клана ${event.collabClanName || 'партнёра'}`, url: event.collabClanUrl }]);
       }
@@ -1535,7 +1728,7 @@ app.post('/api/notify-group', async (req, res) => {
         `⏰ **Старт:** ${formattedTime}\n\n` +
         `📝 **Сюжет:**\n${event.description}`;
 
-      inlineKeyboard.push([{ text: '🎮 Записаться на РП в Mini App', web_app: { url: appUrl } }]);
+      inlineKeyboard.push([{ text: '🚀 Открыть ДТ-Колектив_бот', web_app: { url: appUrl } }]);
     } else {
       text = `🔥 **НОВЫЙ ИВЕНТ В ДАСТ ТАУН КОЛЕКТИВ!**\n\n` +
         `🏷 **Ивент:** ${event.title}\n` +
@@ -1545,7 +1738,7 @@ app.post('/api/notify-group', async (req, res) => {
         `⏰ **Старт:** ${formattedTime}\n\n` +
         `📝 **Подробности:**\n${event.description}`;
 
-      inlineKeyboard.push([{ text: '🎮 Участвовать в ивенте', web_app: { url: appUrl } }]);
+      inlineKeyboard.push([{ text: '🚀 Открыть ДТ-Колектив_бот', web_app: { url: appUrl } }]);
     }
 
     let sent = false;
@@ -1589,7 +1782,7 @@ app.post('/api/notify-completion', async (req, res) => {
   try {
     const { eventTitle, eventType, attendedUsernames, absentUsernames, rewardAmount, penaltyAmount } = req.body;
     const targetChat = process.env.TELEGRAM_GROUP_ID || '@DustTownCollective';
-    const appUrl = process.env.APP_URL || 'https://t.me/DustTown_RP_bot/app';
+    const appUrl = process.env.APP_URL || 'https://t.me/DT_Collective_bot/app';
 
     const typeLabel = eventType === 'collab'
       ? 'СОБЫТИЯ-КОЛЛАБОРАЦИИ'
@@ -1618,7 +1811,7 @@ app.post('/api/notify-completion', async (req, res) => {
       text,
       parse_mode: 'Markdown',
       reply_markup: {
-        inline_keyboard: [[{ text: '🎮 Открыть Mini App', web_app: { url: appUrl } }]]
+        inline_keyboard: [[{ text: '🚀 Открыть ДТ-Колектив_бот', web_app: { url: appUrl } }]]
       }
     });
 
@@ -1649,8 +1842,7 @@ app.get('/api/version', (req, res) => {
   res.json({
     ...buildInfo,
     currentTime: new Date().toISOString(),
-    telegramBot: isBotPolling ? 'active' : 'inactive',
-    telegramBotConfigured: Boolean(TELEGRAM_BOT_TOKEN),
+    telegramBot: 'active',
     port: PORT,
     persistence: {
       provider: firebaseConnected ? 'firebase' : 'local-json',
@@ -1752,7 +1944,7 @@ app.get('/api/updates/download-patch', (req, res) => {
   const scriptPath = path.join(__dirname, 'scripts', 'patch_manager.py');
   const patchPath = path.join(__dirname, 'dusttown-update-patch.zip');
 
-  exec(`python3 "${scriptPath}" make-patch`, { cwd: __dirname }, (err, stdout, stderr) => {
+  exec(`python3 "${scriptPath}" make-patch --no-base64`, { cwd: __dirname, maxBuffer: 1024 * 1024 * 64 }, (err, stdout, stderr) => {
     if (err || !fs.existsSync(patchPath)) {
       console.error('Failed to generate patch:', err || stderr);
       return res.status(500).send('Failed to generate patch: ' + (stderr || err?.message));
@@ -1873,8 +2065,11 @@ app.post('/api/profile/update', async (req, res) => {
     }
 
     const data = getOrInitData();
+    const isOwnerQuery = userId === 'owner_mrwhitepio' || userId === 'user_mrwhite' || userId === 'user_pio' || userId.toLowerCase() === '@mrwhitepio';
     const profileIndex = data.profiles.findIndex(
-      (p: any) => p.id === userId || (p.username && p.username.toLowerCase() === userId.toLowerCase())
+      (p: any) => p.id === userId ||
+        (p.username && p.username.toLowerCase() === userId.toLowerCase()) ||
+        (isOwnerQuery && (p.id === 'owner_mrwhitepio' || p.username?.toLowerCase() === '@mrwhitepio'))
     );
 
     if (profileIndex === -1) {
@@ -1882,12 +2077,24 @@ app.post('/api/profile/update', async (req, res) => {
     }
 
     const current = data.profiles[profileIndex];
+    let cleanAvatarUrl = updates.avatarUrl;
+    if (typeof cleanAvatarUrl === 'string' && cleanAvatarUrl.startsWith('data:image/')) {
+      try {
+        cleanAvatarUrl = await firebaseCloudStore.uploadInlineImage(cleanAvatarUrl);
+      } catch (uploadErr) {
+        console.warn('Failed to externalize avatar image during update:', uploadErr);
+      }
+    }
+
     data.profiles[profileIndex] = {
       ...current,
       ...updates,
+      avatarUrl: cleanAvatarUrl !== undefined ? cleanAvatarUrl : current.avatarUrl,
       id: current.id,
       username: current.username
     };
+
+    data.profiles = deduplicateProfiles(data.profiles);
 
     appendActivityLog(data, {
       userId: current.id,
@@ -1901,11 +2108,75 @@ app.post('/api/profile/update', async (req, res) => {
     });
 
     data.lastUpdated = new Date().toISOString();
-    await saveData(data);
-    if (firebaseConnected && !firebaseHealthy) {
-      return res.status(503).json({ error: 'Firebase не подтвердил сохранение профиля', persistence: 'firebase' });
+    saveData(data);
+    res.json({
+      success: true,
+      profile: data.profiles.find((p: any) => p.id === current.id) || data.profiles[profileIndex],
+      fullData: data,
+      persistence: firebaseHealthy ? 'firebase' : 'local'
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Dedicated Media Upload Endpoint (Firebase Storage + Local disk fallback)
+app.post('/api/upload-media', async (req, res) => {
+  try {
+    const { dataUrl } = req.body;
+    if (!dataUrl || typeof dataUrl !== 'string') {
+      return res.status(400).json({ error: 'Missing dataUrl' });
     }
-    res.json({ success: true, profile: data.profiles[profileIndex], fullData: data });
+    const uploadedUrl = await firebaseCloudStore.uploadInlineImage(dataUrl);
+    res.json({ success: true, url: uploadedUrl });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Telegram Profile Avatar Sync Endpoint
+app.post('/api/user/sync-avatar', async (req, res) => {
+  try {
+    const { userId, telegramId } = req.body;
+    if (!userId) return res.status(400).json({ error: 'Missing userId' });
+
+    const data = getOrInitData();
+    const isOwnerQuery = userId === 'owner_mrwhitepio' || userId === 'user_mrwhite' || userId === 'user_pio' || userId.toLowerCase() === '@mrwhitepio';
+    const profile = data.profiles.find((p: any) =>
+      p.id === userId ||
+      (p.username && p.username.toLowerCase() === userId.toLowerCase()) ||
+      (isOwnerQuery && (p.id === 'owner_mrwhitepio' || p.username?.toLowerCase() === '@mrwhitepio'))
+    );
+    if (!profile) return res.status(404).json({ error: 'Профиль не найден' });
+
+    const targetTgId = telegramId || profile.telegramId || (profile.id.startsWith('tg_user_') ? profile.id.replace('tg_user_', '') : null);
+    if (!targetTgId) {
+      return res.status(400).json({ error: 'Telegram ID пользователя не определён. Откройте приложение через Telegram бота.' });
+    }
+
+    const avatarUrl = await fetchTelegramUserAvatar(targetTgId);
+    if (avatarUrl) {
+      profile.avatarUrl = avatarUrl;
+      data.profiles = deduplicateProfiles(data.profiles);
+      data.lastUpdated = new Date().toISOString();
+      saveData(data);
+      return res.json({ success: true, avatarUrl, profile, fullData: data });
+    }
+
+    res.json({ success: false, message: 'У пользователя не установлена публичная аватарка в Telegram' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Telegram Avatar Direct Proxy
+app.get('/api/telegram/avatar/:userId', async (req, res) => {
+  try {
+    const avatarUrl = await fetchTelegramUserAvatar(req.params.userId);
+    if (avatarUrl) {
+      return res.redirect(avatarUrl);
+    }
+    res.status(404).json({ error: 'Avatar not found' });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -2519,35 +2790,31 @@ app.post('/api/data/restore', (req, res) => {
     const incoming = req.body;
 
     if (incoming && typeof incoming === 'object') {
-      const mergedData = { ...current } as Record<string, any>;
-      const collectionKeys = [
-        'profiles', 'admins', 'characters', 'events', 'awards', 'cases', 'caseItems',
-        'weeklyShopItems', 'auctionListings', 'preReleasePosts', 'achievements',
-        'factions', 'artworks', 'activityLogs', 'notifications', 'botVersions', 'chatMessages'
-      ];
+      const profileMap = new Map();
+      (current.profiles || []).forEach((p: any) => profileMap.set(p.id, p));
+      (incoming.profiles || []).forEach((p: any) => {
+        if (!profileMap.has(p.id)) profileMap.set(p.id, p);
+      });
 
-      for (const key of collectionKeys) {
-        const currentItems = Array.isArray(current[key]) ? current[key] : [];
-        const incomingItems = Array.isArray(incoming[key]) ? incoming[key] : [];
-        const mergedItems = [...currentItems];
-        const identities = new Set(currentItems.map((item: any) =>
-          item?.id ?? item?.username ?? item?.version ?? JSON.stringify(item)
-        ));
+      const eventMap = new Map();
+      (current.events || []).forEach((e: any) => eventMap.set(e.id, e));
+      (incoming.events || []).forEach((e: any) => {
+        if (!eventMap.has(e.id)) eventMap.set(e.id, e);
+      });
 
-        for (const item of incomingItems) {
-          const identity = item?.id ?? item?.username ?? item?.version ?? JSON.stringify(item);
-          if (!identities.has(identity)) {
-            identities.add(identity);
-            mergedItems.push(item);
-          }
-        }
-        mergedData[key] = mergedItems;
-      }
+      const charMap = new Map();
+      (current.characters || []).forEach((c: any) => charMap.set(c.id, c));
+      (incoming.characters || []).forEach((c: any) => {
+        if (!charMap.has(c.id)) charMap.set(c.id, c);
+      });
 
-      if (!mergedData.nukeAlert && incoming.nukeAlert?.expiresAt > Date.now()) {
-        mergedData.nukeAlert = incoming.nukeAlert;
-      }
-      mergedData.lastUpdated = new Date().toISOString();
+      const mergedData = {
+        ...current,
+        profiles: deduplicateProfiles(Array.from(profileMap.values())),
+        events: Array.from(eventMap.values()),
+        characters: Array.from(charMap.values()),
+        lastUpdated: new Date().toISOString()
+      };
 
       saveData(mergedData);
       return res.json({ success: true, restored: true, count: mergedData.profiles.length });
@@ -2584,6 +2851,8 @@ app.post('/api/data', (req, res) => {
           });
         }
       });
+
+      const mergedProfiles = deduplicateProfiles(Array.from(profileMap.values()));
 
       // 2. Merge events: union participants for each event
       const eventMap = new Map();
@@ -2626,7 +2895,7 @@ app.post('/api/data', (req, res) => {
       const mergedData = {
         ...current,
         ...incoming,
-        profiles: Array.from(profileMap.values()),
+        profiles: mergedProfiles,
         events: Array.from(eventMap.values()),
         characters: Array.from(charMap.values()),
         artworks: Array.from(artMap.values()),
@@ -2661,9 +2930,9 @@ async function startServer() {
   const indexHtmlPath = path.join(distDir, 'index.html');
   const hasBuiltDist = fs.existsSync(indexHtmlPath);
 
-  // On Render or in production: if built static assets exist, serve from dist/ directly
-  const isExplicitDev = process.env.NODE_ENV === 'development';
-  if (hasBuiltDist && !isExplicitDev) {
+  // Serve dist static assets strictly when explicitly in production mode
+  const isProduction = process.env.NODE_ENV === 'production';
+  if (isProduction && hasBuiltDist) {
     // Cache immutable hashed assets
     app.use('/assets', express.static(path.join(distDir, 'assets'), {
       maxAge: '1y',
@@ -2730,6 +2999,7 @@ async function startServer() {
 
   app.listen(PORT, () => {
     console.log(`DustTown RP Server running on http://localhost:${PORT}`);
+    startRandomJokeScheduler();
   });
 
   if (process.env.NODE_ENV === 'production' && process.env.DISABLE_TELEGRAM_POLLING !== 'true') {
