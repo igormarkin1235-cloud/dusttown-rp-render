@@ -1,6 +1,5 @@
-import React, { useRef, useState, useEffect } from 'react';
-import { Upload, Image as ImageIcon, X, Sparkles, Maximize2, Loader2 } from 'lucide-react';
-import { uploadMediaFile } from '../services/storage';
+import React, { useRef, useState } from 'react';
+import { Upload, Image as ImageIcon, X, Sparkles, Maximize2 } from 'lucide-react';
 
 interface ImageUploadInputProps {
   label: string;
@@ -25,12 +24,7 @@ export const ImageUploadInput: React.FC<ImageUploadInputProps> = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [imageMeta, setImageMeta] = useState<{ width: number; height: number; format: string } | null>(null);
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
-  const [previewError, setPreviewError] = useState(false);
   const activePresets = presets || presetList;
-
-  useEffect(() => {
-    setPreviewError(false);
-  }, [value]);
 
   // Preserve full image fidelity, format, and aspect ratio without artificial cropping
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -53,20 +47,12 @@ export const ImageUploadInput: React.FC<ImageUploadInputProps> = ({
 
         setImageMeta({ width, height, format: `${width}×${height} (${formatName})` });
 
-        const uploadAndApply = async (finalDataUrl: string) => {
-          try {
-            const uploadedUrl = await uploadMediaFile(finalDataUrl);
-            onChange(uploadedUrl);
-          } catch (uploadErr) {
-            onChange(finalDataUrl);
-          } finally {
-            setIsProcessing(false);
-          }
-        };
-
-        const maxDimension = 2048;
-        if (file.size <= 2 * 1024 * 1024 && width <= maxDimension && height <= maxDimension) {
-          uploadAndApply(dataUrl);
+        // If file is already reasonable in size (<= 4MB) and not ultra-huge (> 3200px),
+        // keep pristine original data URL to avoid ANY loss of quality or transparency!
+        const maxDimension = 3200;
+        if (file.size <= 4 * 1024 * 1024 && width <= maxDimension && height <= maxDimension) {
+          onChange(dataUrl);
+          setIsProcessing(false);
           return;
         }
 
@@ -89,12 +75,14 @@ export const ImageUploadInput: React.FC<ImageUploadInputProps> = ({
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+          // Preserve PNG transparency or use high quality 0.95
           const outputType = isPng ? 'image/png' : 'image/jpeg';
-          const compressedDataUrl = canvas.toDataURL(outputType, isPng ? undefined : 0.92);
-          uploadAndApply(compressedDataUrl);
+          const compressedDataUrl = canvas.toDataURL(outputType, isPng ? undefined : 0.95);
+          onChange(compressedDataUrl);
         } else {
-          uploadAndApply(dataUrl);
+          onChange(dataUrl);
         }
+        setIsProcessing(false);
       };
 
       img.onerror = () => {
@@ -219,22 +207,14 @@ export const ImageUploadInput: React.FC<ImageUploadInputProps> = ({
             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/20 pointer-events-none" />
 
             {/* Uncropped full image */}
-            {previewError ? (
-              <div className="relative z-10 flex flex-col items-center justify-center p-3 text-center text-zinc-400">
-                <span className="text-xl mb-1">⚠️</span>
-                <span className="text-[11px] font-mono-pip text-amber-300">Предпросмотр недоступен</span>
-                <span className="text-[9px] text-zinc-500">Проверьте правильность ссылки на изображение</span>
-              </div>
-            ) : (
-              <img
-                src={value}
-                alt="Preview"
-                className="relative z-10 max-h-full max-w-full object-contain filter drop-shadow-md"
-                onError={() => {
-                  setPreviewError(true);
-                }}
-              />
-            )}
+            <img
+              src={value}
+              alt="Preview"
+              className="relative z-10 max-h-full max-w-full object-contain filter drop-shadow-md"
+              onError={e => {
+                (e.target as HTMLElement).style.display = 'none';
+              }}
+            />
 
             <div className="absolute top-2 right-2 z-20 opacity-0 group-hover:opacity-100 transition px-2 py-0.5 rounded-lg bg-black/80 border border-zinc-700 text-[10px] text-zinc-200 flex items-center gap-1">
               <Maximize2 className="w-3 h-3 text-amber-400" />

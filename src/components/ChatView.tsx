@@ -1,10 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, MessageCircle, Radio, Search, Send, ShieldAlert, Users, Zap, Volume2, VolumeX } from 'lucide-react';
+import { ArrowLeft, MessageCircle, Radio, Search, Send, ShieldAlert, Users, Zap } from 'lucide-react';
 import { ChatMessage, NukeBroadcastAlert, UserProfile } from '../types';
 import { fetchChatMessages, fetchNukeAlerts, sendChatMessage, sendNukeMessage } from '../services/chat';
 import { playNukeSiren } from '../services/uiSound';
 import { AvatarWithFrame } from './AvatarWithFrame';
-import { extractMemeTag } from '../services/littlepipMemes';
 
 interface ChatViewProps {
   currentUser: UserProfile;
@@ -28,81 +27,13 @@ export const ChatView: React.FC<ChatViewProps> = ({
   const [error, setError] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [isNukeMode, setIsNukeMode] = useState(false);
-  const [playingMessageId, setPlayingMessageId] = useState<string | null>(null);
-  const [isVoiceChatEnabled, setIsVoiceChatEnabled] = useState(false);
-  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const messageEndRef = useRef<HTMLDivElement>(null);
   const isInfinite = currentUser.isInfiniteEquivaxes || currentUser.username.toLowerCase() === '@mrwhitepio';
   const canAffordNuke = isInfinite || currentUser.equivaxes >= 100;
 
-  const playVoice = async (messageId: string, text: string) => {
-    if (playingMessageId === messageId) {
-      if (currentAudioRef.current) {
-        currentAudioRef.current.pause();
-        currentAudioRef.current = null;
-      }
-      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
-      setPlayingMessageId(null);
-      return;
-    }
-
-    if (currentAudioRef.current) {
-      currentAudioRef.current.pause();
-      currentAudioRef.current = null;
-    }
-    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
-
-    setPlayingMessageId(messageId);
-
-    try {
-      const response = await fetch('/api/littlepip/voice', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text })
-      });
-      if (!response.ok) throw new Error('Neural voice unavailable');
-
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      currentAudioRef.current = audio;
-      audio.onended = () => {
-        URL.revokeObjectURL(url);
-        setPlayingMessageId(null);
-        currentAudioRef.current = null;
-      };
-      audio.onerror = () => {
-        URL.revokeObjectURL(url);
-        setPlayingMessageId(null);
-        currentAudioRef.current = null;
-      };
-      await audio.play();
-    } catch {
-      // Browser TTS Fallback
-      if ('speechSynthesis' in window) {
-        const synth = window.speechSynthesis;
-        synth.cancel();
-        const utterance = new SpeechSynthesisUtterance(text);
-        const voices = synth.getVoices().filter(v => v.lang.toLowerCase().startsWith('ru'));
-        const fem = voices.find(v => /female|жен|milena|alena|irina/i.test(v.name));
-        utterance.voice = fem || voices[0] || null;
-        utterance.lang = 'ru-RU';
-        utterance.pitch = 1.34;
-        utterance.rate = 1.05;
-        utterance.onend = () => setPlayingMessageId(null);
-        utterance.onerror = () => setPlayingMessageId(null);
-        synth.speak(utterance);
-      } else {
-        setPlayingMessageId(null);
-      }
-    }
-  };
-
   useEffect(() => {
     if (selectedRecipient) setMode('private');
   }, [selectedRecipient?.id]);
-
-  const lastSpokenMsgIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -112,15 +43,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
         return;
       }
       try {
-        const fresh = await fetchChatMessages(mode === 'private' ? selectedRecipient?.id : undefined);
+        const fresh = await fetchChatMessages(currentUser.id, mode === 'private' ? selectedRecipient?.id : undefined);
         if (isMounted) {
-          if (isVoiceChatEnabled && fresh.length > 0) {
-            const lastMsg = fresh[fresh.length - 1];
-            if (lastMsg && lastMsg.id !== lastSpokenMsgIdRef.current && (lastMsg.type === 'system' || /пипк|литлпип/i.test(lastMsg.senderDisplayName || ''))) {
-              lastSpokenMsgIdRef.current = lastMsg.id;
-              playVoice(lastMsg.id, lastMsg.content);
-            }
-          }
           setMessages(fresh);
           setError('');
         }
@@ -134,7 +58,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
       isMounted = false;
       window.clearInterval(timer);
     };
-  }, [mode, selectedRecipient?.id, isVoiceChatEnabled]);
+  }, [mode, selectedRecipient?.id]);
 
   useEffect(() => {
     messageEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -172,7 +96,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
         });
       }
       setDraft('');
-      setMessages(await fetchChatMessages(mode === 'private' ? selectedRecipient?.id : undefined));
+      setMessages(await fetchChatMessages(currentUser.id, mode === 'private' ? selectedRecipient?.id : undefined));
     } catch (sendError: any) {
       setError(sendError.message || 'Не удалось отправить сообщение');
     } finally {
@@ -215,19 +139,6 @@ export const ChatView: React.FC<ChatViewProps> = ({
             className={`flex items-center gap-1.5 rounded-md px-3 py-2 text-xs font-bold ${mode === 'private' ? 'bg-cyan-300 text-black' : 'text-zinc-400 hover:text-white'}`}
           >
             <MessageCircle className="h-3.5 w-3.5" /> Личные
-          </button>
-          <button
-            type="button"
-            onClick={() => setIsVoiceChatEnabled(!isVoiceChatEnabled)}
-            className={`flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-bold transition border ${
-              isVoiceChatEnabled
-                ? 'border-emerald-500/50 bg-emerald-500/20 text-emerald-300'
-                : 'border-zinc-800 text-zinc-500 hover:text-zinc-300'
-            }`}
-            title={isVoiceChatEnabled ? 'Авто-озвучка включена' : 'Включить авто-озвучку ответов Пипки'}
-          >
-            {isVoiceChatEnabled ? <Volume2 className="h-3.5 w-3.5 text-emerald-400" /> : <VolumeX className="h-3.5 w-3.5" />}
-            <span className="hidden sm:inline">Голос</span>
           </button>
         </div>
       </header>
@@ -310,48 +221,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                     >
                       {isNuke && <span className="mb-1 flex items-center gap-1 text-[10px] font-black uppercase tracking-wide text-emerald-200"><ShieldAlert className="h-3.5 w-3.5" /> Ядерное сообщение</span>}
                       {isSystem && <span className="mb-1 flex items-center gap-1 text-[10px] font-black uppercase text-emerald-300"><Radio className="h-3.5 w-3.5" /> Сообщение Пипки</span>}
-                      {(() => {
-                        const { cleanText, meme, mediaUrl } = extractMemeTag(message.content);
-                        const memeUrl = mediaUrl || meme?.mediaUrl;
-                        return (
-                          <>
-                            <div>{cleanText || message.content}</div>
-                            {memeUrl && (
-                              <div className="mt-2 overflow-hidden rounded-lg border border-emerald-500/30 bg-black/50 inline-block max-w-full">
-                                <img
-                                  src={memeUrl}
-                                  alt={meme?.name || 'Мем'}
-                                  className="max-h-56 max-w-full rounded object-contain"
-                                  loading="lazy"
-                                />
-                                {meme?.name && (
-                                  <div className="px-2 py-0.5 text-[10px] text-zinc-400 bg-zinc-950/80 flex items-center gap-1">
-                                    <span>{meme.badgeEmoji}</span>
-                                    <span>{meme.name}</span>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </>
-                        );
-                      })()}
-                      {(isSystem || /пипк|литлпип/i.test(message.senderDisplayName || '')) && (
-                        <div className="mt-2 pt-1.5 border-t border-emerald-500/20 flex items-center justify-between">
-                          <button
-                            type="button"
-                            onClick={() => playVoice(message.id, message.content)}
-                            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-mono font-bold transition shadow-sm ${
-                              playingMessageId === message.id
-                                ? 'bg-emerald-400 text-black animate-pulse'
-                                : 'bg-emerald-950/80 text-emerald-300 hover:bg-emerald-900 border border-emerald-500/40 active:scale-95'
-                            }`}
-                            title="Озвучить ответ Пипки"
-                          >
-                            <Volume2 className="h-3 w-3" />
-                            <span>{playingMessageId === message.id ? 'Пипка говорит...' : 'Озвучить ответ'}</span>
-                          </button>
-                        </div>
-                      )}
+                      {message.content}
                     </div>
                   </div>
                 </article>
@@ -455,17 +325,15 @@ export const NukeBroadcastOverlay: React.FC = () => {
   return (
     <>
       <div className="nuke-screen-frame" aria-hidden="true">
-        <span className="nuke-orbit-light nuke-orbit-top" />
-        <span className="nuke-orbit-light nuke-orbit-right" />
-        <span className="nuke-orbit-light nuke-orbit-bottom" />
-        <span className="nuke-orbit-light nuke-orbit-left" />
+        <span className="nuke-orbit-light nuke-orbit-first" />
+        <span className="nuke-orbit-light nuke-orbit-second" />
       </div>
       <div className="pointer-events-none fixed inset-0 z-[100] flex flex-col items-center justify-center gap-3 p-4" aria-live="assertive">
         {alerts.map(alert => (
-          <div key={alert.id} className="chat-nuke-overlay w-full max-w-2xl border border-emerald-200/80 px-5 py-5 text-center shadow-[0_0_60px_rgba(16,185,129,.55)] sm:px-10 sm:py-8">
-            <p className="mb-2 flex items-center justify-center gap-2 text-xs font-black uppercase text-emerald-200"><ShieldAlert className="h-4 w-4" /> Глобальный сигнал Пустоши</p>
+          <div key={alert.id} className="chat-nuke-overlay w-full max-w-2xl border border-red-300/90 px-5 py-5 text-center shadow-[0_0_60px_rgba(239,68,68,.55)] sm:px-10 sm:py-8">
+            <p className="mb-2 flex items-center justify-center gap-2 text-xs font-black uppercase text-red-200"><ShieldAlert className="h-4 w-4" /> Воздушная тревога · сигнал Пипки</p>
             <p className="chat-nuke-title break-words text-2xl font-black sm:text-4xl">{alert.message}</p>
-            <p className="mt-3 text-xs text-emerald-100/80">{alert.senderDisplayName} · {new Date(alert.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+            <p className="mt-3 text-xs text-red-100/80">{alert.senderDisplayName} · {new Date(alert.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
           </div>
         ))}
       </div>

@@ -280,11 +280,11 @@ export const INITIAL_CASE_ITEMS: CaseItemDefinition[] = [
 // USER'S PROFILE ONLY (Clean state with creator profile)
 export const INITIAL_PROFILES: UserProfile[] = [
   {
-    id: 'owner_mrwhitepio',
+    id: 'user_mrwhite',
     username: '@MrWhitePio',
-    displayName: 'MrWhitePio [Создатель]',
-    avatarUrl: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=300&q=80',
-    bio: 'Главный Архитектор и Создатель DustTown RP. Магитех-инженер довоенных времен.',
+    displayName: 'Mr. White (Основатель)',
+    avatarUrl: 'https://images.unsplash.com/photo-1566492031773-4f4e44671857?auto=format&fit=crop&w=200&q=80',
+    bio: 'Главный администратор и создатель проекта DustTown RP. Постапокалипсис только начинается!',
     equivaxes: 9999999,
     isInfiniteEquivaxes: true,
     joinedAt: '2026-01-01T00:00:00Z',
@@ -359,7 +359,7 @@ export const INITIAL_PROFILES: UserProfile[] = [
     transactions: [
       {
         id: 'tx_seed_1',
-        userId: 'owner_mrwhitepio',
+        userId: 'user_mrwhite',
         amount: 5000,
         type: 'income_admin',
         title: 'Основание города Даст Таун',
@@ -369,7 +369,7 @@ export const INITIAL_PROFILES: UserProfile[] = [
       },
       {
         id: 'tx_seed_2',
-        userId: 'owner_mrwhitepio',
+        userId: 'user_mrwhite',
         amount: 1500,
         type: 'income_event',
         title: 'Экспедиция «Древнее убежище Магитехов»',
@@ -379,7 +379,7 @@ export const INITIAL_PROFILES: UserProfile[] = [
       },
       {
         id: 'tx_seed_3',
-        userId: 'owner_mrwhitepio',
+        userId: 'user_mrwhite',
         amount: -500,
         type: 'expense_privilege',
         title: 'VIP-Статус «Властелин Пустоши»',
@@ -389,7 +389,7 @@ export const INITIAL_PROFILES: UserProfile[] = [
       },
       {
         id: 'tx_seed_4',
-        userId: 'owner_mrwhitepio',
+        userId: 'user_mrwhite',
         amount: 850,
         type: 'income_auction',
         title: 'Продажа на аукционе: Тяжёлая броня Рейнджера',
@@ -399,7 +399,7 @@ export const INITIAL_PROFILES: UserProfile[] = [
       },
       {
         id: 'tx_seed_5',
-        userId: 'owner_mrwhitepio',
+        userId: 'user_mrwhite',
         amount: -250,
         type: 'expense_case',
         title: 'Открытие: Квантовый Реликвий',
@@ -410,60 +410,6 @@ export const INITIAL_PROFILES: UserProfile[] = [
     ]
   }
 ];
-
-export function deduplicateProfiles(profiles: UserProfile[]): UserProfile[] {
-  if (!Array.isArray(profiles) || profiles.length === 0) return [];
-
-  const map = new Map<string, UserProfile>();
-
-  for (const p of profiles) {
-    if (!p) continue;
-    const rawUsername = (p.username || '').trim().toLowerCase();
-    const isOwner = rawUsername === '@mrwhitepio' || p.id === 'owner_mrwhitepio' || p.id === 'user_mrwhite' || p.id === 'user_pio';
-
-    const key = isOwner ? '@mrwhitepio' : (rawUsername || p.id);
-
-    const existing = map.get(key);
-    if (!existing) {
-      if (isOwner) {
-        map.set(key, {
-          ...p,
-          id: 'owner_mrwhitepio',
-          username: '@MrWhitePio',
-          displayName: p.displayName?.includes('MrWhitePio') ? p.displayName : 'MrWhitePio [Создатель]',
-          isInfiniteEquivaxes: true
-        });
-      } else {
-        map.set(key, { ...p });
-      }
-    } else {
-      const merged: UserProfile = {
-        ...existing,
-        ...p,
-        id: isOwner ? 'owner_mrwhitepio' : existing.id,
-        username: isOwner ? '@MrWhitePio' : (existing.username || p.username),
-        displayName: (existing.displayName && !existing.displayName.startsWith('Сталкер #')) ? existing.displayName : (p.displayName || existing.displayName),
-        avatarUrl: (existing.avatarUrl && !existing.avatarUrl.includes('unsplash.com/photo-1535713875002')) ? existing.avatarUrl : (p.avatarUrl || existing.avatarUrl),
-        bio: (existing.bio && existing.bio.length >= (p.bio?.length || 0)) ? existing.bio : (p.bio || existing.bio),
-        equivaxes: isOwner ? 9999999 : (typeof p.equivaxes === 'number' ? p.equivaxes : existing.equivaxes),
-        isInfiniteEquivaxes: isOwner || existing.isInfiniteEquivaxes || p.isInfiniteEquivaxes,
-        activeThemeId: (p.activeThemeId && p.activeThemeId !== 'default') ? p.activeThemeId : (existing.activeThemeId || 'default'),
-        activeAvatarFrame: (p.activeAvatarFrame && p.activeAvatarFrame !== 'frame_none') ? p.activeAvatarFrame : (existing.activeAvatarFrame || 'frame_none'),
-        activeTextColor: p.activeTextColor || existing.activeTextColor,
-        activeTextBg: p.activeTextBg || existing.activeTextBg,
-        customBgUrl: p.customBgUrl || existing.customBgUrl,
-        customBgEffect: p.customBgEffect || existing.customBgEffect,
-        eventsAttended: Math.max(existing.eventsAttended || 0, p.eventsAttended || 0),
-        plannedRpsAttended: Math.max(existing.plannedRpsAttended || 0, p.plannedRpsAttended || 0),
-        inventory: Array.from(new Map([...(existing.inventory || []), ...(p.inventory || [])].map(i => [i.id || i.itemId, i])).values()),
-        transactions: Array.from(new Map([...(existing.transactions || []), ...(p.transactions || [])].map(t => [t.id, t])).values())
-      };
-      map.set(key, merged);
-    }
-  }
-
-  return Array.from(map.values());
-}
 
 export const INITIAL_ADMINS = [
   {
@@ -651,29 +597,20 @@ export function loadAppState(): AppStateData {
           return updated;
         });
 
-        const activeFactions = (Array.isArray(parsed.factions) && parsed.factions.length > 0 ? parsed.factions : INITIAL_FACTIONS).filter(
+        const activeFactions = (Array.isArray(parsed.factions) ? parsed.factions : INITIAL_FACTIONS).filter(
           (f: Faction) => f && f.id !== 'faction_guardians' && f.id !== 'faction_caravan'
         );
 
         return {
           ...parsed,
-          profiles: deduplicateProfiles(enrichedProfiles.length > 0 ? enrichedProfiles : INITIAL_PROFILES),
-          admins: Array.isArray(parsed.admins) && parsed.admins.length > 0 ? parsed.admins : INITIAL_ADMINS,
-          characters: Array.isArray(parsed.characters) ? parsed.characters : INITIAL_CHARACTERS,
-          events: Array.isArray(parsed.events) ? parsed.events : INITIAL_EVENTS,
-          awards: Array.isArray(parsed.awards) ? parsed.awards : INITIAL_AWARDS,
-          cases: Array.isArray(parsed.cases) && parsed.cases.length > 0 ? parsed.cases : INITIAL_CASES,
+          profiles: enrichedProfiles,
           achievements: Array.isArray(parsed.achievements) && parsed.achievements.length > 0 ? parsed.achievements : INITIAL_ACHIEVEMENTS,
           weeklyShopItems: Array.isArray(parsed.weeklyShopItems) ? parsed.weeklyShopItems : INITIAL_WEEKLY_SHOP_ITEMS,
           auctionListings: Array.isArray(parsed.auctionListings) ? parsed.auctionListings : INITIAL_AUCTION_LISTINGS,
-          factions: activeFactions.length > 0 ? activeFactions : INITIAL_FACTIONS,
+          factions: activeFactions,
           artworks: Array.isArray(parsed.artworks) && parsed.artworks.length > 0 ? parsed.artworks : INITIAL_ARTWORKS,
           notifications: Array.isArray(parsed.notifications) && parsed.notifications.length > 0 ? parsed.notifications : INITIAL_NOTIFICATIONS,
-          botVersions: Array.isArray(parsed.botVersions) && parsed.botVersions.length > 0 ? parsed.botVersions : INITIAL_BOT_VERSIONS,
-          chatMessages: Array.isArray(parsed.chatMessages) ? parsed.chatMessages : [],
-          nukeAlert: parsed.nukeAlert || null,
-          syncVersion: parsed.syncVersion || 1,
-          lastUpdated: parsed.lastUpdated || new Date().toISOString()
+          botVersions: Array.isArray(parsed.botVersions) && parsed.botVersions.length > 0 ? parsed.botVersions : INITIAL_BOT_VERSIONS
         };
       }
     }
@@ -682,7 +619,7 @@ export function loadAppState(): AppStateData {
   }
 
   return {
-    profiles: deduplicateProfiles(INITIAL_PROFILES),
+    profiles: INITIAL_PROFILES,
     admins: INITIAL_ADMINS,
     characters: INITIAL_CHARACTERS,
     events: INITIAL_EVENTS,
@@ -734,12 +671,8 @@ export async function fetchServerState(): Promise<AppStateData | null> {
     if (!res.ok) return null;
     const data = await res.json();
     if (data && Array.isArray(data.profiles) && data.profiles.length > 0) {
-      const sanitized = {
-        ...data,
-        profiles: deduplicateProfiles(data.profiles)
-      };
-      safeLocalStorageSet(STORAGE_KEY, sanitized);
-      return sanitized;
+      safeLocalStorageSet(STORAGE_KEY, data);
+      return data;
     }
   } catch (e) {
     // offline
@@ -757,12 +690,8 @@ export async function syncUserWithServer(tgUser: any): Promise<{ profile: UserPr
     if (res.ok) {
       const data = await res.json();
       if (data.fullData) {
-        const sanitized = {
-          ...data.fullData,
-          profiles: deduplicateProfiles(data.fullData.profiles || [])
-        };
-        safeLocalStorageSet(STORAGE_KEY, sanitized);
-        return { profile: data.profile, fullData: sanitized };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data.fullData));
+        return { profile: data.profile, fullData: data.fullData };
       }
     }
   } catch (e) {
@@ -802,51 +731,14 @@ export async function updateUserProfileOnServer(userId: string, updates: Partial
     if (res.ok) {
       const data = await res.json();
       if (data.fullData) {
-        const sanitized = {
-          ...data.fullData,
-          profiles: deduplicateProfiles(data.fullData.profiles || [])
-        };
-        safeLocalStorageSet(STORAGE_KEY, sanitized);
-        return sanitized;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data.fullData));
+        return data.fullData;
       }
     }
   } catch (e) {
     // offline fallback
   }
   return null;
-}
-
-export async function uploadMediaFile(dataUrl: string, folder = 'avatars'): Promise<string> {
-  try {
-    const res = await fetch('/api/upload-media', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dataUrl, folder })
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.url) return data.url;
-    }
-  } catch (e) {
-    console.warn('Failed to upload media to server; fallback to dataUrl:', e);
-  }
-  return dataUrl;
-}
-
-export async function syncTelegramAvatar(userId: string, telegramId?: string | number): Promise<{ success: boolean; avatarUrl?: string; profile?: UserProfile; message?: string }> {
-  try {
-    const res = await fetch('/api/user/sync-avatar', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, telegramId })
-    });
-    if (res.ok) {
-      return await res.json();
-    }
-  } catch (e) {
-    console.error('Failed to sync Telegram avatar:', e);
-  }
-  return { success: false };
 }
 
 export async function joinEventOnServer(
@@ -957,7 +849,7 @@ export async function completeEventOnServer(outcome: any): Promise<AppStateData 
     if (res.ok) {
       const data = await res.json();
       if (data.fullData) {
-        safeLocalStorageSet(STORAGE_KEY, data.fullData);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data.fullData));
         return data.fullData;
       }
     }

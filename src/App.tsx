@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   AppStateData,
   UserProfile,
@@ -62,6 +62,7 @@ import { ArtGalleryView } from './components/ArtGalleryView';
 import { ActivityLogView } from './components/ActivityLogView';
 import { NotificationModal } from './components/NotificationModal';
 import { ChatView, NukeBroadcastOverlay } from './components/ChatView';
+import { PatchManagerBar } from './components/PatchManagerBar';
 import { installGlobalButtonSounds, setButtonSoundsEnabled } from './services/uiSound';
 import {
   Smartphone,
@@ -85,9 +86,8 @@ export default function App() {
   // If Telegram WebApp is present, it binds directly to the real Telegram user
   const [currentUserId, setCurrentUserId] = useState<string>(() => {
     const saved = localStorage.getItem('dt_current_user_id');
-    const profiles = appState?.profiles || [];
-    if (saved && profiles.some(p => p && p.id === saved)) return saved;
-    return profiles[0]?.id || 'owner_mrwhitepio';
+    if (saved && appState.profiles.some(p => p.id === saved)) return saved;
+    return appState.profiles[0]?.id || 'owner_mrwhitepio';
   });
 
   const [activeTab, setActiveTab] = useState<TabType>('events');
@@ -100,6 +100,8 @@ export default function App() {
   const [selectedCollab, setSelectedCollab] = useState<RPEvent | null>(null);
   const [salaryNotice, setSalaryNotice] = useState<{ amount: number; days: number; factionName: string } | null>(null);
   const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
+  const [activeToast, setActiveToast] = useState<AppNotification | null>(null);
+  const seenNotificationIds = useRef(new Set((appState.notifications || []).map(notification => notification.id)));
   const [selectedArtIdForFocus, setSelectedArtIdForFocus] = useState<string | null>(null);
   const [chatRecipient, setChatRecipient] = useState<UserProfile | null>(null);
 
@@ -108,6 +110,20 @@ export default function App() {
   }, [soundEnabled]);
 
   useEffect(() => installGlobalButtonSounds(), []);
+
+  useEffect(() => {
+    const notifications = appState.notifications || [];
+    const fresh = notifications.filter(notification => !seenNotificationIds.current.has(notification.id));
+    notifications.forEach(notification => seenNotificationIds.current.add(notification.id));
+    const recent = fresh.filter(notification => Date.now() - new Date(notification.timestamp).getTime() < 60_000);
+    if (recent.length) setActiveToast(recent[0]);
+  }, [appState.notifications]);
+
+  useEffect(() => {
+    if (!activeToast) return;
+    const timer = window.setTimeout(() => setActiveToast(null), 7000);
+    return () => window.clearTimeout(timer);
+  }, [activeToast]);
 
   // Initial Sync + Background Polling of shared server state
   useEffect(() => {
@@ -127,7 +143,24 @@ export default function App() {
           const { profile, fullData } = await syncUserWithServer(tgUser);
           if (isMounted) {
             if (fullData) {
-              setAppState(fullData);
+              const collectionKeys = [
+                'profiles', 'admins', 'characters', 'events', 'awards', 'cases', 'caseItems',
+                'weeklyShopItems', 'auctionListings', 'preReleasePosts', 'achievements',
+                'factions', 'artworks', 'activityLogs', 'notifications', 'botVersions', 'chatMessages'
+              ] as const;
+              const cachedStateIsRicher = collectionKeys.some(key => {
+                const cachedItems = (appState as any)[key];
+                const serverItems = (fullData as any)[key];
+                return Array.isArray(cachedItems) && cachedItems.length > (Array.isArray(serverItems) ? serverItems.length : 0);
+              });
+
+              if (cachedStateIsRicher) {
+                await restoreServerData(appState);
+                const restoredState = await fetchServerState();
+                setAppState(restoredState || fullData);
+              } else {
+                setAppState(fullData);
+              }
             }
             if (profile) {
               setCurrentUserId(profile.id);
@@ -204,34 +237,11 @@ export default function App() {
     };
   }, []);
 
-  const profilesList = Array.isArray(appState?.profiles) ? appState.profiles : [];
-  const fallbackProfile: UserProfile = {
-    id: 'owner_mrwhitepio',
-    username: '@MrWhitePio',
-    displayName: 'MrWhitePio [Создатель]',
-    avatarUrl: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=300&q=80',
-    bio: 'Главный Архитектор и Создатель DustTown RP.',
-    equivaxes: 9999999,
-    isInfiniteEquivaxes: true,
-    joinedAt: '2026-01-01T00:00:00Z',
-    eventsAttended: 12,
-    plannedRpsAttended: 8,
-    inventory: []
-  };
-
-  const currentUser: UserProfile = profilesList.find(p =>
-    p && (
-      p.id === currentUserId ||
-      (currentUserId === 'user_mrwhite' && (p.id === 'owner_mrwhitepio' || p.username?.toLowerCase() === '@mrwhitepio'))
-    )
-  ) || profilesList.find(p => p && p.username?.toLowerCase() === '@mrwhitepio') || profilesList[0] || fallbackProfile;
-
-  const isOwner = currentUser?.username?.toLowerCase() === '@mrwhitepio' || currentUser?.id === 'owner_mrwhitepio';
+  const currentUser = appState.profiles.find(p => p.id === currentUserId) || appState.profiles[0];
+  const isOwner = currentUser?.username?.toLowerCase() === '@mrwhitepio';
   const isAdmin =
     isOwner ||
-    (Array.isArray(appState?.admins) ? appState.admins : []).some(
-      a => a && a.username && a.username.toLowerCase() === currentUser?.username?.toLowerCase()
-    );
+    appState.admins.some(a => a.username.toLowerCase() === currentUser?.username?.toLowerCase());
 
   const openDirectChat = (profile: UserProfile) => {
     setInspectedProfile(null);
@@ -245,13 +255,6 @@ export default function App() {
       setActiveTab('events');
     }
   }, [isAdmin, activeTab]);
-
-  // Security: If not owner, force miniapp viewMode
-  useEffect(() => {
-    if (!isOwner && viewMode !== 'miniapp') {
-      setViewMode('miniapp');
-    }
-  }, [isOwner, viewMode]);
 
   // Owner Secret PIN Unlock
   const handleUnlockOwner = (pin: string): boolean => {
@@ -917,21 +920,16 @@ export default function App() {
 
   // Profile Update Handler
   const handleUpdateProfile = async (updated: UserProfile) => {
-    updateState(prev => {
-      const isOwner = updated.username?.toLowerCase() === '@mrwhitepio' || updated.id === 'owner_mrwhitepio' || updated.id === 'user_mrwhite';
-      return {
-        ...prev,
-        profiles: prev.profiles.map(p => {
-          const match = p.id === updated.id || (isOwner && (p.id === 'owner_mrwhitepio' || p.id === 'user_mrwhite' || p.username?.toLowerCase() === '@mrwhitepio'));
-          return match ? { ...p, ...updated, id: p.id } : p;
-        })
-      };
-    });
-    // Sync single profile directly to server so all other players see changes immediately
     const serverResult = await updateUserProfileOnServer(updated.id, updated);
     if (serverResult && Array.isArray(serverResult.profiles) && serverResult.profiles.length > 0) {
       setAppState(serverResult);
+      return;
     }
+
+    updateState(prev => ({
+      ...prev,
+      profiles: prev.profiles.map(profile => profile.id === updated.id ? updated : profile)
+    }));
   };
 
   // Case Opening Handler (Server-Side Handshake Verification)
@@ -1456,75 +1454,47 @@ export default function App() {
     });
   };
 
-  const eventsList = Array.isArray(appState?.events) ? appState.events : [];
-  const activeEventsCount = eventsList.filter(e => e && e.type === 'event' && !e.isCompleted).length;
-  const activePlannedRpsCount = eventsList.filter(e => e && e.type === 'planned_rp' && !e.isCompleted).length;
+  const activeEventsCount = appState.events.filter(e => e.type === 'event' && !e.isCompleted).length;
+  const activePlannedRpsCount = appState.events.filter(e => e.type === 'planned_rp' && !e.isCompleted).length;
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col relative selection:bg-amber-500 selection:text-black">
       <NukeBroadcastOverlay />
-      {/* Top Mode Switcher Bar: STRICTLY VISIBLE ONLY TO OWNER */}
-      {isOwner && (
-        <div className="w-full bg-zinc-900 border-b border-zinc-800 px-3 py-2 text-xs flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="font-heading font-black text-amber-400 tracking-wider">
-              ДАСТ ТАУН КОЛЕКТИВ
+      {activeToast && (
+        <div role="status" className="fixed top-4 right-4 z-[80] w-[min(24rem,calc(100vw-2rem))] overflow-hidden border border-emerald-400/50 bg-zinc-950/95 shadow-2xl shadow-emerald-950/50 backdrop-blur-xl animate-fade-in">
+          <div className="flex items-start gap-3 border-l-4 border-emerald-400 p-4">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center border border-emerald-400/30 bg-emerald-400/10 text-lg" aria-hidden="true">
+              {activeToast.iconEmoji || '📡'}
             </span>
-            <span className="hidden sm:inline text-zinc-500 font-mono-pip">•</span>
-            <span className="hidden sm:inline text-zinc-400 font-mono-pip">
-              Панель Главного Создателя:
-            </span>
-          </div>
-
-          <div className="flex items-center gap-1.5">
             <button
-              onClick={() => setViewMode('miniapp')}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-mono-pip font-bold transition ${
-                viewMode === 'miniapp'
-                  ? 'bg-amber-500 text-black shadow'
-                  : 'bg-zinc-800 text-zinc-300 hover:text-white'
-              }`}
+              onClick={() => { handleNotificationClick(activeToast); setActiveToast(null); }}
+              className="min-w-0 flex-1 text-left"
             >
-              <Smartphone className="w-3.5 h-3.5" />
-              <span>Mini App</span>
+              <span className="block text-[10px] font-mono-pip font-bold uppercase text-emerald-300">Пипка · входящее сообщение</span>
+              <span className="mt-1 block text-sm font-bold text-white">{activeToast.title}</span>
+              <span className="mt-1 block line-clamp-2 text-xs leading-relaxed text-zinc-300">{activeToast.message}</span>
             </button>
-
-            <button
-              onClick={() => setViewMode('bot_panel')}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-mono-pip font-bold transition ${
-                viewMode === 'bot_panel'
-                  ? 'badge-owner-shimmer text-black shadow'
-                  : 'bg-zinc-800 text-zinc-300 hover:text-white'
-              }`}
-            >
-              <Bot className="w-3.5 h-3.5" />
-              <span>Панель Управления Ботом</span>
-            </button>
-
-            <button
-              onClick={() => setViewMode('split')}
-              className={`hidden md:flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-mono-pip font-bold transition ${
-                viewMode === 'split'
-                  ? 'bg-amber-500 text-black shadow'
-                  : 'bg-zinc-800 text-zinc-300 hover:text-white'
-              }`}
-            >
-              <Columns className="w-3.5 h-3.5" />
-              <span>Разделенный экран</span>
+            <button onClick={() => setActiveToast(null)} aria-label="Закрыть уведомление" className="shrink-0 p-1 text-zinc-500 hover:text-white">
+              <X className="h-4 w-4" />
             </button>
           </div>
         </div>
       )}
+      {/* Patch & Updates Manager Header (Always accessible for creating and downloading patches) */}
+      <PatchManagerBar
+        viewMode={viewMode}
+        onChangeViewMode={setViewMode}
+      />
 
       {/* Main View Container */}
       <div className="flex-1 flex flex-col">
-        {isOwner && viewMode === 'bot_panel' && (
+        {viewMode === 'bot_panel' && (
           <main className="p-4 sm:p-6 flex-1">
             <BotControlPanel onOpenMiniApp={() => setViewMode('miniapp')} />
           </main>
         )}
 
-        {isOwner && viewMode === 'split' && (
+        {viewMode === 'split' && (
           <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-zinc-800">
             {/* Left Column: Telegram Bot Control & Chat */}
             <div className="p-4 sm:p-6 overflow-y-auto max-h-screen">
@@ -1542,6 +1512,7 @@ export default function App() {
               <ProfilesTopBar
                 profiles={appState.profiles}
                 admins={appState.admins}
+                activityLogs={appState.activityLogs || []}
                 currentUserId={currentUserId}
                 onSelectProfile={profile => setInspectedProfile(profile)}
               />
@@ -1556,7 +1527,7 @@ export default function App() {
                 unreadNotificationsCount={(appState.notifications || []).filter(n => !n.isRead).length}
               />
 
-              <RadioMusicPlayer username={currentUser?.username} />
+              <RadioMusicPlayer username={currentUser.username} />
 
               {/* Only the sleek side/corner HUD panel */}
               <NavigationDock
@@ -1754,6 +1725,7 @@ export default function App() {
             <ProfilesTopBar
               profiles={appState.profiles}
               admins={appState.admins}
+              activityLogs={appState.activityLogs || []}
               currentUserId={currentUserId}
               onSelectProfile={profile => setInspectedProfile(profile)}
             />
@@ -1770,7 +1742,7 @@ export default function App() {
             />
 
             {/* Sleek Right-Corner HUD Navigation Panel («на угол правый, половина сверху половина сбоку») */}
-            <RadioMusicPlayer username={currentUser?.username} />
+            <RadioMusicPlayer username={currentUser.username} />
 
             <NavigationDock
               activeTab={activeTab}

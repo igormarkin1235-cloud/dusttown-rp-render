@@ -27,13 +27,6 @@ export interface LittlepipSettings {
   useMemesAndQuotes: boolean;                       // вворачивать мемы и анекдоты
   empathySupport: boolean;                          // эмпатия и поддержка при хандре
   
-  // Второй ИИ-бот (Блэкджек / Джеки / Блэки — админский бот)
-  blackjackEnabled: boolean;                        // включен ли вызов Блэкджек
-  blackjackUsername: string;                        // юзернейм второго ИИ бота (например "@Blackjack_bot")
-  callBlackjackOnViolations: boolean;               // звать Блэкджек при грубых нарушениях правил
-  callBlackjackOnAggression: boolean;               // жаловаться Блэкджек при наездах и угрозах в адрес Пипки ("в банку", "разобрать", "пробить броню")
-  callBlackjackTriggers: string[];                  // триггеры вызова ('блэкджек', 'блэки', 'джеки', 'blackjack', 'blackie', 'jackie')
-
   // ИИ Модель
   model: string;                                    // gemini-2.5-flash
   temperature: number;                              // 0.84
@@ -52,11 +45,6 @@ const DEFAULT_CONFIG: LittlepipSettings = {
   flirtChanceRegular: 10,
   useMemesAndQuotes: true,
   empathySupport: true,
-  blackjackEnabled: true,
-  blackjackUsername: '@Blackjack_bot',
-  callBlackjackOnViolations: true,
-  callBlackjackOnAggression: true,
-  callBlackjackTriggers: ['блэкджек', 'блэки', 'джеки', 'блэк', 'blackjack', 'blackie', 'jackie'],
   model: 'gemini-2.5-flash',
   temperature: 0.84,
   topics: {
@@ -164,65 +152,11 @@ export function updateLittlepipSettings(newSettings: Partial<LittlepipSettings>)
 }
 
 /**
- * Получить настройки второго ИИ-бота (Блэкджек / Джеки / Блэки)
- */
-export function getBlackjackConfig(): {
-  enabled: boolean;
-  username: string;
-  callOnViolations: boolean;
-  callOnAggression: boolean;
-  triggers: string[];
-} {
-  const s = getLittlepipSettings();
-  return {
-    enabled: s.blackjackEnabled ?? true,
-    username: s.blackjackUsername || '@Blackjack_bot',
-    callOnViolations: s.callBlackjackOnViolations ?? true,
-    callOnAggression: s.callBlackjackOnAggression ?? true,
-    triggers: s.callBlackjackTriggers || ['блэкджек', 'блэки', 'джеки', 'блэк', 'blackjack', 'blackie', 'jackie']
-  };
-}
-
-/**
- * Быстрое обновление юзернейма Блэкджек
- */
-export function updateBlackjackUsername(username: string): void {
-  const trimmed = username.trim();
-  const clean = trimmed.startsWith('@') ? trimmed : `@${trimmed}`;
-  updateLittlepipSettings({ blackjackUsername: clean });
-}
-
-/**
- * Распарсить ссылку на топик Telegram вида:
- * - https://t.me/c/2149182371/42
- * - https://t.me/c/2149182371/42/100
- * - https://t.me/chat_name/42
- * - t.me/c/12345/42
- * - Число "42"
- */
-export function parseTelegramTopicLink(input: string): { threadId: string; rawUrl?: string } | null {
-  if (!input) return null;
-  const trimmed = input.trim();
-  if (/^\d+$/.test(trimmed)) {
-    return { threadId: trimmed };
-  }
-  const matchPrivate = trimmed.match(/t\.me\/c\/\d+\/(\d+)/i);
-  if (matchPrivate?.[1]) {
-    return { threadId: matchPrivate[1], rawUrl: trimmed };
-  }
-  const matchPublic = trimmed.match(/t\.me\/[a-zA-Z0-9_]+\/(\d+)/i);
-  if (matchPublic?.[1]) {
-    return { threadId: matchPublic[1], rawUrl: trimmed };
-  }
-  return null;
-}
-
-/**
  * Проверка прав топика:
  * canRead: разрешено ли читать и запоминать контекст
  * canWrite: разрешено ли отправлять реплики в этот топик
  */
-export function checkTopicPermissions(threadId?: number | string, suggestedTitle?: string): {
+export function checkTopicPermissions(threadId?: number | string): {
   canRead: boolean;
   canWrite: boolean;
   topicTitle: string;
@@ -232,10 +166,7 @@ export function checkTopicPermissions(threadId?: number | string, suggestedTitle
   let topic = activeSettings.topics[key];
 
   if (!topic) {
-    topic = registerDiscoveredTopic(key, suggestedTitle || `Топик #${key}`);
-  } else if (suggestedTitle && topic.title.startsWith('Топик #') && suggestedTitle !== topic.title) {
-    topic.title = suggestedTitle;
-    saveSettings(activeSettings);
+    topic = registerDiscoveredTopic(key, `Топик #${key}`);
   }
 
   if (!topic.enabled || topic.permission === 'blocked') {
@@ -272,7 +203,8 @@ export function registerDiscoveredTopic(
   title?: string
 ): TelegramTopicConfig {
   const key = String(threadId);
-  if (!activeSettings.topics[key]) {
+  const existingTopic = activeSettings.topics[key];
+  if (!existingTopic) {
     const newTopic: TelegramTopicConfig = {
       threadId: key,
       title: title || `Топик #${key}`,
@@ -284,7 +216,11 @@ export function registerDiscoveredTopic(
     saveSettings(activeSettings);
     return newTopic;
   }
-  return activeSettings.topics[key];
+  if (title && existingTopic.title === `Топик #${key}`) {
+    existingTopic.title = title;
+    saveSettings(activeSettings);
+  }
+  return existingTopic;
 }
 
 /**

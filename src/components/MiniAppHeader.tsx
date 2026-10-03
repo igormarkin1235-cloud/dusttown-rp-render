@@ -26,9 +26,9 @@ export const MiniAppHeader: React.FC<MiniAppHeaderProps> = ({
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState(false);
 
-  const isOwner = (currentUser?.username || '').toLowerCase() === '@mrwhitepio' || currentUser?.id === 'owner_mrwhitepio';
-  const isAdmin = isOwner || (Array.isArray(admins) ? admins : []).some(
-    a => a && (a.username || '').toLowerCase() === (currentUser?.username || '').toLowerCase()
+  const isOwner = currentUser.username.toLowerCase() === '@mrwhitepio';
+  const isAdmin = isOwner || admins.some(
+    a => a.username.toLowerCase() === currentUser.username.toLowerCase()
   );
 
   const handlePinSubmit = (e: React.FormEvent) => {
@@ -43,15 +43,12 @@ export const MiniAppHeader: React.FC<MiniAppHeaderProps> = ({
   };
 
   return (
-    <header className="relative w-full border-b border-amber-500/30 sticky top-0 z-30 overflow-hidden px-3 py-2.5 shadow-xl">
-      {/* Fallout: Equestria Atmospheric Background Layer */}
+    <header className="relative overflow-hidden w-full bg-zinc-950/95 border-b border-zinc-800/80 sticky top-0 z-30 backdrop-blur-md px-3 py-2.5">
       <div
         className="absolute inset-0 bg-cover bg-center opacity-35 transform scale-105 pointer-events-none"
         style={{ backgroundImage: `url('/backgrounds/foe_heroes.jpg')` }}
       />
-      {/* Dark Ambient Gradient Overlay for Readability */}
       <div className="absolute inset-0 bg-gradient-to-r from-zinc-950/95 via-zinc-950/85 to-zinc-950/95 backdrop-blur-[2px] pointer-events-none" />
-      <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-amber-500/50 to-transparent pointer-events-none" />
 
       <div className="relative z-10 max-w-4xl mx-auto flex items-center justify-between gap-3">
         {/* Logo & Brand */}

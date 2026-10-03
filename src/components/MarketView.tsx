@@ -222,7 +222,7 @@ export const MarketView: React.FC<MarketViewProps> = ({
 
         {/* Balance Display */}
         <div
-          className={`relative z-10 flex items-center gap-2 px-3.5 py-1.5 rounded-2xl border font-mono-pip text-sm font-bold shadow-inner ${
+          className={`flex items-center gap-2 px-3.5 py-1.5 rounded-2xl border font-mono-pip text-sm font-bold shadow-inner ${
             currentUser.equivaxes < 0
               ? 'bg-rose-950/80 border-rose-500/80 text-rose-300'
               : 'bg-black/60 border-amber-500/50 text-amber-300'

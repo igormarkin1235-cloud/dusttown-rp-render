@@ -54,7 +54,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   initialDirectRecipientId,
   onClearInitialRecipient
 }) => {
-  const myUserId = currentUser.id || currentUser.userId || '';
+  const myUserId = currentUser.id || '';
 
   // Navigation mode: 'general' (public wasteland radio) or 'direct' (private DMs)
   const [chatMode, setChatMode] = useState<'general' | 'direct'>(
@@ -136,7 +136,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     return Array.from(participantIds);
   }, [messages, myUserId]);
 
-  const selectedRecipient = profiles.find(p => (p.id || p.userId) === selectedRecipientId);
+  const selectedRecipient = profiles.find(p => p.id === selectedRecipientId);
 
   // Send standard text message
   const handleSend = async (e?: React.FormEvent) => {
@@ -210,16 +210,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   ];
 
   return (
-    <div className="relative flex flex-col h-[calc(100vh-140px)] min-h-[580px] max-w-5xl mx-auto rounded-3xl bg-zinc-950/90 border border-zinc-800 shadow-2xl overflow-hidden backdrop-blur-md">
-      {/* Slightly blurred Fallout: Equestria chat background */}
-      <div
-        className="absolute inset-0 bg-cover bg-center pointer-events-none opacity-25 filter blur-[2.5px] scale-105"
-        style={{ backgroundImage: `url('/backgrounds/chat_bg.jpg')` }}
-      />
-      <div className="absolute inset-0 bg-gradient-to-b from-zinc-950/85 via-zinc-950/70 to-zinc-950/85 pointer-events-none" />
-
+    <div className="flex flex-col h-[calc(100vh-140px)] min-h-[580px] max-w-5xl mx-auto rounded-3xl bg-zinc-950/90 border border-zinc-800 shadow-2xl overflow-hidden backdrop-blur-md">
       {/* Top Header & Channel Switcher */}
-      <div className="relative z-10 flex flex-wrap items-center justify-between p-4 border-b border-zinc-800/80 bg-zinc-900/60 gap-3 backdrop-blur-sm">
+      <div className="flex flex-wrap items-center justify-between p-4 border-b border-zinc-800/80 bg-zinc-900/60 gap-3">
         <div className="flex items-center gap-3">
           <div className="flex items-center p-1 rounded-2xl bg-zinc-950 border border-zinc-800">
             <button
@@ -299,12 +292,12 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                   {profiles
                     .filter(
                       p =>
-                        (p.id || p.userId) !== myUserId &&
+                        p.id !== myUserId &&
                         (p.username.toLowerCase().includes(recipientSearchQuery.toLowerCase()) ||
                           p.displayName.toLowerCase().includes(recipientSearchQuery.toLowerCase()))
                     )
                     .map(p => {
-                      const pId = p.id || p.userId || '';
+                      const pId = p.id || '';
                       return (
                         <button
                           key={pId}
@@ -317,7 +310,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                         >
                           <AvatarWithFrame
                             avatarUrl={p.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'}
-                            frameId={p.activeAvatarFrame || p.activeFrameId}
+                            frameId={p.activeAvatarFrame}
                             size="sm"
                           />
                           <div className="truncate min-w-0">
@@ -339,7 +332,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 </div>
               ) : (
                 directConversations.map(userId => {
-                  const user = profiles.find(p => (p.id || p.userId) === userId);
+                  const user = profiles.find(p => p.id === userId);
                   const isSelected = selectedRecipientId === userId;
                   const lastMsg = [...messages]
                     .reverse()
@@ -361,7 +354,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                     >
                       <AvatarWithFrame
                         avatarUrl={user?.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'}
-                        frameId={user?.activeAvatarFrame || user?.activeFrameId}
+                        frameId={user?.activeAvatarFrame}
                         size="sm"
                       />
                       <div className="min-w-0 flex-1">
@@ -389,7 +382,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 <div className="flex items-center gap-3">
                   <AvatarWithFrame
                     avatarUrl={selectedRecipient.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'}
-                    frameId={selectedRecipient.activeAvatarFrame || selectedRecipient.activeFrameId}
+                    frameId={selectedRecipient.activeAvatarFrame}
                     size="sm"
                   />
                   <div>
@@ -452,7 +445,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                     <div
                       className="cursor-pointer shrink-0 hover:scale-105 transition"
                       onClick={() => {
-                        const author = profiles.find(p => (p.id || p.userId) === msg.senderId);
+                        const author = profiles.find(p => p.id === msg.senderId);
                         if (author && onViewProfile) onViewProfile(author);
                       }}
                       title="Открыть профиль игрока"
@@ -496,7 +489,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                         <div className="flex items-center gap-2">
                           <span
                             onClick={() => {
-                              const author = profiles.find(p => p.userId === msg.senderId);
+                              const author = profiles.find(p => p.id === msg.senderId);
                               if (author && onViewProfile) onViewProfile(author);
                             }}
                             className={`text-xs font-bold cursor-pointer hover:underline ${

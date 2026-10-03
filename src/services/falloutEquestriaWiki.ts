@@ -1,197 +1,214 @@
-/**
- * ЭНЦИКЛОПЕДИЯ И БАЗА ЗНАНИЙ ЛИТЛПИП (FALLOUT: EQUESTRIA)
- * 
- * Данные сформированы на основе официальной русскоязычной Вики:
- * https://falloutequestria.fandom.com/ru/wiki/%D0%9B%D0%B8%D1%82%D0%BB%D0%BF%D0%B8%D0%BF
- */
+export const FALLOUT_EQUISTRIA_FORUM_URL = 'https://falloutequestria.fandom.com/ru/wiki/%D0%A4%D0%BE%D1%80%D1%83%D0%BC:%D0%94%D0%BE%D0%B1%D1%80%D0%BE_%D0%BF%D0%BE%D0%B6%D0%B0%D0%BB%D0%BE%D0%B2%D0%B0%D1%82%D1%8C_%D0%B2_%D1%84%D0%BE%D1%80%D1%83%D0%BC_%D1%81%D0%BE%D0%BE%D0%B1%D1%89%D0%B5%D1%81%D1%82%D0%B2%D0%B0';
+export const LITTLEPIP_FANDOM_PAGE_URL = 'https://falloutequestria.fandom.com/ru/wiki/%D0%9B%D0%B8%D1%82%D0%BB%D0%BF%D0%B8%D0%BF';
 
-export const FALLOUT_EQUISTRIA_FORUM_URL = 'https://falloutequestria.fandom.com/ru/wiki/%D0%9B%D0%B8%D1%82%D0%BB%D0%BF%D0%B8%D0%BF';
+const WIKI_API_URL = 'https://falloutequestria.fandom.com/ru/api.php';
+const WIKI_USER_AGENT = 'DustTownRP-Littlepip/2.0 (Fallout Equestria lore engine)';
 
-export interface WikiArticle {
+// Expanded lore triggers including companions, locations, technology, and factions
+const loreTerms = /(?:fallout|эквестр|ф[оэ]е|канон|литлпип|пипка|стойл|анклав|братств|рейдер|грифон|аликорн|смотрител|супермутант|северн|содружест|вельвет|каламити|стилхувз|хомэйдж|ксэнит|арба|тенпони|минталки|пипбак|макинтош|тостер)/iu;
+
+export interface FalloutEquestriaReference {
   title: string;
-  category: string;
-  summary: string;
-  details: string[];
   url: string;
+  extract: string;
 }
 
-export const LITTLEPIP_WIKI_KNOWLEDGE: WikiArticle[] = [
-  {
-    title: 'Литлпип (Little Pipsqueak) — Личность и образ',
-    category: 'персонаж',
-    summary: 'Главная героиня Fallout: Equestria, серая единорожка из Стойла 2. Прозвища: Обитательница Стойла, Ремонтница тостеров, Дарительница света (Lightbringer), Адская кобыла.',
-    url: 'https://falloutequestria.fandom.com/ru/wiki/%D0%9B%D0%B8%D1%82%D0%BB%D0%BF%D0%B8%D0%BF',
-    details: [
-      'Внешность: Невысокая серая единорожка, грива коричневая/тёмно-серая, глаза карие или зелёные. На левой передней ноге носит Pip-Buck.',
-      'Кьютимарка: Pip-Buck с пулей (по фанатским канонам — шестерня со звездой или отвертка/гаечный ключ). Получила кьютимарку самой последней среди сверстников.',
-      'Семья: Дочь пьяницы (кьютимарка матери — стакан яблочного сидра). Далёкий предок — Эпплджек, а её прадед — паладин СтилХувз.',
-      'Характер: Острая на язык, саркастичная, упрямая, храбрая до безумия, любопытная (не может пройти мимо запертой двери или неизведанного терминала). При этом добрая и готовая пожертвовать всем ради друзей.'
-    ]
-  },
-  {
-    title: 'История побега из Стойла 2 и миссия',
-    category: 'история',
-    summary: 'Работала младшим техником Pip-Buck в Стойле 2. Покинула Стойло в погоне за Вельвет Ремеди (лучшей певицей Стойла), начав величайшее приключение на Пустошах.',
-    url: 'https://falloutequestria.fandom.com/ru/wiki/%D0%9B%D0%B8%D1%82%D0%BB%D0%BF%D0%B8%D0%BF',
-    details: [
-      'В Стойле 2 её не любили и травили из-за скромного происхождения и матери-пьяницы.',
-      'Когда Вельвет Ремеди сбежала на поверхность, Литлпип тайно взломала шлюз и отправилась за ней.',
-      'В Пустоши открыла для себя жестокость мира, но отказалась становиться бессердечной, выбрав путь защиты невинных.'
-    ]
-  },
-  {
-    title: 'Отряд Литлпип — Друзья и спутники',
-    category: 'союзники',
-    summary: 'Команда верных соратников, вместе с которыми Литлпип изменила судьбу Эквестрии.',
-    url: 'https://falloutequestria.fandom.com/ru/wiki/%D0%9B%D0%B8%D1%82%D0%BB%D0%BF%D0%B8%D0%BF',
-    details: [
-      'Вельвет Ремеди (Velvet Remedy) — единорожка-певица и врач, прекрасный голос Эквестрии, моральный компас отряда.',
-      'Каламити (Calamity) — пегас-снайпер из Новой Эпплузы, виртуозный стрелок, верный друг и разведчик.',
-      'СтилХувз (SteelHooves) — гуль-паладин Стальных Рейнджеров в силовой броне, довоенный воин, ставший наставником и принесший себя в жертву.',
-      'Ксенит (Xenith) — зебра-гладиатор, мастер клинка и алхимии, спасённая из рабства, верная защитница и близкая подруга.',
-      'Дитзи Ду (Дерпи) и малышка Пайрит — спасённые Литлпип пегаски, обретшие дом.'
-    ]
-  },
-  {
-    title: 'Главные враги и битвы Пустоши',
-    category: 'враги_и_битвы',
-    summary: 'Эпические противостояния, сформировавшие легенду Дарительницы Света.',
-    url: 'https://falloutequestria.fandom.com/ru/wiki/%D0%9B%D0%B8%D1%82%D0%BB%D0%BF%D0%B8%D0%BF',
-    details: [
-      'Красный Глаз (Red Eye) — харизматичный тиран Филидельфии, строивший собор и пытавшийся силой объединить пони через рабство.',
-      'Богиня (The Goddess) — кошмарный био-магический коллективный разум Аликорнов в Соборе, побеждённый отрядом Литлпип.',
-      'Анклав Пегасов — военная хунта пегасов, закрывшая небо плотными облаками и пытавшаяся истребить жителей поверхности.',
-      'Битва при Наварро — финальный штурм погодной башни SPP (П.О.П.), где Литлпип положила конец тирании Анклава.'
-    ]
-  },
-  {
-    title: 'Оружие, магия и боевой стиль',
-    category: 'навыки',
-    summary: 'Арсенал Литлпип разнообразен: от простого пистолета до разрушительного магитеха и снайперского огня.',
-    url: 'https://falloutequestria.fandom.com/ru/wiki/%D0%9B%D0%B8%D1%82%D0%BB%D0%BF%D0%B8%D0%BF',
-    details: [
-      'Макинтош 32-го калибра — её первый и любимый карманный пистолет, но далеко не единственный!',
-      'Снайперская винтовка и боевой магический карабин — основное дальнобойное оружие в тяжелых перестрелках.',
-      'Плазменные гранаты, ракетницы и магиитех Министерства Тайных Наук.',
-      'Магия телекинеза: способность удерживать и метко стрелять из нескольких стволов одновременно, быстро перезаряжать оружие в бою.',
-      'Взлом: мастерски вскрывает любые терминалы довоенных Министерств и механические замки отмычками.'
-    ]
-  },
-  {
-    title: 'Служение в Системе Управления Погодой (SPP / П.О.П.)',
-    category: 'финал',
-    summary: 'Великая жертва Литлпип ради будущего всей Эквестрии.',
-    url: 'https://falloutequestria.fandom.com/ru/wiki/%D0%9B%D0%B8%D1%82%D0%BB%D0%BF%D0%B8%D0%BF',
-    details: [
-      'В башне Наварро Литлпип встретила заточенную душу принцессы Селестии.',
-      'Литлпип добровольно подключилась к системе SPP в контролируемую кому, разогнав вековые тучи пегасов и вернув солнце и дожди на выжженную землю.',
-      'Она может пробуждаться и встречаться с друзьями, оставаясь вечным стражем чистого неба над Эквестрией.'
-    ]
-  },
-  {
-    title: 'Отношение к сидру, привычкам и запрет зацикливания',
-    category: 'характер',
-    summary: 'Отношение Литлпип к сидру и быту сложное и глубокое, а не примитивная зависимость.',
-    url: 'https://falloutequestria.fandom.com/ru/wiki/%D0%9B%D0%B8%D1%82%D0%BB%D0%BF%D0%B8%D0%BF',
-    details: [
-      'Мать Литлпип была алкоголичкой, поэтому сидр для неё — это воспоминание о Стойле и трудных временах.',
-      'Она ценит хороший яблочный сидр в компании друзей в баре Даст Таун, но её жизнь наполнена битвами, наукой, магитехом, дружбой и шутками.',
-      'Она НЕ говорит о сидре постоянно — у неё богатый словарный запас, сотни тем для общения и острое любопытство к любым событиям чата.'
-    ]
-  }
-];
+// In-memory cache of fetched wiki articles
+const wikiCache = new Map<string, { data: FalloutEquestriaReference[]; timestamp: number }>();
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-/**
- * Проверяет, требуется ли обращение к энциклопедии Fallout: Equestria
- */
 export function shouldSearchFalloutEquestriaWiki(text: string): boolean {
-  if (!text) return false;
-  const lower = text.toLowerCase();
-  return /(?:fallout|эквестри|фоэ|стойл[оа-я]*|вельвет|каламити|стилхувз|ксенит|ред\s*ай|богин[яеи]|анклав|аликорн|дарительниц|спп|spp|наварро|магитекс?|миротворцы|гул[ией]|рейдер[а-я]*|лоре?|вики|wiki|биографи[яи]|прошлое|откуда ты|кто ты такая)/iu.test(lower);
+  const query = text
+    .trim()
+    .replace(/^(?:пипка|литлпип|литка|лилька|littlepip)[\s,:!?-]*/iu, '');
+  return loreTerms.test(query) || /(?:кто такая|кто такой|что такое|расскажи (?:про|о)|объясни|где находится|кто этот)/iu.test(query);
 }
 
-export function cleanFalloutEquestriaWikitext(input: string): string {
-  let text = String(input || '');
-  text = text.replace(/\{\{[^{}]*\}\}/g, '');
-  text = text.replace(/\{\{[^\n]*\n[^\n]*\}\}/g, '');
-  text = text.replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, '$2');
-  text = text.replace(/\[\[([^\]]+)\]\]/g, '$1');
-  text = text.replace(/==+\s*([^=]+?)\s*==+/g, '$1');
-  text = text.replace(/\n{3,}/g, '\n\n');
-  text = text.replace(/\s+\n/g, '\n');
-  text = text.replace(/\n\s+/g, '\n');
-  return text.trim();
+function removeNestedTemplates(wikitext: string): string {
+  let output = '';
+  let index = 0;
+  while (index < wikitext.length) {
+    if (!wikitext.startsWith('{{', index)) {
+      output += wikitext[index++];
+      continue;
+    }
+
+    let depth = 1;
+    index += 2;
+    while (index < wikitext.length && depth > 0) {
+      if (wikitext.startsWith('{{', index)) {
+        depth += 1;
+        index += 2;
+      } else if (wikitext.startsWith('}}', index)) {
+        depth -= 1;
+        index += 2;
+      } else {
+        index += 1;
+      }
+    }
+    output += '\n';
+  }
+  return output;
+}
+
+export function cleanFalloutEquestriaWikitext(wikitext: string): string {
+  return removeNestedTemplates(wikitext)
+    .replace(/<!--([\s\S]*?)-->/g, ' ')
+    .replace(/\{\|[\s\S]*?\|\}/g, ' ')
+    .replace(/<ref\b[^>]*>[\s\S]*?<\/ref\s*>/gi, ' ')
+    .replace(/<ref\b[^>]*\/>/gi, ' ')
+    .replace(/<br\s*\/?\s*>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\[\[(?:Файл|File|Категория|Category):[^\]]*\]\]/giu, ' ')
+    .replace(/\[\[[^\]|]+\|([^\]]+)\]\]/g, '$1')
+    .replace(/\[\[([^\]]+)\]\]/g, '$1')
+    .replace(/\[(?:https?:\/\/\S+)\s+([^\]]+)\]/g, '$1')
+    .replace(/'''''?([^']+?)'''''?/g, '$1')
+    .replace(/^\s*=+\s*(.*?)\s*=+\s*$/gm, '$1')
+    .replace(/&nbsp;|&#160;/gi, ' ')
+    .replace(/&quot;/gi, '"')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&#(\d+);/g, (_match, code) => String.fromCodePoint(Number(code)))
+    .replace(/&#x([\da-f]+);/gi, (_match, code) => String.fromCodePoint(parseInt(code, 16)))
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n[ \t]+/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 /**
- * Поиск по энциклопедии Литлпип
+ * Direct lookup of the canonical Littlepip page from Fandom
  */
-export async function searchFalloutEquestriaWiki(
-  query: string,
-  fetcher?: (input: string) => Promise<Response> | Response
-): Promise<WikiArticle[]> {
-  const queryText = String(query || '').replace(/^(?:пипка|литлпип|littlepip)[\s,:!?-]*/iu, '').trim();
-  if (!queryText) return [];
-
-  const baseFetcher = fetcher ?? (async (input: string) => fetch(input));
-
-  const apiBase = 'https://falloutequestria.fandom.com/ru/api.php?';
-  const searchUrl = `${apiBase}action=query&format=json&list=search&srsearch=${encodeURIComponent(queryText)}&srlimit=5`;
+export async function fetchLittlepipFandomArticle(fetcher: typeof fetch = fetch): Promise<FalloutEquestriaReference | null> {
+  const cached = wikiCache.get('__canonical_littlepip__');
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS && cached.data[0]) {
+    return cached.data[0];
+  }
 
   try {
-    const searchResponse = await baseFetcher(searchUrl);
-    const searchJson = await searchResponse.json();
-    const rawSearch = searchJson?.query?.search ?? [];
-    const titles = rawSearch.map((item: any) => item.title).filter(Boolean);
+    const url = new URL(WIKI_API_URL);
+    url.searchParams.set('action', 'query');
+    url.searchParams.set('prop', 'revisions');
+    url.searchParams.set('titles', 'Литлпип');
+    url.searchParams.set('rvslots', 'main');
+    url.searchParams.set('rvprop', 'content');
+    url.searchParams.set('format', 'json');
+    url.searchParams.set('formatversion', '2');
 
-    if (!titles.length) {
-      return LITTLEPIP_WIKI_KNOWLEDGE.filter(article =>
-        article.title.toLowerCase().includes(queryText.toLowerCase()) ||
-        article.summary.toLowerCase().includes(queryText.toLowerCase())
-      ).slice(0, 3);
-    }
-
-    const articles: WikiArticle[] = [];
-    for (const title of titles) {
-      const pageUrl = `https://falloutequestria.fandom.com/ru/wiki/${encodeURIComponent(title.replace(/\s+/g, '_'))}`;
-      const revisionUrl = `${apiBase}action=query&format=json&prop=revisions&rvslots=main&rvprop=content&titles=${encodeURIComponent(title)}&rvlimit=1`;
-      const revisionResponse = await baseFetcher(revisionUrl);
-      const revisionJson = await revisionResponse.json();
-      const page = Object.values(revisionJson?.query?.pages || {})[0] as any;
-      const rawContent = page?.revisions?.[0]?.slots?.main?.content ?? '';
-      const cleanContent = cleanFalloutEquestriaWikitext(rawContent);
-      const summary = cleanContent.slice(0, 220) || `Статья ${title} из вики Fallout: Equestria.`;
-      articles.push({
-        title,
-        category: 'wiki',
-        summary,
-        details: [summary],
-        url: pageUrl
-      });
-    }
-
-    return articles.slice(0, 3);
-  } catch {
-    const q = queryText.toLowerCase();
-    const matched = LITTLEPIP_WIKI_KNOWLEDGE.filter(article => {
-      if (article.title.toLowerCase().includes(q) || article.summary.toLowerCase().includes(q)) return true;
-      return article.details.some(d => d.toLowerCase().includes(q));
+    const res = await fetcher(url, {
+      headers: { 'User-Agent': WIKI_USER_AGENT },
+      signal: AbortSignal.timeout(8000)
     });
-    if (matched.length > 0) return matched.slice(0, 3);
-    return [LITTLEPIP_WIKI_KNOWLEDGE[0], LITTLEPIP_WIKI_KNOWLEDGE[2]];
+
+    if (!res.ok) return null;
+    const json = await res.json();
+    const page = json.query?.pages?.[0];
+    if (!page || page.missing) return null;
+
+    const rawContent = page.revisions?.[0]?.slots?.main?.content || '';
+    const cleanContent = cleanFalloutEquestriaWikitext(rawContent);
+
+    const ref: FalloutEquestriaReference = {
+      title: 'Литлпип (Fallout: Equestria Wiki)',
+      url: LITTLEPIP_FANDOM_PAGE_URL,
+      extract: cleanContent.slice(0, 3500)
+    };
+
+    wikiCache.set('__canonical_littlepip__', { data: [ref], timestamp: Date.now() });
+    return ref;
+  } catch (e) {
+    console.warn('[Littlepip Wiki] Failed to fetch live Fandom article:', e);
+    return null;
   }
 }
 
-/**
- * Форматирует статьи википедии в сжатый контекст для промпта Литлпип
- */
-export function formatFalloutEquestriaReferences(articles: WikiArticle[]): string {
-  if (!articles || articles.length === 0) return '';
-  return articles
-    .map(a => `📖 [ФАКТ ИЗ БАЗЫ ЗНАНИЙ (${a.title})]:\n${a.summary}\n${a.details.map(d => `• ${d}`).join('\n')}`)
-    .join('\n\n');
+export async function searchFalloutEquestriaWiki(
+  question: string,
+  fetcher: typeof fetch = fetch
+): Promise<FalloutEquestriaReference[]> {
+  const query = question
+    .trim()
+    .replace(/^(?:пипка|литлпип|литка|лилька|littlepip)[\s,:!?-]*/iu, '')
+    .replace(/^(?:расскажи|объясни|кто такая|кто такой|что такое|где|когда|почему|что за)\s*(?:про|о)?\s*/iu, '')
+    .slice(0, 180);
+
+  if (!query) return [];
+
+  const cacheKey = query.toLowerCase();
+  const cached = wikiCache.get(cacheKey);
+  if (fetcher === fetch && cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    return cached.data;
+  }
+
+  const request = (params: Record<string, string>) => {
+    const url = new URL(WIKI_API_URL);
+    for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
+    return fetcher(url, {
+      headers: { 'User-Agent': WIKI_USER_AGENT },
+      signal: AbortSignal.timeout(7000)
+    });
+  };
+
+  try {
+    const searchResponse = await request({
+      action: 'query',
+      list: 'search',
+      srsearch: query,
+      srnamespace: '0',
+      srlimit: '3',
+      format: 'json'
+    });
+    if (!searchResponse.ok) return [];
+
+    const searchData = await searchResponse.json();
+    const titles = [...new Set<string>(
+      (searchData.query?.search || [])
+        .map((item: any) => String(item.title || ''))
+        .filter(Boolean)
+    )].slice(0, 3);
+    if (!titles.length) return [];
+
+    const pageResults = await Promise.all(titles.map(async title => {
+      const pageResponse = await request({
+        action: 'query',
+        prop: 'revisions',
+        rvprop: 'content',
+        rvslots: 'main',
+        rvlimit: '1',
+        redirects: '1',
+        titles: title,
+        format: 'json',
+        formatversion: '2'
+      });
+      if (!pageResponse.ok) return [];
+      const pageData = await pageResponse.json();
+      return pageData.query?.pages || [];
+    }));
+
+    const refs = pageResults.flat()
+      .map((page: any) => {
+        const wikitext = page.revisions?.[0]?.slots?.main?.content || page.revisions?.[0]?.['*'] || '';
+        return {
+          title: String(page.title),
+          url: `https://falloutequestria.fandom.com/ru/wiki/${encodeURIComponent(String(page.title).replace(/ /g, '_'))}`,
+          extract: cleanFalloutEquestriaWikitext(String(wikitext)).slice(0, 2000)
+        };
+      })
+      .filter((page: FalloutEquestriaReference) => page.extract.length > 60);
+
+    wikiCache.set(cacheKey, { data: refs, timestamp: Date.now() });
+    return refs;
+  } catch (error: any) {
+    console.warn('[Littlepip wiki] Fandom lookup failed:', error?.message || error);
+    return [];
+  }
 }
 
-export function getLittlepipWikiSummary(): string {
-  return LITTLEPIP_WIKI_KNOWLEDGE.map(a => `• ${a.title}: ${a.summary}`).join('\n');
+export function formatFalloutEquestriaReferences(references: FalloutEquestriaReference[]): string {
+  if (!references.length) return '';
+  return references
+    .map(reference => `Статья: ${reference.title}\nИсточник: ${reference.url}\nФрагмент:\n${reference.extract}`)
+    .join('\n\n---\n\n');
 }

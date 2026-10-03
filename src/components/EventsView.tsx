@@ -67,7 +67,7 @@ export const EventsView: React.FC<EventsViewProps> = ({
         {isAdmin && onOpenAdminPanel && (
           <button
             onClick={onOpenAdminPanel}
-            className="relative z-10 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-heading font-bold text-xs shadow-lg shadow-amber-950/40 flex items-center gap-1.5 transition"
+            className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-heading font-bold text-xs shadow-lg shadow-amber-950/40 flex items-center gap-1.5 transition"
           >
             <span>+ Создать ивент</span>
           </button>

@@ -6,6 +6,3 @@ coverage/
 *.log
 .env*
 !.env.example
-dusttown-rp-render.zip
-*.zip
-.dusttown_data.json
