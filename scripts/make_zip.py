@@ -44,7 +44,8 @@ build_info = {
         "LittlepipMemesVault",
         "FalloutEquestriaFandomDossier",
         "LittlepipControlPanel",
-        "LittlepipTopicPermissions"
+        "LittlepipTopicPermissions",
+        "LittlepipTopicDiscovery"
     ]
 }
 

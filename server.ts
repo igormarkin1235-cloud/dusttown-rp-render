@@ -21,7 +21,9 @@ import {
   getLittlepipSettings,
   updateLittlepipSettings,
   setTopicConfig,
-  removeTopicConfig
+  removeTopicConfig,
+  getDiscoveredTopics,
+  recordDiscoveredTopic
 } from './src/services/littlepipConfig';
 import {
   getAllReputations,
@@ -646,6 +648,38 @@ async function getTelegramChatAdmins(chatId: number | string): Promise<ChatAdmin
   }
 }
 
+async function discoverTelegramTopic(message: any): Promise<void> {
+  const threadId = message.message_thread_id ?? (
+    message.forum_topic_created ? message.message_id : undefined
+  );
+  if (
+    message.chat?.type !== 'supergroup' ||
+    threadId === undefined ||
+    !Number.isFinite(Number(threadId)) ||
+    !botInfo?.id
+  ) {
+    return;
+  }
+
+  const admins = await getTelegramChatAdmins(message.chat.id);
+  if (!admins.some(admin => String(admin.userId) === String(botInfo.id))) return;
+
+  const topicTitle = message.forum_topic_created?.name ||
+    message.forum_topic_edited?.name ||
+    `Топик #${threadId}`;
+  try {
+    recordDiscoveredTopic({
+      chatId: message.chat.id,
+      chatTitle: message.chat.title || `Группа ${message.chat.id}`,
+      threadId: Number(threadId),
+      title: topicTitle,
+      lastSeenAt: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('[Littlepip Topics] Failed to register Telegram topic:', error);
+  }
+}
+
 async function sendLittlepipReply(
   chatId: number | string,
   text: string,
@@ -790,6 +824,8 @@ async function handleTelegramUpdate(update: any) {
 
   const msg = update.message;
   if (!msg) return;
+
+  await discoverTelegramTopic(msg);
 
   const isMedia = Boolean(
     msg.photo || msg.video || msg.animation || msg.document || msg.audio ||
@@ -1032,6 +1068,15 @@ app.get('/api/littlepip/config', (req, res) => {
   });
 });
 
+app.get('/api/littlepip/topics/available', (req, res) => {
+  try {
+    res.json({ success: true, topics: getDiscoveredTopics() });
+  } catch (error: any) {
+    console.error('[Littlepip Topics] Failed to list discovered topics:', error);
+    res.status(500).json({ error: 'Не удалось загрузить список обнаруженных топиков.' });
+  }
+});
+
 // Обновить настройки Пипки
 app.post('/api/littlepip/config', (req, res) => {
   try {
@@ -1045,9 +1090,17 @@ app.post('/api/littlepip/config', (req, res) => {
 // Добавить или обновить права для топика группы
 app.post('/api/littlepip/topics/set', (req, res) => {
   try {
-    const { threadId, title, permission, enabled, notes } = req.body;
+    const { threadId, title, permission, enabled, notes, chatId, chatTitle } = req.body;
     if (!threadId) return res.status(400).json({ error: 'Missing threadId' });
-    const settings = setTopicConfig(threadId, title || `Топик #${threadId}`, permission || 'read_write', enabled ?? true, notes);
+    const settings = setTopicConfig(
+      threadId,
+      title || `Топик #${threadId}`,
+      permission || 'read_write',
+      enabled ?? true,
+      notes,
+      chatId,
+      chatTitle
+    );
     res.json({ success: true, settings });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -1057,7 +1110,7 @@ app.post('/api/littlepip/topics/set', (req, res) => {
 // Удалить топик из конфига
 app.delete('/api/littlepip/topics/:threadId', (req, res) => {
   try {
-    const settings = removeTopicConfig(req.params.threadId);
+    const settings = removeTopicConfig(req.params.threadId, req.query.chatId as string | undefined);
     res.json({ success: true, settings });
   } catch (e: any) {
     res.status(500).json({ error: e.message });

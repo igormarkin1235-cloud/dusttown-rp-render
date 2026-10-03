@@ -540,7 +540,7 @@ export async function handleLittlepipUpdate(
   const lower = cleanText.toLowerCase();
 
   // Проверка прав топика (только чтение / разрешено писать / заблокировано)
-  const topicPerms = checkTopicPermissions(threadId);
+  const topicPerms = checkTopicPermissions(chatId, threadId);
   if (!topicPerms.canRead) {
     return { handled: false };
   }

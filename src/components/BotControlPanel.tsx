@@ -48,6 +48,14 @@ interface BotControlPanelProps {
   onOpenMiniApp: () => void;
 }
 
+interface AvailablePipTopic {
+  chatId: number | string;
+  chatTitle: string;
+  threadId: number;
+  title: string;
+  lastSeenAt: string;
+}
+
 export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp }) => {
   const [isPolling, setIsPolling] = useState(false);
   const [telegramBotConfigured, setTelegramBotConfigured] = useState(false);
@@ -216,8 +224,12 @@ export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp 
   // Topics management
   const [newTopicThreadId, setNewTopicThreadId] = useState('');
   const [newTopicTitle, setNewTopicTitle] = useState('');
+  const [newTopicChatId, setNewTopicChatId] = useState('');
   const [newTopicPermission, setNewTopicPermission] = useState<'read_write' | 'read_only' | 'blocked'>('read_only');
   const [newTopicNotes, setNewTopicNotes] = useState('');
+  const [availablePipTopics, setAvailablePipTopics] = useState<AvailablePipTopic[]>([]);
+  const [loadingPipTopics, setLoadingPipTopics] = useState(false);
+  const [pipTopicsError, setPipTopicsError] = useState<string | null>(null);
 
   // Reputation management
   const [reputationList, setReputationList] = useState<any[]>([]);
@@ -232,6 +244,21 @@ export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp 
         if (data.settings) setPipSettings(data.settings);
       }
     } catch (e) {}
+  };
+
+  const fetchAvailablePipTopics = async () => {
+    setLoadingPipTopics(true);
+    setPipTopicsError(null);
+    try {
+      const res = await fetch('/api/littlepip/topics/available');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Не удалось загрузить топики.');
+      setAvailablePipTopics(Array.isArray(data.topics) ? data.topics : []);
+    } catch (error) {
+      setPipTopicsError(error instanceof Error ? error.message : 'Не удалось загрузить топики.');
+    } finally {
+      setLoadingPipTopics(false);
+    }
   };
 
   const handleSavePipSettings = async () => {
@@ -294,37 +321,58 @@ export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp 
     } catch (e) {}
   };
 
-  const handleSetTopic = async (threadId: string | number, title: string, permission: 'read_write' | 'read_only' | 'blocked', notes?: string) => {
+  const handleSetTopic = async (
+    threadId: string | number,
+    title: string,
+    permission: 'read_write' | 'read_only' | 'blocked',
+    notes?: string,
+    chatId?: string | number,
+    chatTitle?: string
+  ) => {
     if (!threadId) return;
     try {
       const res = await fetch('/api/littlepip/topics/set', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ threadId, title: title || `Топик #${threadId}`, permission, enabled: true, notes })
+        body: JSON.stringify({
+          threadId,
+          title: title || `Топик #${threadId}`,
+          permission,
+          enabled: true,
+          notes,
+          chatId: chatId || undefined,
+          chatTitle
+        })
       });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.settings) setPipSettings(data.settings);
-        setNewTopicThreadId('');
-        setNewTopicTitle('');
-        setNewTopicNotes('');
-      }
-    } catch (e) {}
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Не удалось сохранить режим топика.');
+      if (data.settings) setPipSettings(data.settings);
+      setNewTopicThreadId('');
+      setNewTopicTitle('');
+      setNewTopicChatId('');
+      setNewTopicNotes('');
+      setPipTopicsError(null);
+    } catch (error) {
+      setPipTopicsError(error instanceof Error ? error.message : 'Не удалось сохранить режим топика.');
+    }
   };
 
-  const handleRemoveTopic = async (threadId: string | number) => {
+  const handleRemoveTopic = async (threadId: string | number, chatId?: string | number) => {
     try {
-      const res = await fetch(`/api/littlepip/topics/${threadId}`, { method: 'DELETE' });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.settings) setPipSettings(data.settings);
-      }
-    } catch (e) {}
+      const query = chatId === undefined ? '' : `?chatId=${encodeURIComponent(chatId)}`;
+      const res = await fetch(`/api/littlepip/topics/${encodeURIComponent(threadId)}${query}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Не удалось удалить настройку топика.');
+      if (data.settings) setPipSettings(data.settings);
+    } catch (error) {
+      setPipTopicsError(error instanceof Error ? error.message : 'Не удалось удалить настройку топика.');
+    }
   };
 
   useEffect(() => {
     fetchUpdateStatus();
     fetchPipConfig();
+    fetchAvailablePipTopics();
     fetchReputationList();
     const interval = setInterval(fetchUpdateStatus, 3500);
     return () => clearInterval(interval);
@@ -1334,14 +1382,66 @@ export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp 
                 <span>Управление вкладками (топиками) группы Telegram</span>
               </div>
               <p className="text-[11px] text-zinc-300 leading-relaxed">
-                Вы можете настроить режим работы Пипки для каждого топика (ветки обсуждения) супергруппы по его <code className="text-amber-300 font-mono font-bold">thread_id</code>.
+                Выберите обнаруженный топик группы, чтобы его ID и название подставились автоматически, затем задайте режим Пипки.
                 <br />
                 • <strong className="text-amber-300">Только чтение (Read-only)</strong>: например топик «Правила» или «Лор» — Пипка внимательно всё читает, впитывает в память и обновляет репутацию участников, но писать туда ей <strong className="text-red-400">СТРОГО ЗАПРЕЩЕНО</strong>!
                 <br />
                 • <strong className="text-emerald-300">Чтение и ответы (Read & Write)</strong>: обычный живой диалог, общение, ответы на вопросы и команды.
                 <br />
                 • <strong className="text-red-300">Запрет (Blocked)</strong>: Пипка полностью игнорирует сообщения из этой вкладки.
+                <br />
+                Список пополняется автоматически по мере того, как бот-администратор получает сообщения в топиках. Telegram Bot API не предоставляет полный перечень топиков, поэтому ранее неактивные ветки появятся после первого нового сообщения в них.
               </p>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <div className="text-xs font-bold font-heading text-purple-300 uppercase tracking-wide">
+                    Топики групп, где Пипка — администратор
+                  </div>
+                  <p className="text-[10px] text-zinc-500 mt-1">
+                    Найдено: {availablePipTopics.length}. Ветка появляется здесь после сообщения в ней.
+                  </p>
+                </div>
+                <button
+                  onClick={fetchAvailablePipTopics}
+                  disabled={loadingPipTopics}
+                  className="px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-xs text-zinc-200 transition flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${loadingPipTopics ? 'animate-spin' : ''}`} />
+                  Обновить список
+                </button>
+              </div>
+              <select
+                value=""
+                onChange={event => {
+                  const selectedTopic = availablePipTopics.find(
+                    topic => `${topic.chatId}:${topic.threadId}` === event.target.value
+                  );
+                  if (!selectedTopic) return;
+                  setNewTopicChatId(String(selectedTopic.chatId));
+                  setNewTopicThreadId(String(selectedTopic.threadId));
+                  setNewTopicTitle(selectedTopic.title);
+                }}
+                className="w-full px-3 py-2.5 rounded-xl bg-zinc-950 border border-zinc-700 text-xs text-zinc-200 font-mono focus:outline-none focus:border-purple-500"
+              >
+                <option value="">
+                  {loadingPipTopics
+                    ? 'Загрузка списка топиков...'
+                    : availablePipTopics.length
+                      ? 'Выберите группу и топик для настройки'
+                      : 'Пока нет обнаруженных топиков'}
+                </option>
+                {availablePipTopics.map(topic => (
+                  <option key={`${topic.chatId}:${topic.threadId}`} value={`${topic.chatId}:${topic.threadId}`}>
+                    {topic.chatTitle} — {topic.title} (ID: {topic.threadId})
+                  </option>
+                ))}
+              </select>
+              {pipTopicsError && (
+                <p role="alert" className="text-xs text-red-300">{pipTopicsError}</p>
+              )}
             </div>
 
             {/* List of configured topics */}
@@ -1360,6 +1460,9 @@ export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp 
                     <div className="space-y-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-xs font-bold font-heading text-zinc-100">{topic.title}</span>
+                        {topic.chatTitle && (
+                          <span className="text-[10px] text-purple-300">{topic.chatTitle}</span>
+                        )}
                         <code className="px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-400 font-mono">
                           ID: {topic.threadId}
                         </code>
@@ -1391,7 +1494,7 @@ export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp 
                       <select
                         value={topic.permission}
                         onChange={e =>
-                          handleSetTopic(topic.threadId, topic.title, e.target.value as any, topic.notes)
+                          handleSetTopic(topic.threadId, topic.title, e.target.value as any, topic.notes, topic.chatId, topic.chatTitle)
                         }
                         className="px-2.5 py-1.5 rounded-xl bg-zinc-900 border border-zinc-700 text-xs text-zinc-200 font-mono focus:outline-none focus:border-purple-500"
                       >
@@ -1402,7 +1505,7 @@ export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp 
 
                       {key !== 'root' && (
                         <button
-                          onClick={() => handleRemoveTopic(topic.threadId)}
+                          onClick={() => handleRemoveTopic(topic.threadId, topic.chatId)}
                           className="p-2 rounded-xl bg-red-950/40 hover:bg-red-900/60 border border-red-500/30 text-red-400 hover:text-red-200 transition"
                           title="Удалить топик из настроек"
                         >
@@ -1423,18 +1526,29 @@ export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp 
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
-                <div className="sm:col-span-3 space-y-1">
+                <div className="sm:col-span-2 space-y-1">
                   <label className="text-[10px] text-zinc-400 uppercase font-mono-pip">ID ветки / Thread ID:</label>
                   <input
                     type="text"
-                    placeholder="Например: 42 или rules"
+                    placeholder="Например: 42"
                     value={newTopicThreadId}
                     onChange={e => setNewTopicThreadId(e.target.value)}
                     className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-xs text-zinc-200 font-mono focus:outline-none focus:border-purple-500"
                   />
                 </div>
 
-                <div className="sm:col-span-4 space-y-1">
+                <div className="sm:col-span-2 space-y-1">
+                  <label className="text-[10px] text-zinc-400 uppercase font-mono-pip">ID группы:</label>
+                  <input
+                    type="text"
+                    placeholder="Автоматически из списка"
+                    value={newTopicChatId}
+                    onChange={e => setNewTopicChatId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-xs text-zinc-200 font-mono focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+
+                <div className="sm:col-span-3 space-y-1">
                   <label className="text-[10px] text-zinc-400 uppercase font-mono-pip">Название вкладки:</label>
                   <input
                     type="text"
@@ -1460,7 +1574,19 @@ export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp 
 
                 <div className="sm:col-span-2 flex items-end">
                   <button
-                    onClick={() => handleSetTopic(newTopicThreadId, newTopicTitle, newTopicPermission, newTopicNotes)}
+                    onClick={() => {
+                      const selectedGroup = availablePipTopics.find(
+                        topic => String(topic.chatId) === newTopicChatId
+                      );
+                      handleSetTopic(
+                        newTopicThreadId,
+                        newTopicTitle,
+                        newTopicPermission,
+                        newTopicNotes,
+                        newTopicChatId || undefined,
+                        selectedGroup?.chatTitle
+                      );
+                    }}
                     disabled={!newTopicThreadId.trim()}
                     className="w-full py-2 px-3 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white font-heading font-black text-xs uppercase tracking-wider transition shadow-md shadow-purple-950/50 flex items-center justify-center gap-1.5"
                   >
