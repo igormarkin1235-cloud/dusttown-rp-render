@@ -3,21 +3,35 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>DustTown RP - Mini App & Patch Manager</title>
-    <meta name="description" content="Интерактивный Mini App для ролевого проекта DustTown RP (Fallout: Equestria): события, запланированные сессии, анкеты персонажей, профили, рынок, кейсы и менеджер патчей обновлений." />
-    <meta property="og:title" content="DustTown RP - Mini App & Patch Manager" />
-    <meta property="og:description" content="Интерактивный Mini App для ролевого проекта DustTown RP (Fallout: Equestria): события, запланированные сессии, анкеты персонажей, профили, рынок, кейсы и менеджер патчей обновлений." />
+    <title>DustTown RP — Студия Патчей и Миграции</title>
+    <meta name="description" content="Центр управления, создания патчей и прямой миграции в GitHub для DustTown RP и ИИ-агентов Литлпип и Блэкджек." />
+    <meta property="og:title" content="DustTown RP — Студия Патчей и Миграции" />
+    <meta property="og:description" content="Центр управления, создания патчей и прямой миграции в GitHub для DustTown RP и ИИ-агентов Литлпип и Блэкджек." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
+    <script>
+      window.addEventListener('error', function(e) {
+        var box = document.getElementById('init-error-banner');
+        if (box) {
+          box.style.display = 'block';
+          box.innerText = 'Сбой скрипта: ' + (e.message || e.error || 'Unknown error');
+        }
+      });
+    </script>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   </head>
   <body class="bg-zinc-950 text-zinc-100 antialiased selection:bg-amber-500/30 selection:text-amber-200 min-h-screen">
-    <div id="root"></div>
+    <div id="root">
+      <div style="min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; background-color: #09090b; color: #f59e0b; font-family: monospace; text-align: center; padding: 24px;">
+        <div style="font-size: 40px; margin-bottom: 12px;">☢️</div>
+        <div style="font-size: 18px; font-weight: bold; margin-bottom: 6px; color: #fef08a;">DUSTTOWN RP — STUDIO</div>
+        <div style="font-size: 13px; color: #a1a1aa; margin-bottom: 20px;">Загрузка терминала управления...</div>
+        <div id="init-error-banner" style="display: none; background: #7f1d1d; color: #fee2e2; border: 1px solid #ef4444; border-radius: 8px; padding: 10px 16px; margin-bottom: 16px; font-size: 12px; max-width: 90vw;"></div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-
-

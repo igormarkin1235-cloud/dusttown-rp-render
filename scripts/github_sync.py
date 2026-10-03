@@ -10,7 +10,7 @@ import shutil
 import subprocess
 import json
 
-WORKSPACE = '/app/applet'
+WORKSPACE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REPO_DIR = '/tmp/dusttown-repo'
 REPO_URL = 'https://github.com/igormarkin1235-cloud/dusttown-rp-render.git'
 
@@ -26,22 +26,56 @@ EXCLUDE_FILES = {
     'test.zip'
 }
 
-def sync_files():
-    if not os.path.exists(REPO_DIR):
-        subprocess.run(['git', 'clone', REPO_URL, REPO_DIR], check=True)
+def get_git_status():
+    """Returns local git status and diff count."""
+    target_dir = WORKSPACE if os.path.exists(os.path.join(WORKSPACE, '.git')) else REPO_DIR
+    if not os.path.exists(os.path.join(target_dir, '.git')):
+        return {
+            'isGit': False,
+            'changedFiles': [],
+            'totalChanged': 0
+        }
 
+    try:
+        proc = subprocess.run(
+            ['git', '-C', target_dir, 'status', '--porcelain'],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        lines = [line.strip() for line in proc.stdout.split('\n') if line.strip()]
+        changed_files = [line.split(maxsplit=1)[-1] for line in lines]
+        
+        # Get current commit hash
+        hash_proc = subprocess.run(
+            ['git', '-C', target_dir, 'rev-parse', '--short', 'HEAD'],
+            capture_output=True,
+            text=True
+        )
+        commit_hash = hash_proc.stdout.strip() if hash_proc.returncode == 0 else ''
+
+        return {
+            'isGit': True,
+            'commitHash': commit_hash,
+            'changedFiles': changed_files,
+            'totalChanged': len(changed_files)
+        }
+    except Exception as e:
+        return {'isGit': False, 'error': str(e), 'changedFiles': [], 'totalChanged': 0}
+
+def sync_files_to_dir(dest_dir):
     copied = 0
     for root, dirs, files in os.walk(WORKSPACE):
         dirs[:] = [d for d in dirs if d not in EXCLUDE_DIRS]
         rel_dir = os.path.relpath(root, WORKSPACE)
-        dest_dir = os.path.join(REPO_DIR, rel_dir) if rel_dir != '.' else REPO_DIR
-        os.makedirs(dest_dir, exist_ok=True)
+        target_dir = os.path.join(dest_dir, rel_dir) if rel_dir != '.' else dest_dir
+        os.makedirs(target_dir, exist_ok=True)
         for f in files:
             if f in EXCLUDE_FILES or f.endswith('.zip') or f.endswith('.pyc') or f.endswith('.tmp'):
                 continue
             src_file = os.path.join(root, f)
-            dest_file = os.path.join(dest_dir, f)
-            shutil.copy2(src_file, dest_file)
+            dst_file = os.path.join(target_dir, f)
+            shutil.copy2(src_file, dst_file)
             copied += 1
     return copied
 
@@ -51,72 +85,75 @@ def push_to_github(token, commit_msg=None):
 
     token = token.strip()
     if not commit_msg:
-        commit_msg = "feat: add Blackjack Telegram polling worker and connection fix"
+        commit_msg = "fix: repair Render build, Blackjack agent types, render.yaml and telegram polling"
+
+    # Determine working git repository
+    is_workspace_git = os.path.exists(os.path.join(WORKSPACE, '.git'))
+    target_repo = WORKSPACE if is_workspace_git else REPO_DIR
 
     try:
-        # Ensure we are aligned with remote main
-        subprocess.run(['git', '-C', REPO_DIR, 'fetch', 'origin', 'main'], check=False)
-        subprocess.run(['git', '-C', REPO_DIR, 'reset', '--hard', 'origin/main'], check=False)
+        if not is_workspace_git:
+            if not os.path.exists(REPO_DIR):
+                subprocess.run(['git', 'clone', REPO_URL, REPO_DIR], check=True)
+            subprocess.run(['git', '-C', REPO_DIR, 'fetch', 'origin', 'main'], check=False)
+            subprocess.run(['git', '-C', REPO_DIR, 'reset', '--hard', 'origin/main'], check=False)
+            sync_files_to_dir(REPO_DIR)
 
-        sync_files()
-
-        # Configure git identity if not set
-        subprocess.run(['git', '-C', REPO_DIR, 'config', 'user.name', 'DustTown Sync Agent'], check=True)
-        subprocess.run(['git', '-C', REPO_DIR, 'config', 'user.email', 'dusttown@render.internal'], check=True)
+        # Configure git identity
+        subprocess.run(['git', '-C', target_repo, 'config', 'user.name', 'DustTown Sync Agent'], check=True)
+        subprocess.run(['git', '-C', target_repo, 'config', 'user.email', 'dusttown@render.internal'], check=True)
 
         # Stage all changes
-        subprocess.run(['git', '-C', REPO_DIR, 'add', '-A'], check=True)
+        subprocess.run(['git', '-C', target_repo, 'add', '-A'], check=True)
 
         # Check if there are changes to commit
         status_proc = subprocess.run(
-            ['git', '-C', REPO_DIR, 'status', '--porcelain'],
+            ['git', '-C', target_repo, 'status', '--porcelain'],
             capture_output=True,
             text=True,
             check=True
         )
 
-        if not status_proc.stdout.strip():
-            return {
-                'success': True,
-                'message': 'Репозиторий на GitHub уже содержит все последние файлы!',
-                'alreadyUpToDate': True
-            }
+        has_changes = bool(status_proc.stdout.strip())
 
-        # Commit
-        subprocess.run(
-            ['git', '-C', REPO_DIR, 'commit', '-m', commit_msg],
-            check=True,
-            capture_output=True
-        )
+        if has_changes:
+            # Commit
+            subprocess.run(
+                ['git', '-C', target_repo, 'commit', '-m', commit_msg],
+                check=True,
+                capture_output=True
+            )
 
         # Get commit hash
         hash_proc = subprocess.run(
-            ['git', '-C', REPO_DIR, 'rev-parse', '--short', 'HEAD'],
+            ['git', '-C', target_repo, 'rev-parse', '--short', 'HEAD'],
             capture_output=True,
             text=True,
             check=True
         )
         commit_hash = hash_proc.stdout.strip()
 
-        # Push using token
+        # Push using authenticated token URL
         push_url = f"https://x-access-token:{token}@github.com/igormarkin1235-cloud/dusttown-rp-render.git"
 
         push_proc = subprocess.run(
-            ['git', '-C', REPO_DIR, 'push', push_url, 'main'],
+            ['git', '-C', target_repo, 'push', push_url, 'main'],
             capture_output=True,
             text=True
         )
 
         if push_proc.returncode == 0:
             try:
-                subprocess.run(['python3', '/app/applet/scripts/patch_manager.py', 'confirm'], cwd='/app/applet')
+                subprocess.run(['python3', os.path.join(WORKSPACE, 'scripts', 'patch_manager.py'), 'confirm'], cwd=WORKSPACE)
             except Exception:
                 pass
 
             return {
                 'success': True,
                 'commitHash': commit_hash,
-                'message': f'Успешно отправлено на GitHub (коммит {commit_hash})! Render начал автоматический деплой.'
+                'message': f'Успешно отправлено на GitHub (коммит {commit_hash})! Render начал автоматический деплой.',
+                'repoUrl': 'https://github.com/igormarkin1235-cloud/dusttown-rp-render',
+                'renderUrl': 'https://dashboard.render.com/'
             }
         else:
             err_msg = push_proc.stderr or push_proc.stdout or 'Ошибка при выполнении git push'
@@ -127,14 +164,20 @@ def push_to_github(token, commit_msg=None):
             }
 
     except Exception as e:
-        return {'success': False, 'error': str(e)}
+        err_str = str(e).replace(token, '***TOKEN***')
+        return {'success': False, 'error': err_str}
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
         print(json.dumps({'success': False, 'error': 'Token argument missing'}))
         sys.exit(1)
 
-    gh_token = sys.argv[1]
+    arg = sys.argv[1]
+    if arg == 'status':
+        print(json.dumps(get_git_status(), ensure_ascii=False))
+        sys.exit(0)
+
+    gh_token = arg
     msg = sys.argv[2] if len(sys.argv) > 2 else None
     result = push_to_github(gh_token, msg)
     print(json.dumps(result, ensure_ascii=False))

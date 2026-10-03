@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'crypto';
 import { App, cert, getApps, initializeApp } from 'firebase-admin/app';
-import { BulkWriter, Firestore, getFirestore } from 'firebase-admin/firestore';
+import { BulkWriter, Firestore, getFirestore, DocumentReference } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { AppStateData, ChatMessage, NukeBroadcastAlert } from '../types';
 
@@ -54,7 +54,7 @@ function dataHash(value: any): string {
 export class FirebaseCloudStore {
   private firestore: Firestore | null = null;
   private bucket: FirebaseStorageBucket | null = null;
-  private root: FirebaseFirestore.DocumentReference | null = null;
+  private root: DocumentReference | null = null;
   private collectionHashes = new Map<string, Map<string, string>>();
 
   async connect(): Promise<boolean> {
@@ -71,7 +71,7 @@ export class FirebaseCloudStore {
     }
 
     const appName = 'dusttown-rp-cloud';
-    const app: App = getApps().find(candidate => candidate.name === appName) || initializeApp({
+    const app: App = getApps().find((candidate: any) => candidate.name === appName) || initializeApp({
       credential: cert(serviceAccount),
       storageBucket: bucketName
     }, appName);
@@ -92,11 +92,11 @@ export class FirebaseCloudStore {
     const state: Record<string, any> = {};
     await Promise.all(stateCollections.map(async ({ key, collection }) => {
       const snapshot = await this.root!.collection(collection).get();
-      this.collectionHashes.set(collection, new Map(snapshot.docs.map(document => [document.id, dataHash(document.data())])));
+      this.collectionHashes.set(collection, new Map(snapshot.docs.map((doc: any) => [doc.id, dataHash(doc.data())])));
       state[key] = snapshot.docs
-        .map(document => ({ data: document.data(), index: document.data().__sortIndex }))
-        .sort((left, right) => (left.index ?? 0) - (right.index ?? 0))
-        .map(({ data }) => {
+        .map((doc: any) => ({ data: doc.data(), index: doc.data().__sortIndex }))
+        .sort((left: any, right: any) => (left.index ?? 0) - (right.index ?? 0))
+        .map(({ data }: any) => {
           const { __sortIndex: _sortIndex, ...item } = data;
           return item;
         });
@@ -135,20 +135,20 @@ export class FirebaseCloudStore {
       this.root.collection('chatMessages').get(),
       this.root.collection('nukeAlerts').get()
     ]);
-    this.collectionHashes.set('chatMessages', new Map(messages.docs.map(document => [document.id, dataHash(document.data())])));
-    this.collectionHashes.set('nukeAlerts', new Map(nukeAlerts.docs.map(document => [document.id, dataHash(document.data())])));
+    this.collectionHashes.set('chatMessages', new Map(messages.docs.map((doc: any) => [doc.id, dataHash(doc.data())])));
+    this.collectionHashes.set('nukeAlerts', new Map(nukeAlerts.docs.map((doc: any) => [doc.id, dataHash(doc.data())])));
     const state = {
       messages: messages.docs
-        .map(document => ({ data: document.data(), index: document.data().__sortIndex }))
-        .sort((left, right) => (left.index ?? 0) - (right.index ?? 0))
-        .map(({ data }) => {
+        .map((doc: any) => ({ data: doc.data(), index: doc.data().__sortIndex }))
+        .sort((left: any, right: any) => (left.index ?? 0) - (right.index ?? 0))
+        .map(({ data }: any) => {
           const { __sortIndex: _sortIndex, ...message } = data;
           return message as ChatMessage;
         }),
       nukeAlerts: nukeAlerts.docs
-        .map(document => ({ data: document.data(), index: document.data().__sortIndex }))
-        .sort((left, right) => (left.index ?? 0) - (right.index ?? 0))
-        .map(({ data }) => {
+        .map((doc: any) => ({ data: doc.data(), index: doc.data().__sortIndex }))
+        .sort((left: any, right: any) => (left.index ?? 0) - (right.index ?? 0))
+        .map(({ data }: any) => {
           const { __sortIndex: _sortIndex, ...alert } = data;
           return alert as NukeBroadcastAlert;
         })
@@ -182,7 +182,7 @@ export class FirebaseCloudStore {
     let oldHashes = this.collectionHashes.get(name);
     if (!oldHashes) {
       const snapshot = await collection.get();
-      oldHashes = new Map(snapshot.docs.map(document => [document.id, dataHash(document.data())]));
+      oldHashes = new Map(snapshot.docs.map((doc: any) => [doc.id, dataHash(doc.data())]));
       this.collectionHashes.set(name, oldHashes);
     }
     const desiredHashes = new Map<string, string>();

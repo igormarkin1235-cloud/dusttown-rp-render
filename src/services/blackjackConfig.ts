@@ -21,7 +21,7 @@ export interface BlackjackConfigData {
 const CONFIG_FILE = path.resolve(process.cwd(), '.blackjack_config.json');
 
 const DEFAULT_CONFIG: BlackjackConfigData = {
-  telegramBotToken: process.env.BLACKJACK_TELEGRAM_BOT_TOKEN || '8818102467:AAGCBUGpBf2_pTwBhogsG-5Wt3mujzlgNjE',
+  telegramBotToken: process.env.BLACKJACK_TELEGRAM_BOT_TOKEN || '',
   allowedTopicIds: ['general', 'main', 'moderation', 'all'],
   readOnlyTopicIds: [],
   forbiddenTopicIds: ['private_staff', 'archive'],

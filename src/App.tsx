@@ -36,7 +36,8 @@ import {
   likeArtworkOnServer,
   tipArtworkOnServer,
   serverHandshakeBuyItem,
-  serverHandshakeOpenCase
+  serverHandshakeOpenCase,
+  INITIAL_PROFILES
 } from './services/storage';
 import { processDailyFactionSalaries } from './services/factionSalary';
 import { ProfilesTopBar } from './components/ProfilesTopBar';
@@ -237,7 +238,10 @@ export default function App() {
     };
   }, []);
 
-  const currentUser = appState.profiles.find(p => p.id === currentUserId) || appState.profiles[0];
+  const currentUser: UserProfile =
+    (appState.profiles && appState.profiles.find(p => p.id === currentUserId)) ||
+    (appState.profiles && appState.profiles[0]) ||
+    INITIAL_PROFILES[0];
   const isOwner = currentUser?.username?.toLowerCase() === '@mrwhitepio';
   const isAdmin =
     isOwner ||

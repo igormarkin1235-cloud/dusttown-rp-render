@@ -52,7 +52,7 @@ export function getBlackjackBotLogs(): BlackjackBotLog[] {
 
 export function getBlackjackBotStatus() {
   const cfg = loadBlackjackConfig();
-  const token = cfg.telegramBotToken || process.env.BLACKJACK_TELEGRAM_BOT_TOKEN || '8818102467:AAGCBUGpBf2_pTwBhogsG-5Wt3mujzlgNjE';
+  const token = process.env.BLACKJACK_TELEGRAM_BOT_TOKEN || cfg.telegramBotToken || '';
   return {
     isPolling: isBlackjackPolling,
     botInfo: blackjackBotInfo,
@@ -72,7 +72,7 @@ export function getBlackjackBotStatus() {
  */
 export async function tgBlackjackApi(method: string, body?: any) {
   const cfg = loadBlackjackConfig();
-  const token = cfg.telegramBotToken || process.env.BLACKJACK_TELEGRAM_BOT_TOKEN || '8818102467:AAGCBUGpBf2_pTwBhogsG-5Wt3mujzlgNjE';
+  const token = process.env.BLACKJACK_TELEGRAM_BOT_TOKEN || cfg.telegramBotToken;
   if (!token) {
     throw new Error('Токен Telegram для Блэкджек не настроен');
   }
@@ -132,7 +132,8 @@ export async function startBlackjackPolling(options: { resolveUserId?: (username
     while (isBlackjackPolling && blackjackAbortController && !blackjackAbortController.signal.aborted) {
       try {
         const cfg = loadBlackjackConfig();
-        const token = cfg.telegramBotToken || process.env.BLACKJACK_TELEGRAM_BOT_TOKEN || '8818102467:AAGCBUGpBf2_pTwBhogsG-5Wt3mujzlgNjE';
+        const token = process.env.BLACKJACK_TELEGRAM_BOT_TOKEN || cfg.telegramBotToken;
+        if (!token) break;
         const url = `https://api.telegram.org/bot${token}/getUpdates?offset=${lastUpdateId + 1}&timeout=20`;
 
         const res = await fetch(url, { signal: blackjackAbortController.signal });

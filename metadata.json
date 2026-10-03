@@ -1,6 +1,6 @@
 {
-  "name": "DustTown RP - Mini App & Patch Manager",
-  "description": "Интерактивный Mini App для ролевого проекта DustTown RP (Fallout: Equestria): события, запланированные сессии, анкеты персонажей, профили, рынок, кейсы и менеджер патчей обновлений.",
+  "name": "DustTown RP — Студия Патчей и Миграции",
+  "description": "Центр управления, создания патчей и прямой миграции в GitHub для DustTown RP и ИИ-агентов Литлпип и Блэкджек.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -603,12 +603,19 @@ export function loadAppState(): AppStateData {
 
         return {
           ...parsed,
-          profiles: enrichedProfiles,
+          profiles: Array.isArray(enrichedProfiles) && enrichedProfiles.length > 0 ? enrichedProfiles : INITIAL_PROFILES,
+          admins: Array.isArray(parsed.admins) && parsed.admins.length > 0 ? parsed.admins : INITIAL_ADMINS,
+          characters: Array.isArray(parsed.characters) ? parsed.characters : INITIAL_CHARACTERS,
+          events: Array.isArray(parsed.events) ? parsed.events : INITIAL_EVENTS,
+          awards: Array.isArray(parsed.awards) ? parsed.awards : INITIAL_AWARDS,
+          cases: Array.isArray(parsed.cases) ? parsed.cases : INITIAL_CASES,
+          caseItems: Array.isArray(parsed.caseItems) ? parsed.caseItems : INITIAL_CASE_ITEMS,
           achievements: Array.isArray(parsed.achievements) && parsed.achievements.length > 0 ? parsed.achievements : INITIAL_ACHIEVEMENTS,
           weeklyShopItems: Array.isArray(parsed.weeklyShopItems) ? parsed.weeklyShopItems : INITIAL_WEEKLY_SHOP_ITEMS,
           auctionListings: Array.isArray(parsed.auctionListings) ? parsed.auctionListings : INITIAL_AUCTION_LISTINGS,
           factions: activeFactions,
           artworks: Array.isArray(parsed.artworks) && parsed.artworks.length > 0 ? parsed.artworks : INITIAL_ARTWORKS,
+          activityLogs: Array.isArray(parsed.activityLogs) ? parsed.activityLogs : [],
           notifications: Array.isArray(parsed.notifications) && parsed.notifications.length > 0 ? parsed.notifications : INITIAL_NOTIFICATIONS,
           botVersions: Array.isArray(parsed.botVersions) && parsed.botVersions.length > 0 ? parsed.botVersions : INITIAL_BOT_VERSIONS
         };
