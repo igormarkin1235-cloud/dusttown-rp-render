@@ -30,9 +30,10 @@ test('finds newly added supported meme photos and ignores unrelated files', () =
 test('uses the checked-in annotated catalog without Gemini OCR', async () => {
   const memes = await getLittlepipMemeCatalog('unused-api-key');
 
-  assert.equal(memes.length, 27);
+  assert.equal(memes.length, 85);
   assert.ok(memes.every(meme => meme.ocrText && meme.description));
   assert.ok(memes.some(meme => meme.ocrText === 'Это шедевр'));
+  assert.ok(memes.some(meme => meme.ocrText === 'Не умничай'));
 });
 
 test('extracts only a known meme marker and cleans it from the spoken reply', () => {
