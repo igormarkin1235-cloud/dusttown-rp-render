@@ -40,20 +40,17 @@ import {
   Trash2,
   Users,
   Award,
-  BookOpen
+  BookOpen,
+  Database,
+  Brain,
+  Clock,
+  RotateCcw,
+  History
 } from 'lucide-react';
 import { RunningPony } from './RunningPony';
 
 interface BotControlPanelProps {
   onOpenMiniApp: () => void;
-}
-
-interface AvailablePipTopic {
-  chatId: number | string;
-  chatTitle: string;
-  threadId: number;
-  title: string;
-  lastSeenAt: string;
 }
 
 export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp }) => {
@@ -204,8 +201,8 @@ export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp 
     } catch (e) {}
   };
 
-  // Littlepip Control, Topics & Reputation States
-  const [pipActiveTab, setPipActiveTab] = useState<'personality' | 'topics' | 'reputation' | 'commands'>('personality');
+  // Littlepip Control, Topics, Memory & Reputation States
+  const [pipActiveTab, setPipActiveTab] = useState<'personality' | 'topics' | 'memory' | 'reputation' | 'commands'>('topics');
   const [pipSettings, setPipSettings] = useState<any>({
     boldnessLevel: 'saucy',
     allowProfanity: true,
@@ -224,12 +221,21 @@ export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp 
   // Topics management
   const [newTopicThreadId, setNewTopicThreadId] = useState('');
   const [newTopicTitle, setNewTopicTitle] = useState('');
-  const [newTopicChatId, setNewTopicChatId] = useState('');
   const [newTopicPermission, setNewTopicPermission] = useState<'read_write' | 'read_only' | 'blocked'>('read_only');
   const [newTopicNotes, setNewTopicNotes] = useState('');
-  const [availablePipTopics, setAvailablePipTopics] = useState<AvailablePipTopic[]>([]);
-  const [loadingPipTopics, setLoadingPipTopics] = useState(false);
-  const [pipTopicsError, setPipTopicsError] = useState<string | null>(null);
+
+  // Memory & Knowledge Store (.littlepip_memory.json)
+  const [memoryData, setMemoryData] = useState<any>({
+    learnedKnowledge: [],
+    recentDialogues: [],
+    lastUpdated: ''
+  });
+  const [loadingMemory, setLoadingMemory] = useState(false);
+  const [memorySearch, setMemorySearch] = useState('');
+  const [memoryCategoryFilter, setMemoryCategoryFilter] = useState('all');
+  const [memoryActionNotice, setMemoryActionNotice] = useState<string | null>(null);
+  const [memoryError, setMemoryError] = useState<string | null>(null);
+  const [resetConfirmScope, setResetConfirmScope] = useState<'24h' | '3d' | 'all' | null>(null);
 
   // Reputation management
   const [reputationList, setReputationList] = useState<any[]>([]);
@@ -246,19 +252,68 @@ export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp 
     } catch (e) {}
   };
 
-  const fetchAvailablePipTopics = async () => {
-    setLoadingPipTopics(true);
-    setPipTopicsError(null);
+  const fetchMemory = async () => {
+    setLoadingMemory(true);
+    setMemoryError(null);
     try {
-      const res = await fetch('/api/littlepip/topics/available');
+      const res = await fetch('/api/littlepip/memory');
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Не удалось загрузить топики.');
-      setAvailablePipTopics(Array.isArray(data.topics) ? data.topics : []);
+      if (!res.ok) throw new Error(data.error || 'Не удалось загрузить память Пипки.');
+      if (data.memory) setMemoryData(data.memory);
     } catch (error) {
-      setPipTopicsError(error instanceof Error ? error.message : 'Не удалось загрузить топики.');
+      setMemoryError(error instanceof Error ? error.message : 'Не удалось загрузить память Пипки.');
     } finally {
-      setLoadingPipTopics(false);
+      setLoadingMemory(false);
     }
+  };
+
+  const handleResetMemory = async (scope: '24h' | '3d' | 'all') => {
+    setMemoryError(null);
+    try {
+      const res = await fetch('/api/littlepip/memory/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scope })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Не удалось сбросить память Пипки.');
+      if (data.memory) setMemoryData(data.memory);
+      const labels: Record<string, string> = {
+        '24h': 'Память за последние 24 часа успешно сброшена!',
+        '3d': 'Память за последние 3 дня успешно сброшена!',
+        'all': 'ВСЯ память и база знаний Пипки полностью очищена!'
+      };
+      setMemoryActionNotice(labels[scope]);
+      setTimeout(() => setMemoryActionNotice(null), 5000);
+    } catch (error) {
+      setMemoryError(error instanceof Error ? error.message : 'Не удалось сбросить память Пипки.');
+    } finally {
+      setResetConfirmScope(null);
+    }
+  };
+
+  const handleDeleteMemoryItem = async (id: string) => {
+    setMemoryError(null);
+    try {
+      const res = await fetch(`/api/littlepip/memory/${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Не удалось удалить запись памяти.');
+      if (data.memory) setMemoryData(data.memory);
+    } catch (error) {
+      setMemoryError(error instanceof Error ? error.message : 'Не удалось удалить запись памяти.');
+    }
+  };
+
+  const handleQuickTopicPermission = async (threadId: string | number, permission: 'read_write' | 'read_only' | 'blocked') => {
+    const topic = pipSettings?.topics?.[String(threadId)];
+    const title = topic?.title || `Топик #${threadId}`;
+    const notes = topic?.notes;
+    await handleSetTopic(threadId, title, permission, notes);
+  };
+
+  const handleSyncAllGroupTopics = async () => {
+    await fetchPipConfig();
+    await fetchMemory();
   };
 
   const handleSavePipSettings = async () => {
@@ -321,59 +376,39 @@ export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp 
     } catch (e) {}
   };
 
-  const handleSetTopic = async (
-    threadId: string | number,
-    title: string,
-    permission: 'read_write' | 'read_only' | 'blocked',
-    notes?: string,
-    chatId?: string | number,
-    chatTitle?: string
-  ) => {
+  const handleSetTopic = async (threadId: string | number, title: string, permission: 'read_write' | 'read_only' | 'blocked', notes?: string) => {
     if (!threadId) return;
     try {
       const res = await fetch('/api/littlepip/topics/set', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          threadId,
-          title: title || `Топик #${threadId}`,
-          permission,
-          enabled: true,
-          notes,
-          chatId: chatId || undefined,
-          chatTitle
-        })
+        body: JSON.stringify({ threadId, title: title || `Топик #${threadId}`, permission, enabled: true, notes })
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Не удалось сохранить режим топика.');
-      if (data.settings) setPipSettings(data.settings);
-      setNewTopicThreadId('');
-      setNewTopicTitle('');
-      setNewTopicChatId('');
-      setNewTopicNotes('');
-      setPipTopicsError(null);
-    } catch (error) {
-      setPipTopicsError(error instanceof Error ? error.message : 'Не удалось сохранить режим топика.');
-    }
+      if (res.ok) {
+        const data = await res.json();
+        if (data.settings) setPipSettings(data.settings);
+        setNewTopicThreadId('');
+        setNewTopicTitle('');
+        setNewTopicNotes('');
+      }
+    } catch (e) {}
   };
 
-  const handleRemoveTopic = async (threadId: string | number, chatId?: string | number) => {
+  const handleRemoveTopic = async (threadId: string | number) => {
     try {
-      const query = chatId === undefined ? '' : `?chatId=${encodeURIComponent(chatId)}`;
-      const res = await fetch(`/api/littlepip/topics/${encodeURIComponent(threadId)}${query}`, { method: 'DELETE' });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Не удалось удалить настройку топика.');
-      if (data.settings) setPipSettings(data.settings);
-    } catch (error) {
-      setPipTopicsError(error instanceof Error ? error.message : 'Не удалось удалить настройку топика.');
-    }
+      const res = await fetch(`/api/littlepip/topics/${threadId}`, { method: 'DELETE' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.settings) setPipSettings(data.settings);
+      }
+    } catch (e) {}
   };
 
   useEffect(() => {
     fetchUpdateStatus();
     fetchPipConfig();
-    fetchAvailablePipTopics();
     fetchReputationList();
+    fetchMemory();
     const interval = setInterval(fetchUpdateStatus, 3500);
     return () => clearInterval(interval);
   }, []);
@@ -1141,6 +1176,26 @@ export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp 
 
           <button
             onClick={() => {
+              setPipActiveTab('memory');
+              fetchMemory();
+            }}
+            className={`px-4 py-2 rounded-xl text-xs font-heading font-bold uppercase tracking-wider transition flex items-center gap-2 shrink-0 ${
+              pipActiveTab === 'memory'
+                ? 'bg-blue-500 text-black shadow-lg shadow-blue-950/40'
+                : 'bg-zinc-900/80 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-zinc-800'
+            }`}
+          >
+            <Brain className="w-3.5 h-3.5" />
+            <span>Память и База знаний</span>
+            {memoryData?.learnedKnowledge?.length > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full bg-blue-900/80 text-[10px] text-blue-200 border border-blue-400/40 font-mono">
+                {memoryData.learnedKnowledge.length}
+              </span>
+            )}
+          </button>
+
+          <button
+            onClick={() => {
               setPipActiveTab('reputation');
               fetchReputationList();
             }}
@@ -1375,146 +1430,164 @@ export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp 
         {/* TAB 2: TELEGRAM FORUM TOPICS & PERMISSIONS */}
         {pipActiveTab === 'topics' && (
           <div className="space-y-5 animate-fade-in relative z-10">
-            {/* Info notice about Read-Only and Write topics */}
-            <div className="p-4 rounded-2xl bg-purple-950/30 border border-purple-500/40 text-xs text-purple-200 space-y-1.5">
-              <div className="flex items-center gap-2 font-bold font-heading uppercase text-purple-300">
-                <BookOpen className="w-4 h-4 text-purple-400" />
-                <span>Управление вкладками (топиками) группы Telegram</span>
-              </div>
-              <p className="text-[11px] text-zinc-300 leading-relaxed">
-                Выберите обнаруженный топик группы, чтобы его ID и название подставились автоматически, затем задайте режим Пипки.
-                <br />
-                • <strong className="text-amber-300">Только чтение (Read-only)</strong>: например топик «Правила» или «Лор» — Пипка внимательно всё читает, впитывает в память и обновляет репутацию участников, но писать туда ей <strong className="text-red-400">СТРОГО ЗАПРЕЩЕНО</strong>!
-                <br />
-                • <strong className="text-emerald-300">Чтение и ответы (Read & Write)</strong>: обычный живой диалог, общение, ответы на вопросы и команды.
-                <br />
-                • <strong className="text-red-300">Запрет (Blocked)</strong>: Пипка полностью игнорирует сообщения из этой вкладки.
-                <br />
-                Список пополняется автоматически по мере того, как бот-администратор получает сообщения в топиках. Telegram Bot API не предоставляет полный перечень топиков, поэтому ранее неактивные ветки появятся после первого нового сообщения в них.
-              </p>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div>
-                  <div className="text-xs font-bold font-heading text-purple-300 uppercase tracking-wide">
-                    Топики групп, где Пипка — администратор
-                  </div>
-                  <p className="text-[10px] text-zinc-500 mt-1">
-                    Найдено: {availablePipTopics.length}. Ветка появляется здесь после сообщения в ней.
-                  </p>
+            {/* Header with Counters & Sync Button */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-purple-950/30 border border-purple-500/40">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 font-bold font-heading uppercase text-purple-200 text-xs">
+                  <BookOpen className="w-4 h-4 text-purple-400" />
+                  <span>Все вкладки (топики) супергруппы где есть Пипка</span>
                 </div>
+                <p className="text-[11px] text-zinc-300 leading-snug">
+                  Для каждой вкладки выберите режим: <strong className="text-emerald-300">«Можно писать»</strong>, <strong className="text-amber-300">«Ток читать и запоминать»</strong> (в отдельный файл) или <strong className="text-red-400">«Запретить»</strong>.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
                 <button
-                  onClick={fetchAvailablePipTopics}
-                  disabled={loadingPipTopics}
-                  className="px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-xs text-zinc-200 transition flex items-center justify-center gap-2 disabled:opacity-50"
+                  onClick={handleSyncAllGroupTopics}
+                  className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-heading font-bold text-xs uppercase tracking-wide transition flex items-center gap-1.5 shadow-md shadow-purple-950/40"
+                  title="Обновить список топиков группы"
                 >
-                  <RefreshCw className={`w-3.5 h-3.5 ${loadingPipTopics ? 'animate-spin' : ''}`} />
-                  Обновить список
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Синхронизировать топики</span>
                 </button>
               </div>
-              <select
-                value=""
-                onChange={event => {
-                  const selectedTopic = availablePipTopics.find(
-                    topic => `${topic.chatId}:${topic.threadId}` === event.target.value
-                  );
-                  if (!selectedTopic) return;
-                  setNewTopicChatId(String(selectedTopic.chatId));
-                  setNewTopicThreadId(String(selectedTopic.threadId));
-                  setNewTopicTitle(selectedTopic.title);
-                }}
-                className="w-full px-3 py-2.5 rounded-xl bg-zinc-950 border border-zinc-700 text-xs text-zinc-200 font-mono focus:outline-none focus:border-purple-500"
-              >
-                <option value="">
-                  {loadingPipTopics
-                    ? 'Загрузка списка топиков...'
-                    : availablePipTopics.length
-                      ? 'Выберите группу и топик для настройки'
-                      : 'Пока нет обнаруженных топиков'}
-                </option>
-                {availablePipTopics.map(topic => (
-                  <option key={`${topic.chatId}:${topic.threadId}`} value={`${topic.chatId}:${topic.threadId}`}>
-                    {topic.chatTitle} — {topic.title} (ID: {topic.threadId})
-                  </option>
-                ))}
-              </select>
-              {pipTopicsError && (
-                <p role="alert" className="text-xs text-red-300">{pipTopicsError}</p>
-              )}
             </div>
 
-            {/* List of configured topics */}
-            <div className="space-y-2">
+            {/* Topic Status Pill Summary */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono-pip">
+              <div className="p-2.5 rounded-xl bg-black/50 border border-zinc-800 flex items-center justify-between">
+                <span className="text-zinc-400 text-[11px]">Всего вкладок:</span>
+                <span className="font-bold text-white text-xs">{Object.keys(pipSettings?.topics || {}).length}</span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-emerald-950/30 border border-emerald-500/30 flex items-center justify-between">
+                <span className="text-emerald-400 text-[11px]">💬 Можно писать:</span>
+                <span className="font-bold text-emerald-300 text-xs">
+                  {Object.values(pipSettings?.topics || {}).filter((t: any) => t.permission === 'read_write').length}
+                </span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-amber-950/30 border border-amber-500/30 flex items-center justify-between">
+                <span className="text-amber-400 text-[11px]">👁️ Только читать:</span>
+                <span className="font-bold text-amber-300 text-xs">
+                  {Object.values(pipSettings?.topics || {}).filter((t: any) => t.permission === 'read_only').length}
+                </span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-red-950/30 border border-red-500/30 flex items-center justify-between">
+                <span className="text-red-400 text-[11px]">🚫 Запрещено:</span>
+                <span className="font-bold text-red-300 text-xs">
+                  {Object.values(pipSettings?.topics || {}).filter((t: any) => t.permission === 'blocked').length}
+                </span>
+              </div>
+            </div>
+
+            {/* List of All Group Topics with 3-way Segmented Buttons */}
+            <div className="space-y-2.5">
               <div className="flex items-center justify-between text-xs text-zinc-400 font-mono-pip">
-                <span>Сконфигурированные топики:</span>
-                <span>Всего: {Object.keys(pipSettings?.topics || {}).length}</span>
+                <span>Список вкладок (топиков) группы Telegram:</span>
+                <span className="text-[10px] text-zinc-500">Кликните на режим для мгновенного переключения</span>
               </div>
 
               <div className="grid grid-cols-1 gap-2.5">
-                {Object.entries(pipSettings?.topics || {}).map(([key, topic]: [string, any]) => (
-                  <div
-                    key={key}
-                    className="p-3.5 rounded-2xl bg-black/60 border border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-zinc-700 transition"
-                  >
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs font-bold font-heading text-zinc-100">{topic.title}</span>
-                        {topic.chatTitle && (
-                          <span className="text-[10px] text-purple-300">{topic.chatTitle}</span>
-                        )}
-                        <code className="px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-400 font-mono">
-                          ID: {topic.threadId}
-                        </code>
-                        {topic.permission === 'read_only' && (
-                          <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[9px] font-mono-pip font-bold flex items-center gap-1">
-                            <Eye className="w-3 h-3" />
-                            <span>ТОЛЬКО ЧТЕНИЕ (ПИСАТЬ ЗАПРЕЩЕНО)</span>
-                          </span>
-                        )}
-                        {topic.permission === 'read_write' && (
-                          <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[9px] font-mono-pip font-bold flex items-center gap-1">
-                            <MessageSquare className="w-3 h-3" />
-                            <span>ЧТЕНИЕ И ОТВЕТЫ</span>
-                          </span>
-                        )}
-                        {topic.permission === 'blocked' && (
-                          <span className="px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/40 text-[9px] font-mono-pip font-bold flex items-center gap-1">
-                            <EyeOff className="w-3 h-3" />
-                            <span>ЗАБЛОКИРОВАН</span>
-                          </span>
+                {Object.entries(pipSettings?.topics || {}).map(([key, topic]: [string, any]) => {
+                  const perm = topic.permission || 'read_write';
+                  return (
+                    <div
+                      key={key}
+                      className={`p-4 rounded-2xl border transition-all flex flex-col md:flex-row md:items-center justify-between gap-3 ${
+                        perm === 'read_write'
+                          ? 'bg-zinc-950/90 border-emerald-500/40 shadow-sm shadow-emerald-950/20'
+                          : perm === 'read_only'
+                          ? 'bg-zinc-950/90 border-amber-500/40 shadow-sm shadow-amber-950/20'
+                          : 'bg-zinc-950/70 border-red-900/50 opacity-80'
+                      }`}
+                    >
+                      <div className="space-y-1 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs font-bold font-heading text-zinc-100">{topic.title}</span>
+                          <code className="px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-400 font-mono">
+                            ID: {topic.threadId}
+                          </code>
+                          {perm === 'read_only' && (
+                            <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[9px] font-mono-pip font-bold flex items-center gap-1">
+                              <Eye className="w-3 h-3" />
+                              <span>ЧИТАЕТ И ЗАПОМИНАЕТ В ФАЙЛ</span>
+                            </span>
+                          )}
+                          {perm === 'read_write' && (
+                            <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[9px] font-mono-pip font-bold flex items-center gap-1">
+                              <MessageSquare className="w-3 h-3" />
+                              <span>АКТИВНОЕ ОБЩЕНИЕ</span>
+                            </span>
+                          )}
+                          {perm === 'blocked' && (
+                            <span className="px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/40 text-[9px] font-mono-pip font-bold flex items-center gap-1">
+                              <EyeOff className="w-3 h-3" />
+                              <span>ИГНОРИРУЕТСЯ</span>
+                            </span>
+                          )}
+                        </div>
+                        {topic.notes && (
+                          <p className="text-[11px] text-zinc-400 leading-snug">{topic.notes}</p>
                         )}
                       </div>
-                      {topic.notes && (
-                        <p className="text-[11px] text-zinc-400 leading-snug">{topic.notes}</p>
-                      )}
-                    </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
-                      <select
-                        value={topic.permission}
-                        onChange={e =>
-                          handleSetTopic(topic.threadId, topic.title, e.target.value as any, topic.notes, topic.chatId, topic.chatTitle)
-                        }
-                        className="px-2.5 py-1.5 rounded-xl bg-zinc-900 border border-zinc-700 text-xs text-zinc-200 font-mono focus:outline-none focus:border-purple-500"
-                      >
-                        <option value="read_only">👁️ Только чтение</option>
-                        <option value="read_write">💬 Чтение и ответы</option>
-                        <option value="blocked">🚫 Заблокировать</option>
-                      </select>
-
-                      {key !== 'root' && (
+                      {/* 3-way Segmented Button Selector */}
+                      <div className="flex items-center gap-1.5 bg-black/80 p-1 rounded-xl border border-zinc-800 shrink-0">
                         <button
-                          onClick={() => handleRemoveTopic(topic.threadId, topic.chatId)}
-                          className="p-2 rounded-xl bg-red-950/40 hover:bg-red-900/60 border border-red-500/30 text-red-400 hover:text-red-200 transition"
-                          title="Удалить топик из настроек"
+                          type="button"
+                          onClick={() => handleQuickTopicPermission(topic.threadId, 'read_write')}
+                          className={`px-3 py-1.5 rounded-lg text-[11px] font-heading font-bold uppercase transition flex items-center gap-1 ${
+                            perm === 'read_write'
+                              ? 'bg-emerald-500 text-black shadow-md shadow-emerald-950/50'
+                              : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
+                          }`}
+                          title="Разрешить Пипке читать и писать сообщения в этот топик"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <MessageSquare className="w-3 h-3" />
+                          <span>Можно писать</span>
                         </button>
-                      )}
+
+                        <button
+                          type="button"
+                          onClick={() => handleQuickTopicPermission(topic.threadId, 'read_only')}
+                          className={`px-3 py-1.5 rounded-lg text-[11px] font-heading font-bold uppercase transition flex items-center gap-1 ${
+                            perm === 'read_only'
+                              ? 'bg-amber-500 text-black shadow-md shadow-amber-950/50'
+                              : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
+                          }`}
+                          title="Только читать: Пипка читает и запоминает информацию в отдельный файл, но писать запрещено"
+                        >
+                          <Eye className="w-3 h-3" />
+                          <span>Ток читать и запоминать</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleQuickTopicPermission(topic.threadId, 'blocked')}
+                          className={`px-3 py-1.5 rounded-lg text-[11px] font-heading font-bold uppercase transition flex items-center gap-1 ${
+                            perm === 'blocked'
+                              ? 'bg-red-600 text-white shadow-md shadow-red-950/50'
+                              : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
+                          }`}
+                          title="Запретить: Пипка полностью игнорирует сообщения из этой ветки"
+                        >
+                          <EyeOff className="w-3 h-3" />
+                          <span>Запретить</span>
+                        </button>
+
+                        {key !== 'root' && (
+                          <button
+                            onClick={() => handleRemoveTopic(topic.threadId)}
+                            className="p-1.5 ml-1 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-red-950/40 transition"
+                            title="Удалить топик"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
@@ -1522,37 +1595,26 @@ export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp 
             <div className="p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-3">
               <div className="text-xs font-bold font-heading text-purple-300 uppercase tracking-wide flex items-center gap-1.5">
                 <Plus className="w-4 h-4 text-purple-400" />
-                <span>Добавить новую вкладку (топик супергруппы)</span>
+                <span>Добавить новую вкладку (топик) вручную</span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
-                <div className="sm:col-span-2 space-y-1">
+                <div className="sm:col-span-3 space-y-1">
                   <label className="text-[10px] text-zinc-400 uppercase font-mono-pip">ID ветки / Thread ID:</label>
                   <input
                     type="text"
-                    placeholder="Например: 42"
+                    placeholder="Например: 42 или radio"
                     value={newTopicThreadId}
                     onChange={e => setNewTopicThreadId(e.target.value)}
                     className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-xs text-zinc-200 font-mono focus:outline-none focus:border-purple-500"
                   />
                 </div>
 
-                <div className="sm:col-span-2 space-y-1">
-                  <label className="text-[10px] text-zinc-400 uppercase font-mono-pip">ID группы:</label>
-                  <input
-                    type="text"
-                    placeholder="Автоматически из списка"
-                    value={newTopicChatId}
-                    onChange={e => setNewTopicChatId(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-xs text-zinc-200 font-mono focus:outline-none focus:border-purple-500"
-                  />
-                </div>
-
-                <div className="sm:col-span-3 space-y-1">
+                <div className="sm:col-span-4 space-y-1">
                   <label className="text-[10px] text-zinc-400 uppercase font-mono-pip">Название вкладки:</label>
                   <input
                     type="text"
-                    placeholder="Например: Правила и Законы"
+                    placeholder="Например: Радиостанция и Новости"
                     value={newTopicTitle}
                     onChange={e => setNewTopicTitle(e.target.value)}
                     className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-xs text-zinc-200 font-mono-pip focus:outline-none focus:border-purple-500"
@@ -1566,27 +1628,15 @@ export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp 
                     onChange={e => setNewTopicPermission(e.target.value as any)}
                     className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-xs text-zinc-200 font-mono focus:outline-none focus:border-purple-500"
                   >
-                    <option value="read_only">👁️ Только чтение (Запрет на ответы)</option>
-                    <option value="read_write">💬 Чтение и ответы (Диалог)</option>
-                    <option value="blocked">🚫 Заблокирован (Игнор)</option>
+                    <option value="read_write">💬 Можно писать (Диалог)</option>
+                    <option value="read_only">👁️ Ток читать и запоминать</option>
+                    <option value="blocked">🚫 Запретить (Игнор)</option>
                   </select>
                 </div>
 
                 <div className="sm:col-span-2 flex items-end">
                   <button
-                    onClick={() => {
-                      const selectedGroup = availablePipTopics.find(
-                        topic => String(topic.chatId) === newTopicChatId
-                      );
-                      handleSetTopic(
-                        newTopicThreadId,
-                        newTopicTitle,
-                        newTopicPermission,
-                        newTopicNotes,
-                        newTopicChatId || undefined,
-                        selectedGroup?.chatTitle
-                      );
-                    }}
+                    onClick={() => handleSetTopic(newTopicThreadId, newTopicTitle, newTopicPermission, newTopicNotes)}
                     disabled={!newTopicThreadId.trim()}
                     className="w-full py-2 px-3 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white font-heading font-black text-xs uppercase tracking-wider transition shadow-md shadow-purple-950/50 flex items-center justify-center gap-1.5"
                   >
@@ -1600,12 +1650,273 @@ export const BotControlPanel: React.FC<BotControlPanelProps> = ({ onOpenMiniApp 
                 <label className="text-[10px] text-zinc-400 uppercase font-mono-pip">Заметки / Назначение для ИИ (Опционально):</label>
                 <input
                   type="text"
-                  placeholder="Например: База правил чата, Пипка запоминает регламент и цитирует при нарушении"
+                  placeholder="Например: Информационная колонка Стойла, Пипка запоминает сводки"
                   value={newTopicNotes}
                   onChange={e => setNewTopicNotes(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-xs text-zinc-300 font-mono-pip focus:outline-none focus:border-purple-500"
                 />
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 3: DEDICATED MEMORY & KNOWLEDGE BASE (.littlepip_memory.json) */}
+        {pipActiveTab === 'memory' && (
+          <div className="space-y-5 animate-fade-in relative z-10">
+            {/* Memory Header Card */}
+            <div className="p-5 rounded-2xl bg-gradient-to-r from-blue-950/40 via-zinc-950 to-indigo-950/40 border-2 border-blue-500/50 space-y-2">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-blue-500/20 border border-blue-500/40 flex items-center justify-center text-blue-400">
+                    <Brain className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-sm font-bold text-blue-200 font-heading uppercase tracking-wide">
+                        Отдельный файл памяти Пипки
+                      </h4>
+                      <code className="px-2 py-0.5 rounded bg-blue-950/80 border border-blue-500/40 text-[10px] text-blue-300 font-mono">
+                        .littlepip_memory.json
+                      </code>
+                    </div>
+                    <p className="text-[11px] text-zinc-400 mt-0.5">
+                      Сюда попадает вся информация из вкладок с режимом «Ток читать и запоминать» (правила, лор, объявления). Пипка использует эти факты при общении.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={fetchMemory}
+                  disabled={loadingMemory}
+                  className="px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-700 text-xs font-mono-pip flex items-center gap-1.5 transition shrink-0"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${loadingMemory ? 'animate-spin' : ''}`} />
+                  <span>Обновить память</span>
+                </button>
+              </div>
+
+              {memoryActionNotice && (
+                <div className="p-2.5 rounded-xl bg-emerald-950/80 border border-emerald-500/50 text-xs text-emerald-300 flex items-center gap-2 animate-fade-in">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>{memoryActionNotice}</span>
+                </div>
+              )}
+              {memoryError && (
+                <p role="alert" className="text-xs text-red-300">{memoryError}</p>
+              )}
+            </div>
+
+            {/* THREE RESET MEMORY BUTTONS */}
+            <div className="p-4 rounded-2xl bg-black/60 border border-zinc-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-xs font-bold text-zinc-200 font-heading uppercase tracking-wide flex items-center gap-1.5">
+                    <RotateCcw className="w-4 h-4 text-amber-400" />
+                    <span>Управление сбросом памяти</span>
+                  </h4>
+                  <p className="text-[11px] text-zinc-400">
+                    Выберите глубину очистки воспоминаний и фактов в файле памяти:
+                  </p>
+                </div>
+                <span className="text-[10px] px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-400 font-mono">
+                  Записей: {memoryData?.learnedKnowledge?.length || 0}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {/* Reset 24 Hours */}
+                <div className="p-3.5 rounded-xl bg-zinc-900/60 border border-amber-500/30 space-y-2 flex flex-col justify-between">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-amber-300 font-heading">
+                      <Clock className="w-3.5 h-3.5" />
+                      <span>Сброс за 24 часа</span>
+                    </div>
+                    <p className="text-[10px] text-zinc-400 leading-snug">
+                      Удаляет свежие воспоминания и события за последние сутки. Ранее выученные правила сохраняются.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => handleResetMemory('24h')}
+                    className="w-full py-2 px-3 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-heading font-bold uppercase tracking-wider transition flex items-center justify-center gap-1.5"
+                  >
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>Сбросить за 24ч</span>
+                  </button>
+                </div>
+
+                {/* Reset 3 Days */}
+                <div className="p-3.5 rounded-xl bg-zinc-900/60 border border-orange-500/30 space-y-2 flex flex-col justify-between">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-orange-300 font-heading">
+                      <History className="w-3.5 h-3.5" />
+                      <span>Сброс за 3 дня</span>
+                    </div>
+                    <p className="text-[10px] text-zinc-400 leading-snug">
+                      Удаляет память и факты за последние 72 часа, откатывая базу к более раннему стабильному состоянию.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => handleResetMemory('3d')}
+                    className="w-full py-2 px-3 rounded-lg bg-orange-500/20 hover:bg-orange-500/30 text-orange-300 border border-orange-500/40 text-xs font-heading font-bold uppercase tracking-wider transition flex items-center justify-center gap-1.5"
+                  >
+                    <History className="w-3.5 h-3.5" />
+                    <span>Сбросить за 3 дня</span>
+                  </button>
+                </div>
+
+                {/* Reset ALL Memory */}
+                <div className="p-3.5 rounded-xl bg-red-950/30 border border-red-500/40 space-y-2 flex flex-col justify-between">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-red-300 font-heading">
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>Сброс ВСЕЙ памяти</span>
+                    </div>
+                    <p className="text-[10px] text-zinc-400 leading-snug">
+                      Полная очистка файла .littlepip_memory.json. Стирает все выученные правила, факты и диалоги.
+                    </p>
+                  </div>
+                  {resetConfirmScope === 'all' ? (
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => handleResetMemory('all')}
+                        className="flex-1 py-2 px-2 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-heading font-black uppercase tracking-wider transition"
+                      >
+                        Да, стереть всё!
+                      </button>
+                      <button
+                        onClick={() => setResetConfirmScope(null)}
+                        className="py-2 px-2.5 rounded-lg bg-zinc-800 text-zinc-300 text-xs font-mono transition"
+                      >
+                        Отмена
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setResetConfirmScope('all')}
+                      className="w-full py-2 px-3 rounded-lg bg-red-600/30 hover:bg-red-600/50 text-red-200 border border-red-500/50 text-xs font-heading font-bold uppercase tracking-wider transition flex items-center justify-center gap-1.5"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>Очистить ВСЮ память</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Feed of Learned Knowledge Items */}
+            <div className="space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-zinc-300 font-heading uppercase">
+                    Запомненная информация ({memoryData?.learnedKnowledge?.length || 0}):
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="Поиск по фактам и цитатам..."
+                    value={memorySearch}
+                    onChange={e => setMemorySearch(e.target.value)}
+                    className="px-3 py-1.5 rounded-xl bg-zinc-900 border border-zinc-700 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-blue-500 font-mono"
+                  />
+                  <select
+                    value={memoryCategoryFilter}
+                    onChange={e => setMemoryCategoryFilter(e.target.value)}
+                    className="px-2.5 py-1.5 rounded-xl bg-zinc-900 border border-zinc-700 text-xs text-zinc-300 font-mono focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="all">Все категории</option>
+                    <option value="rule">Правила</option>
+                    <option value="lore">Лор и Мир</option>
+                    <option value="announcement">Объявления</option>
+                    <option value="player_fact">Факты игроков</option>
+                  </select>
+                </div>
+              </div>
+
+              {(!memoryData?.learnedKnowledge || memoryData.learnedKnowledge.length === 0) ? (
+                <div className="p-8 rounded-2xl bg-black/40 border border-zinc-800 text-center space-y-2">
+                  <Brain className="w-8 h-8 text-zinc-600 mx-auto" />
+                  <div className="text-xs font-bold text-zinc-300">Память пуста или только что сброшена</div>
+                  <p className="text-[11px] text-zinc-500 max-w-md mx-auto">
+                    Как только в любой вкладке с режимом «Ток читать и запоминать» появится сообщение, Пипка автоматически выделит главное и сохранит в этот файл.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-2.5 max-h-[460px] overflow-y-auto pr-1">
+                  {memoryData.learnedKnowledge
+                    .filter((item: any) => {
+                      const matchesCategory = memoryCategoryFilter === 'all' || item.category === memoryCategoryFilter;
+                      const matchesSearch =
+                        !memorySearch ||
+                        item.content.toLowerCase().includes(memorySearch.toLowerCase()) ||
+                        (item.author && item.author.toLowerCase().includes(memorySearch.toLowerCase())) ||
+                        (item.topicTitle && item.topicTitle.toLowerCase().includes(memorySearch.toLowerCase()));
+                      return matchesCategory && matchesSearch;
+                    })
+                    .map((item: any) => {
+                      let categoryColor = 'bg-zinc-800 text-zinc-300 border-zinc-700';
+                      let categoryLabel = 'Факт';
+                      if (item.category === 'rule') {
+                        categoryColor = 'bg-amber-500/20 text-amber-300 border-amber-500/40';
+                        categoryLabel = 'Правило';
+                      } else if (item.category === 'lore') {
+                        categoryColor = 'bg-purple-500/20 text-purple-300 border-purple-500/40';
+                        categoryLabel = 'Лор и Сюжет';
+                      } else if (item.category === 'announcement') {
+                        categoryColor = 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40';
+                        categoryLabel = 'Объявление';
+                      } else if (item.category === 'player_fact') {
+                        categoryColor = 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40';
+                        categoryLabel = 'Об игроке';
+                      }
+
+                      return (
+                        <div
+                          key={item.id}
+                          className="p-3.5 rounded-2xl bg-black/60 border border-zinc-800 hover:border-zinc-700 transition space-y-2 flex flex-col justify-between"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className={`px-2 py-0.5 rounded-full border text-[9px] font-mono-pip font-bold ${categoryColor}`}>
+                                {categoryLabel}
+                              </span>
+                              <span className="text-xs font-bold text-zinc-200">Вкладка: {item.topicTitle}</span>
+                              <span className="text-[10px] text-zinc-500 font-mono">от @{item.author}</span>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] text-zinc-500 font-mono">
+                                {new Date(item.timestamp).toLocaleString('ru-RU')}
+                              </span>
+                              <button
+                                onClick={() => handleDeleteMemoryItem(item.id)}
+                                className="p-1 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-red-950/40 transition"
+                                title="Удалить этот факт из памяти"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+
+                          <p className="text-xs text-zinc-300 leading-relaxed pl-1 border-l-2 border-blue-500/40">
+                            {item.content}
+                          </p>
+
+                          {item.tags && item.tags.length > 0 && (
+                            <div className="flex flex-wrap gap-1 pt-1">
+                              {item.tags.map((tag: string, idx: number) => (
+                                <span key={idx} className="px-1.5 py-0.2 rounded bg-zinc-900 border border-zinc-800 text-[9px] text-zinc-400 font-mono">
+                                  #{tag}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
             </div>
           </div>
         )}

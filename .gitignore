@@ -9,5 +9,7 @@ coverage/
 dusttown-rp-render.zip
 *.zip
 .dusttown_data.json
+.littlepip_memory.json
+.littlepip_reputation.json
 .littlepip_topics.json
 .littlepip_meme_index.json

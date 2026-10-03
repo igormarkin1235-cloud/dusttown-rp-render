@@ -26,6 +26,11 @@ import {
   shouldSearchFalloutEquestriaWiki
 } from './falloutEquestriaWiki';
 import { checkTopicPermissions } from './littlepipConfig';
+import {
+  rememberLearnedKnowledge,
+  recordDialogueMessage,
+  getKnowledgeContextForPrompt
+} from './littlepipMemory';
 import { getLittlepipLorePromptContext } from './littlepipDossier';
 import {
   evaluateMessageReputation,
@@ -150,6 +155,21 @@ export function getRecentLittlepipMessages(
   return [...(recentConversations.get(getBindingKey(chatId, threadId)) || [])];
 }
 
+export function resetRecentLittlepipMessages(scope: '24h' | '3d' | 'all'): void {
+  if (scope === 'all') {
+    recentConversations.clear();
+    return;
+  }
+
+  const duration = scope === '24h' ? 24 * 60 * 60 * 1000 : 3 * 24 * 60 * 60 * 1000;
+  const cutoff = Date.now() - duration;
+  for (const [key, messages] of recentConversations) {
+    const retained = messages.filter(message => message.timestamp < cutoff);
+    if (retained.length) recentConversations.set(key, retained);
+    else recentConversations.delete(key);
+  }
+}
+
 function rememberConversationMessage(
   chatId: number | string,
   threadId: number | undefined,
@@ -242,11 +262,13 @@ export function hasPipMention(text: string): boolean {
 function buildSystemPrompt(mode: AgentMode): string {
   const isSupport = mode === 'support';
   const canonicalDossier = getLittlepipLorePromptContext();
+  const knowledgeContext = getKnowledgeContextForPrompt();
 
   return `Ты — Литлпип (Littlepip, ласково Пипка, Литка, Лилька), легендарная серая единорожка из Стойла 2, главная героиня Fallout: Equestria.
 Сейчас ты живёшь в укреплённом поселении Даст Таун (DustTown RP) и общаешься со сталкерами в Telegram-группе.
 
 ${canonicalDossier}
+${knowledgeContext}
 
 ЖИВОЙ ХАРАКТЕР И МАНЕРА ОБЩЕНИЯ:
 • Твой пол — кобылка (девушка-пони). Говори о себе ТОЛЬКО в женском роде («я починила», «заглянула в логи», «увидела», «мои копытца»).
@@ -540,7 +562,7 @@ export async function handleLittlepipUpdate(
   const lower = cleanText.toLowerCase();
 
   // Проверка прав топика (только чтение / разрешено писать / заблокировано)
-  const topicPerms = checkTopicPermissions(chatId, threadId);
+  const topicPerms = checkTopicPermissions(threadId);
   if (!topicPerms.canRead) {
     return { handled: false };
   }
@@ -548,6 +570,7 @@ export async function handleLittlepipUpdate(
   const command = parseLittlepipCommand(cleanText);
   const conversationHistory = getRecentLittlepipMessages(chatId, threadId);
   if (!command) rememberConversationMessage(chatId, threadId, username, cleanText);
+  recordDialogueMessage(chatId, threadId || 'root', username, cleanText);
 
   // Обновление репутации игрока (запоминает поведение даже в read-only топиках)
   evaluateMessageReputation(
@@ -558,8 +581,15 @@ export async function handleLittlepipUpdate(
     Boolean(ctx.isSenderOwner)
   );
 
-  // Если топик настроен как "ТОЛЬКО ЧТЕНИЕ" (read_only) — Пипка запоминает, но НИКОГДА туда не пишет!
+  // Если топик настроен как "ТОЛЬКО ЧТЕНИЕ" (read_only) — Пипка запоминает инфу в отдельный файл .littlepip_memory.json, но НЕ пишет!
   if (!topicPerms.canWrite) {
+    rememberLearnedKnowledge(
+      threadId || 'root',
+      topicPerms.topicTitle,
+      username,
+      cleanText,
+      userId
+    );
     return { handled: true, action: 'chat_reply', replyText: '' };
   }
 

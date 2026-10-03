@@ -15,16 +15,6 @@ export interface TelegramTopicConfig {
   permission: TopicPermission;
   enabled: boolean;
   notes?: string;
-  chatId?: number | string;
-  chatTitle?: string;
-}
-
-export interface DiscoveredTelegramTopic {
-  chatId: number | string;
-  chatTitle: string;
-  threadId: number;
-  title: string;
-  lastSeenAt: string;
 }
 
 export interface LittlepipSettings {
@@ -46,8 +36,6 @@ export interface LittlepipSettings {
 }
 
 const CONFIG_FILE = path.join(process.cwd(), '.littlepip_config.json');
-const DISCOVERED_TOPICS_FILE = path.join(process.cwd(), '.littlepip_topics.json');
-const MAX_DISCOVERED_TOPICS = 500;
 
 const DEFAULT_CONFIG: LittlepipSettings = {
   boldnessLevel: 'saucy',
@@ -65,14 +53,56 @@ const DEFAULT_CONFIG: LittlepipSettings = {
       title: 'Основной чат (Главная ветка)',
       permission: 'read_write',
       enabled: true,
-      notes: 'Главный чат сообщества'
+      notes: 'Главный чат сообщества Даст Таун'
     },
     'rules': {
       threadId: 'rules',
-      title: 'Правила чата и Даст Таун',
+      title: 'Правила и Законы Даст Тауна',
       permission: 'read_only',
       enabled: true,
-      notes: 'Только чтение: запоминает правила, но ничего туда не пишет'
+      notes: 'Только чтение: Пипка впитывает правила и регламент, запоминает в память, но писать сюда запрещено'
+    },
+    'tavern': {
+      threadId: 'tavern',
+      title: 'Таверна «Слепая Пуля» (Общение)',
+      permission: 'read_write',
+      enabled: true,
+      notes: 'Живой диалог, сталкерские байки, шутки и подколы'
+    },
+    'quests': {
+      threadId: 'quests',
+      title: 'Квесты, Вылазки и Пустоши',
+      permission: 'read_write',
+      enabled: true,
+      notes: 'Координация рейдов, помощь сталкерам и техподдержка'
+    },
+    'market': {
+      threadId: 'market',
+      title: 'Базар и Торговля ℰQ',
+      permission: 'read_write',
+      enabled: true,
+      notes: 'Экономика крышек и валюты ℰQ, обсуждение инвентаря'
+    },
+    'lore': {
+      threadId: 'lore',
+      title: 'Лор, Архив и История Стойла 2',
+      permission: 'read_only',
+      enabled: true,
+      notes: 'База знаний: запоминает историю мира, персонажей и сюжет'
+    },
+    'announcements': {
+      threadId: 'announcements',
+      title: 'Объявления Администрации',
+      permission: 'read_only',
+      enabled: true,
+      notes: 'Важные новости от создателей Даст Тауна: читает и запоминает'
+    },
+    'offtopic': {
+      threadId: 'offtopic',
+      title: 'Флудилка, Оффтоп и Мемы',
+      permission: 'blocked',
+      enabled: true,
+      notes: 'Запрещено: Пипка полностью игнорирует сообщения из этой вкладки'
     }
   }
 };
@@ -97,85 +127,19 @@ function loadSettings(): LittlepipSettings {
 function saveSettings(settings: LittlepipSettings): void {
   try {
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(settings, null, 2), 'utf-8');
-  } catch (error) {
-    console.error('[Littlepip Config] Ошибка сохранения .littlepip_config.json:', error);
-    throw error;
+  } catch (e) {
+    console.error('[Littlepip Config] Ошибка сохранения .littlepip_config.json:', e);
   }
 }
 
 let activeSettings: LittlepipSettings = loadSettings();
-
-function loadDiscoveredTopics(): DiscoveredTelegramTopic[] {
-  try {
-    if (!fs.existsSync(DISCOVERED_TOPICS_FILE)) return [];
-    const data: unknown = JSON.parse(fs.readFileSync(DISCOVERED_TOPICS_FILE, 'utf-8'));
-    if (!Array.isArray(data)) {
-      throw new Error('Expected an array of discovered Telegram topics');
-    }
-    return data.filter((topic): topic is DiscoveredTelegramTopic =>
-      typeof topic === 'object' &&
-      topic !== null &&
-      'chatId' in topic &&
-      (typeof topic.chatId === 'number' || typeof topic.chatId === 'string') &&
-      'chatTitle' in topic &&
-      typeof topic.chatTitle === 'string' &&
-      'threadId' in topic &&
-      typeof topic.threadId === 'number' &&
-      Number.isFinite(topic.threadId) &&
-      'title' in topic &&
-      typeof topic.title === 'string' &&
-      'lastSeenAt' in topic &&
-      typeof topic.lastSeenAt === 'string'
-    );
-  } catch (error) {
-    console.error('[Littlepip Topics] Could not load discovered topics:', error);
-    return [];
-  }
-}
-
-let discoveredTopics = loadDiscoveredTopics();
-
-function getTopicConfigKey(chatId: number | string | undefined, threadId: number | string): string {
-  return chatId === undefined ? String(threadId) : `${chatId}:${threadId}`;
-}
-
-export function recordDiscoveredTopic(topic: DiscoveredTelegramTopic): void {
-  const key = getTopicConfigKey(topic.chatId, topic.threadId);
-  const nextTopics = [...discoveredTopics];
-  const existingIndex = nextTopics.findIndex(
-    item => getTopicConfigKey(item.chatId, item.threadId) === key
-  );
-  if (existingIndex >= 0) {
-    const existing = nextTopics[existingIndex];
-    const updatedTopic = topic.title === `Топик #${topic.threadId}`
-      ? { ...topic, title: existing.title }
-      : topic;
-    if (existing.title === updatedTopic.title && existing.chatTitle === updatedTopic.chatTitle) return;
-    nextTopics[existingIndex] = updatedTopic;
-  } else {
-    nextTopics.push(topic);
-  }
-  const trimmedTopics = nextTopics.slice(-MAX_DISCOVERED_TOPICS);
-
-  try {
-    fs.writeFileSync(DISCOVERED_TOPICS_FILE, JSON.stringify(trimmedTopics, null, 2), 'utf-8');
-    discoveredTopics = trimmedTopics;
-  } catch (error) {
-    console.error('[Littlepip Topics] Could not save discovered topics:', error);
-    throw error;
-  }
-}
-
-export function getDiscoveredTopics(): DiscoveredTelegramTopic[] {
-  return [...discoveredTopics].sort((a, b) => a.chatTitle.localeCompare(b.chatTitle) || a.title.localeCompare(b.title));
-}
 
 export function getLittlepipSettings(): LittlepipSettings {
   return { ...activeSettings };
 }
 
 export function updateLittlepipSettings(newSettings: Partial<LittlepipSettings>): LittlepipSettings {
-  const updatedSettings = {
+  activeSettings = {
     ...activeSettings,
     ...newSettings,
     topics: {
@@ -183,8 +147,7 @@ export function updateLittlepipSettings(newSettings: Partial<LittlepipSettings>)
       ...(newSettings.topics || {})
     }
   };
-  saveSettings(updatedSettings);
-  activeSettings = updatedSettings;
+  saveSettings(activeSettings);
   return { ...activeSettings };
 }
 
@@ -193,24 +156,17 @@ export function updateLittlepipSettings(newSettings: Partial<LittlepipSettings>)
  * canRead: разрешено ли читать и запоминать контекст
  * canWrite: разрешено ли отправлять реплики в этот топик
  */
-export function checkTopicPermissions(chatId?: number | string, threadId?: number | string): {
+export function checkTopicPermissions(threadId?: number | string): {
   canRead: boolean;
   canWrite: boolean;
   topicTitle: string;
   permission: TopicPermission;
 } {
-  const key = threadId === undefined ? 'root' : getTopicConfigKey(chatId, threadId);
-  const topic = activeSettings.topics[key] ||
-    (threadId === undefined ? undefined : activeSettings.topics[String(threadId)]);
+  const key = String(threadId || 'root');
+  let topic = activeSettings.topics[key];
 
   if (!topic) {
-    // По умолчанию новые топики в группе имеют обычный режим диалога
-    return {
-      canRead: true,
-      canWrite: true,
-      topicTitle: `Топик #${threadId ?? 'root'}`,
-      permission: 'read_write'
-    };
+    topic = registerDiscoveredTopic(key, `Топик #${key}`);
   }
 
   if (!topic.enabled || topic.permission === 'blocked') {
@@ -240,6 +196,34 @@ export function checkTopicPermissions(chatId?: number | string, threadId?: numbe
 }
 
 /**
+ * Автоматически зарегистрировать обнаруженный топик группы
+ */
+export function registerDiscoveredTopic(
+  threadId: number | string,
+  title?: string
+): TelegramTopicConfig {
+  const key = String(threadId);
+  const existingTopic = activeSettings.topics[key];
+  if (!existingTopic) {
+    const newTopic: TelegramTopicConfig = {
+      threadId: key,
+      title: title || `Топик #${key}`,
+      permission: 'read_write',
+      enabled: true,
+      notes: 'Обнаружен в группе'
+    };
+    activeSettings.topics[key] = newTopic;
+    saveSettings(activeSettings);
+    return newTopic;
+  }
+  if (title && existingTopic.title === `Топик #${key}`) {
+    existingTopic.title = title;
+    saveSettings(activeSettings);
+  }
+  return existingTopic;
+}
+
+/**
  * Добавить или обновить топик
  */
 export function setTopicConfig(
@@ -247,40 +231,26 @@ export function setTopicConfig(
   title: string,
   permission: TopicPermission = 'read_write',
   enabled = true,
-  notes?: string,
-  chatId?: number | string,
-  chatTitle?: string
+  notes?: string
 ): LittlepipSettings {
-  const key = getTopicConfigKey(chatId, threadId);
-  const updatedSettings = {
-    ...activeSettings,
-    topics: {
-      ...activeSettings.topics,
-      [key]: {
-        threadId,
-        title,
-        permission,
-        enabled,
-        notes,
-        ...(chatId === undefined ? {} : { chatId }),
-        ...(chatTitle ? { chatTitle } : {})
-      }
-    }
+  const key = String(threadId);
+  activeSettings.topics[key] = {
+    threadId: key,
+    title,
+    permission,
+    enabled,
+    notes
   };
-  saveSettings(updatedSettings);
-  activeSettings = updatedSettings;
+  saveSettings(activeSettings);
   return { ...activeSettings };
 }
 
 /**
  * Удалить топик из настроек
  */
-export function removeTopicConfig(threadId: number | string, chatId?: number | string): LittlepipSettings {
-  const key = getTopicConfigKey(chatId, threadId);
-  const topics = { ...activeSettings.topics };
-  delete topics[key];
-  const updatedSettings = { ...activeSettings, topics };
-  saveSettings(updatedSettings);
-  activeSettings = updatedSettings;
+export function removeTopicConfig(threadId: number | string): LittlepipSettings {
+  const key = String(threadId);
+  delete activeSettings.topics[key];
+  saveSettings(activeSettings);
   return { ...activeSettings };
 }

@@ -10,7 +10,8 @@ import {
   generateLittlepipText,
   hasPipMention,
   LITTLEPIP_GEMINI_MODEL,
-  ChatAdminInfo
+  ChatAdminInfo,
+  resetRecentLittlepipMessages
 } from './src/services/littlepipAgent';
 import { LittlepipMeme } from './src/services/littlepipMemes';
 import { CloudChatState, FirebaseCloudStore } from './src/services/firebaseCloud';
@@ -22,14 +23,19 @@ import {
   updateLittlepipSettings,
   setTopicConfig,
   removeTopicConfig,
-  getDiscoveredTopics,
-  recordDiscoveredTopic
+  registerDiscoveredTopic
 } from './src/services/littlepipConfig';
 import {
   getAllReputations,
   adjustPlayerReputation,
   forgivePlayerGrudge
 } from './src/services/littlepipReputation';
+import {
+  getLittlepipMemory,
+  resetLittlepipMemory,
+  deleteSingleMemoryItem,
+  rememberLearnedKnowledge
+} from './src/services/littlepipMemory';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -664,20 +670,10 @@ async function discoverTelegramTopic(message: any): Promise<void> {
   const admins = await getTelegramChatAdmins(message.chat.id);
   if (!admins.some(admin => String(admin.userId) === String(botInfo.id))) return;
 
-  const topicTitle = message.forum_topic_created?.name ||
-    message.forum_topic_edited?.name ||
-    `Топик #${threadId}`;
-  try {
-    recordDiscoveredTopic({
-      chatId: message.chat.id,
-      chatTitle: message.chat.title || `Группа ${message.chat.id}`,
-      threadId: Number(threadId),
-      title: topicTitle,
-      lastSeenAt: new Date().toISOString()
-    });
-  } catch (error) {
-    console.error('[Littlepip Topics] Failed to register Telegram topic:', error);
-  }
+  registerDiscoveredTopic(
+    Number(threadId),
+    message.forum_topic_created?.name || message.forum_topic_edited?.name
+  );
 }
 
 async function sendLittlepipReply(
@@ -1068,15 +1064,6 @@ app.get('/api/littlepip/config', (req, res) => {
   });
 });
 
-app.get('/api/littlepip/topics/available', (req, res) => {
-  try {
-    res.json({ success: true, topics: getDiscoveredTopics() });
-  } catch (error: any) {
-    console.error('[Littlepip Topics] Failed to list discovered topics:', error);
-    res.status(500).json({ error: 'Не удалось загрузить список обнаруженных топиков.' });
-  }
-});
-
 // Обновить настройки Пипки
 app.post('/api/littlepip/config', (req, res) => {
   try {
@@ -1090,17 +1077,9 @@ app.post('/api/littlepip/config', (req, res) => {
 // Добавить или обновить права для топика группы
 app.post('/api/littlepip/topics/set', (req, res) => {
   try {
-    const { threadId, title, permission, enabled, notes, chatId, chatTitle } = req.body;
+    const { threadId, title, permission, enabled, notes } = req.body;
     if (!threadId) return res.status(400).json({ error: 'Missing threadId' });
-    const settings = setTopicConfig(
-      threadId,
-      title || `Топик #${threadId}`,
-      permission || 'read_write',
-      enabled ?? true,
-      notes,
-      chatId,
-      chatTitle
-    );
+    const settings = setTopicConfig(threadId, title || `Топик #${threadId}`, permission || 'read_write', enabled ?? true, notes);
     res.json({ success: true, settings });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -1110,7 +1089,7 @@ app.post('/api/littlepip/topics/set', (req, res) => {
 // Удалить топик из конфига
 app.delete('/api/littlepip/topics/:threadId', (req, res) => {
   try {
-    const settings = removeTopicConfig(req.params.threadId, req.query.chatId as string | undefined);
+    const settings = removeTopicConfig(req.params.threadId);
     res.json({ success: true, settings });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -1148,6 +1127,44 @@ app.post('/api/littlepip/reputation/forgive', (req, res) => {
     if (!userId) return res.status(400).json({ error: 'Missing userId' });
     const updated = forgivePlayerGrudge(userId);
     res.json({ success: true, player: updated });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ==========================================
+// 13. LITTLEPIP KNOWLEDGE & MEMORY ENDPOINTS (.littlepip_memory.json)
+// ==========================================
+
+// Получить память и базу знаний Литлпип
+app.get('/api/littlepip/memory', (req, res) => {
+  try {
+    res.json({ success: true, memory: getLittlepipMemory() });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Сброс памяти (24h, 3d, all)
+app.post('/api/littlepip/memory/reset', (req, res) => {
+  try {
+    const { scope } = req.body;
+    if (!scope || !['24h', '3d', 'all'].includes(scope)) {
+      return res.status(400).json({ error: 'Invalid scope. Must be 24h, 3d, or all' });
+    }
+    const result = resetLittlepipMemory(scope);
+    resetRecentLittlepipMessages(scope);
+    res.json({ success: true, result, memory: getLittlepipMemory() });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Удалить конкретную запись из памяти
+app.delete('/api/littlepip/memory/:id', (req, res) => {
+  try {
+    const deleted = deleteSingleMemoryItem(req.params.id);
+    res.json({ success: true, deleted, memory: getLittlepipMemory() });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
