@@ -52,7 +52,7 @@ def push_to_github(token, commit_msg=None):
 
     token = token.strip()
     if not commit_msg:
-        commit_msg = "feat: move tsx to production dependencies to fix Render start runner"
+        commit_msg = "fix: restore full keyframe animations and text colors in index.css"
 
     try:
         # Align with remote origin

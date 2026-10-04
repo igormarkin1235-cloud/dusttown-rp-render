@@ -1,1 +1,640 @@
 @import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+  
+  .font-mono-pip {
+    font-family: 'Share Tech Mono', monospace;
+  }
+
+  .font-heading {
+    font-family: 'Rajdhani', sans-serif;
+  }
+
+  /* Universal tactile click animation on every button */
+  button {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    transition: transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.12s ease, box-shadow 0.12s ease;
+  }
+
+  button:not(:disabled):active {
+    transform: scale(0.95) translateY(1px);
+    filter: brightness(1.15);
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+  }
+}
+
+/* Rainbow shimmer animation for Planned RP */
+@keyframes rainbow-shift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.rainbow-shimmer-text {
+  background: linear-gradient(90deg, #ff5e62, #ff9966, #ffea79, #5cdbb5, #5e93ff, #be63ff, #ff5e62);
+  background-size: 300% 300%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: rainbow-shift 4s ease infinite;
+}
+
+/* Neon shimmer for Zaslugi (Awards) title */
+@keyframes neon-glow-pulse {
+  0%, 100% {
+    text-shadow: 0 0 5px #38bdf8, 0 0 15px #0284c7, 0 0 25px #0369a1;
+    color: #e0f2fe;
+  }
+  50% {
+    text-shadow: 0 0 10px #7dd3fc, 0 0 25px #38bdf8, 0 0 40px #0284c7, 0 0 60px #0ea5e9;
+    color: #ffffff;
+  }
+}
+
+.shimmer-neon-text {
+  animation: neon-glow-pulse 2.5s ease-in-out infinite;
+}
+
+/* Falling leaves animation for Black Tree exclusive theme */
+@keyframes fall-leaf {
+  0% {
+    transform: translateY(-20px) translateX(0px) rotate(0deg) scale(0.8);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.9;
+  }
+  90% {
+    opacity: 0.8;
+  }
+  100% {
+    transform: translateY(340px) translateX(120px) rotate(380deg) scale(1);
+    opacity: 0;
+  }
+}
+
+/* Radioactive particle and radiation hazard animations */
+@keyframes rad-particle-float {
+  0% {
+    transform: translate(0, 0) scale(0.6);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.9;
+  }
+  80% {
+    opacity: 0.7;
+  }
+  100% {
+    transform: translate(var(--tx, 40px), var(--ty, -100px)) scale(1.2);
+    opacity: 0;
+  }
+}
+
+@keyframes rad-pulse-glow {
+  0%, 100% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 10px #10b981) drop-shadow(0 0 25px #059669);
+    opacity: 0.85;
+  }
+  50% {
+    transform: scale(1.08);
+    filter: drop-shadow(0 0 25px #34d399) drop-shadow(0 0 50px #10b981);
+    opacity: 1;
+  }
+}
+
+@keyframes spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes glitch-border {
+  0%, 100% {
+    box-shadow: 0 0 8px #06b6d4, inset 0 0 4px #a855f7;
+    border-color: #06b6d4;
+  }
+  25% {
+    box-shadow: -2px 0 12px #ec4899, inset 0 0 8px #06b6d4;
+    border-color: #ec4899;
+  }
+  50% {
+    box-shadow: 2px 0 10px #8b5cf6, inset 0 0 6px #ec4899;
+    border-color: #8b5cf6;
+  }
+  75% {
+    box-shadow: 0 -2px 14px #3b82f6, inset 0 0 8px #06b6d4;
+    border-color: #3b82f6;
+  }
+}
+
+.animate-rad-pulse {
+  animation: rad-pulse-glow 2.5s ease-in-out infinite;
+}
+
+.animate-spin-slow {
+  animation: spin-slow 18s linear infinite;
+}
+
+.animate-glitch-border {
+  animation: glitch-border 2s steps(2, jump-none) infinite;
+}
+
+.animate-falling-leaf-1 {
+  animation: fall-leaf 6s linear infinite;
+}
+.animate-falling-leaf-2 {
+  animation: fall-leaf 8.5s ease-in-out infinite 1.8s;
+}
+.animate-falling-leaf-3 {
+  animation: fall-leaf 7.2s ease-in-out infinite 3.5s;
+}
+.animate-falling-leaf-4 {
+  animation: fall-leaf 9.5s linear infinite 0.7s;
+}
+.animate-falling-leaf-5 {
+  animation: fall-leaf 6.8s ease-in-out infinite 4.2s;
+}
+.animate-falling-leaf-6 {
+  animation: fall-leaf 8s linear infinite 2.2s;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #09090b;
+}
+::-webkit-scrollbar-thumb {
+  background: #27272a;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3f3f46;
+}
+
+/* Red Iridescent Shimmer for Admins */
+@keyframes ruby-shimmer {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.badge-admin-shimmer {
+  background: linear-gradient(135deg, #ef4444, #f43f5e, #dc2626, #fb7185, #991b1b, #ef4444);
+  background-size: 300% 300%;
+  animation: ruby-shimmer 2.2s ease infinite;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.7), inset 0 0 4px rgba(255, 255, 255, 0.4);
+}
+
+/* Vibrant Multicolor Iridescent Shimmer for Owner */
+@keyframes rainbow-badge-shift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.badge-owner-shimmer {
+  background: linear-gradient(135deg, #f59e0b, #ec4899, #8b5cf6, #06b6d4, #10b981, #f59e0b);
+  background-size: 300% 300%;
+  animation: rainbow-badge-shift 3s ease infinite;
+  box-shadow: 0 0 12px rgba(236, 72, 153, 0.75), 0 0 20px rgba(139, 92, 246, 0.4), inset 0 0 4px rgba(255, 255, 255, 0.6);
+}
+
+/* --- 5 SHIMMERING TEXT STYLES --- */
+@keyframes gold-text-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+.golden-shimmer-text {
+  background: linear-gradient(90deg, #f59e0b, #fef08a, #d97706, #fde047, #b45309, #fbbf24);
+  background-size: 250% 250%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: gold-text-shift 3s ease infinite;
+  filter: drop-shadow(0 0 8px rgba(245, 158, 11, 0.5));
+}
+
+@keyframes rad-text-glow {
+  0%, 100% {
+    color: #34d399;
+    text-shadow: 0 0 6px #10b981, 0 0 16px #059669;
+  }
+  50% {
+    color: #a7f3d0;
+    text-shadow: 0 0 14px #34d399, 0 0 28px #10b981, 0 0 40px #047857;
+  }
+}
+.rad-pulse-text {
+  animation: rad-text-glow 2s ease-in-out infinite;
+}
+
+@keyframes glitch-text-cycle {
+  0%, 100% {
+    color: #22d3ee;
+    text-shadow: 2px 0 #ec4899, -2px 0 #8b5cf6;
+  }
+  50% {
+    color: #f43f5e;
+    text-shadow: -2px 0 #06b6d4, 2px 0 #a855f7;
+  }
+}
+.cyber-glitch-text {
+  animation: glitch-text-cycle 2s steps(2, jump-none) infinite;
+}
+
+@keyframes quantum-text-cycle {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+.quantum-shimmer-text {
+  background: linear-gradient(90deg, #38bdf8, #818cf8, #c084fc, #38bdf8);
+  background-size: 250% 250%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: quantum-text-cycle 3.5s ease infinite;
+  filter: drop-shadow(0 0 8px rgba(129, 140, 248, 0.6));
+}
+
+/* --- 5 SHIMMERING BACKGROUNDS --- */
+@keyframes shimmer-bg-rainbow {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+.shimmer-rainbow-bg {
+  background: linear-gradient(135deg, rgba(88, 28, 135, 0.6), rgba(131, 24, 67, 0.6), rgba(30, 58, 138, 0.6), rgba(88, 28, 135, 0.6));
+  background-size: 300% 300%;
+  animation: shimmer-bg-rainbow 6s ease infinite;
+}
+
+.shimmer-gold-bg {
+  background: linear-gradient(135deg, rgba(120, 53, 15, 0.7), rgba(24, 24, 27, 0.9), rgba(161, 98, 7, 0.5));
+  background-size: 250% 250%;
+  animation: shimmer-bg-rainbow 5s ease infinite;
+}
+
+.shimmer-cyber-bg {
+  background: linear-gradient(135deg, rgba(8, 51, 68, 0.7), rgba(24, 24, 27, 0.95), rgba(76, 29, 149, 0.6));
+  background-size: 250% 250%;
+  animation: shimmer-bg-rainbow 5s ease infinite;
+}
+
+.shimmer-rad-bg {
+  background: linear-gradient(135deg, rgba(6, 78, 59, 0.7), rgba(24, 24, 27, 0.95), rgba(4, 120, 87, 0.5));
+  background-size: 250% 250%;
+  animation: shimmer-bg-rainbow 4s ease infinite;
+}
+
+.shimmer-cosmic-bg {
+  background: linear-gradient(135deg, rgba(76, 29, 149, 0.7), rgba(15, 23, 42, 0.95), rgba(67, 56, 202, 0.6));
+  background-size: 250% 250%;
+  animation: shimmer-bg-rainbow 6s ease infinite;
+}
+
+/* ========================================================= */
+/* --- EXTENDED ANIMATED & SPECIAL TEXT STYLES --- */
+/* ========================================================= */
+
+/* 1. Fire Blaze Text */
+@keyframes fire-flicker {
+  0%, 100% {
+    color: #f97316;
+    text-shadow: 0 -2px 6px #ef4444, 0 -6px 14px #eab308, 0 0 20px #dc2626;
+  }
+  50% {
+    color: #facc15;
+    text-shadow: 0 -3px 10px #f97316, 0 -8px 20px #ef4444, 0 0 25px #ea580c;
+  }
+}
+.fire-blaze-text {
+  animation: fire-flicker 1.4s ease-in-out infinite alternate;
+}
+
+/* 2. Toxic Acid Biohazard Text */
+@keyframes toxic-pulse-wave {
+  0%, 100% {
+    color: #84cc16;
+    text-shadow: 0 0 6px #65a30d, 0 0 16px #4d7c0f, 0 0 24px #22c55e;
+  }
+  50% {
+    color: #bef264;
+    text-shadow: 0 0 12px #a3e635, 0 0 26px #84cc16, 0 0 38px #15803d;
+  }
+}
+.toxic-hazard-text {
+  animation: toxic-pulse-wave 2s ease-in-out infinite;
+}
+
+/* 3. Cyber Strobe Text */
+@keyframes cyber-strobe-shift {
+  0%, 100% {
+    color: #06b6d4;
+    text-shadow: 0 0 8px #0891b2, 0 0 18px #06b6d4, -2px 0 2px #ec4899;
+  }
+  50% {
+    color: #ec4899;
+    text-shadow: 0 0 10px #db2777, 0 0 22px #f43f5e, 2px 0 2px #06b6d4;
+  }
+}
+.cyber-strobe-text {
+  animation: cyber-strobe-shift 1.2s steps(2, jump-none) infinite;
+}
+
+/* 4. Celestial Star Alicorn Text */
+@keyframes celestial-shimmer {
+  0% {
+    background-position: 0% 50%;
+    filter: drop-shadow(0 0 6px rgba(234, 179, 8, 0.7));
+  }
+  50% {
+    background-position: 100% 50%;
+    filter: drop-shadow(0 0 14px rgba(56, 189, 248, 0.85));
+  }
+  100% {
+    background-position: 0% 50%;
+    filter: drop-shadow(0 0 6px rgba(234, 179, 8, 0.7));
+  }
+}
+.celestial-star-text {
+  background: linear-gradient(90deg, #fef08a, #7dd3fc, #e9d5ff, #fde047, #38bdf8);
+  background-size: 300% 300%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: celestial-shimmer 3s ease infinite;
+}
+
+/* 5. Plasma Lightning Text */
+@keyframes plasma-flicker {
+  0%, 100% {
+    color: #c084fc;
+    text-shadow: 0 0 8px #a855f7, 0 0 18px #7e22ce, 0 0 30px #3b82f6;
+  }
+  25% {
+    color: #e9d5ff;
+    text-shadow: 0 0 14px #c084fc, 0 0 24px #9333ea, 0 0 35px #60a5fa;
+  }
+  75% {
+    color: #a855f7;
+    text-shadow: 0 0 6px #6b21a8, 0 0 14px #581c87;
+  }
+}
+.plasma-lightning-text {
+  animation: plasma-flicker 1.6s ease-in-out infinite;
+}
+
+/* 6. Radioactive Isotope-137 Text */
+@keyframes isotope-decay {
+  0%, 100% {
+    color: #22c55e;
+    text-shadow: 0 0 5px #16a34a, 0 0 15px #15803d;
+  }
+  30% {
+    color: #4ade80;
+    text-shadow: 0 0 12px #22c55e, 0 0 28px #16a34a, 0 0 45px #14532d;
+  }
+  60% {
+    color: #86efac;
+    text-shadow: 0 0 18px #4ade80, 0 0 35px #22c55e;
+  }
+}
+.isotope-137-text {
+  animation: isotope-decay 2.4s ease-in-out infinite;
+}
+
+/* 7. Liquid Gold Enclave Text */
+@keyframes liquid-gold-flow {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+.liquid-gold-text {
+  background: linear-gradient(110deg, #f59e0b, #fffbeb, #d97706, #fef08a, #b45309, #fcd34d);
+  background-size: 250% 250%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: liquid-gold-flow 3.5s linear infinite;
+  filter: drop-shadow(0 2px 6px rgba(180, 83, 9, 0.6));
+}
+
+/* 8. RobCo Terminal CRT Text */
+@keyframes terminal-scanline {
+  0%, 100% {
+    color: #4ade80;
+    text-shadow: 0 0 4px #22c55e, 0 0 10px #16a34a;
+    opacity: 0.95;
+  }
+  50% {
+    color: #86efac;
+    text-shadow: 0 0 8px #4ade80, 0 0 16px #22c55e;
+    opacity: 1;
+  }
+}
+.terminal-crt-text {
+  font-family: 'Share Tech Mono', monospace;
+  animation: terminal-scanline 1.8s ease-in-out infinite;
+  letter-spacing: 0.05em;
+}
+
+/* 9. Vaporwave Sunset Text */
+@keyframes vaporwave-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+.vaporwave-gradient-text {
+  background: linear-gradient(90deg, #f43f5e, #ec4899, #8b5cf6, #06b6d4);
+  background-size: 250% 250%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: vaporwave-shift 4s ease infinite;
+  filter: drop-shadow(0 0 8px rgba(236, 72, 153, 0.5));
+}
+
+/* 10. Blood Curse Text */
+@keyframes blood-drip-pulse {
+  0%, 100% {
+    color: #dc2626;
+    text-shadow: 0 0 8px #991b1b, 0 0 18px #7f1d1d, 0 2px 4px #000;
+  }
+  50% {
+    color: #f87171;
+    text-shadow: 0 0 14px #ef4444, 0 0 26px #b91c1c, 0 3px 6px #000;
+  }
+}
+.blood-curse-text {
+  animation: blood-drip-pulse 2.2s ease-in-out infinite;
+}
+
+/* 11. Ghost Stealth Text */
+@keyframes ghost-stealth-fade {
+  0%, 100% {
+    color: rgba(226, 232, 240, 0.7);
+    text-shadow: 0 0 6px rgba(148, 163, 184, 0.6), 0 0 14px rgba(56, 189, 248, 0.3);
+  }
+  50% {
+    color: rgba(255, 255, 255, 0.95);
+    text-shadow: 0 0 12px rgba(203, 213, 225, 0.9), 0 0 22px rgba(56, 189, 248, 0.6);
+  }
+}
+.ghost-stealth-text {
+  animation: ghost-stealth-fade 2.8s ease-in-out infinite;
+}
+
+/* ========================================================= */
+/* --- EXTENDED ANIMATED FRAME KEYFRAMES --- */
+/* ========================================================= */
+
+@keyframes rotate-clockwise {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes rotate-counter {
+  from { transform: rotate(360deg); }
+  to { transform: rotate(0deg); }
+}
+
+@keyframes fire-particles-rise {
+  0% { transform: translateY(0) scale(0.8); opacity: 0; }
+  30% { opacity: 1; }
+  100% { transform: translateY(-24px) scale(1.2); opacity: 0; }
+}
+
+@keyframes matrix-rain-border {
+  0% { background-position: 0 0; }
+  100% { background-position: 0 40px; }
+}
+
+@keyframes frost-pulse {
+  0%, 100% {
+    box-shadow: 0 0 8px #38bdf8, inset 0 0 6px #0284c7;
+    border-color: #7dd3fc;
+  }
+  50% {
+    box-shadow: 0 0 16px #7dd3fc, 0 0 28px #0284c7, inset 0 0 10px #38bdf8;
+    border-color: #e0f2fe;
+  }
+}
+
+.animate-frost-pulse {
+  animation: frost-pulse 2.5s ease-in-out infinite;
+}
+
+@keyframes snow-fall {
+  0% { transform: translateY(-10px) translateX(0); opacity: 0; }
+  20% { opacity: 0.9; }
+  80% { opacity: 0.8; }
+  100% { transform: translateY(220px) translateX(30px); opacity: 0; }
+}
+
+.animate-snow-1 { animation: snow-fall 4s linear infinite; }
+.animate-snow-2 { animation: snow-fall 6s linear infinite 1.2s; }
+.animate-snow-3 { animation: snow-fall 5s linear infinite 2.5s; }
+.animate-snow-4 { animation: snow-fall 7s linear infinite 0.7s; }
+
+/* Profile Background Effects */
+@keyframes ember-drift {
+  0% { transform: translateY(10px) translateX(0) scale(0.6); opacity: 0; }
+  25% { opacity: 0.9; }
+  75% { opacity: 0.7; }
+  100% { transform: translateY(-160px) translateX(var(--drift-x, 25px)) scale(1.1); opacity: 0; }
+}
+
+@keyframes dust-storm {
+  0% { transform: translate(-30px, -20px) rotate(0deg); opacity: 0; }
+  20% { opacity: 0.8; }
+  80% { opacity: 0.6; }
+  100% { transform: translate(140px, 90px) rotate(180deg); opacity: 0; }
+}
+
+@keyframes crt-scan {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(1000%); }
+}
+
+@keyframes toxic-vapor {
+  0%, 100% { opacity: 0.25; transform: scale(1) translateY(0); }
+  50% { opacity: 0.55; transform: scale(1.08) translateY(-8px); }
+}
+
+@keyframes neon-glow-flow {
+  0%, 100% { opacity: 0.3; filter: hue-rotate(0deg); }
+  50% { opacity: 0.75; filter: hue-rotate(45deg); }
+}
+
+.animate-ember-1 { animation: ember-drift 3.5s cubic-bezier(0.25, 1, 0.5, 1) infinite; --drift-x: -20px; }
+.animate-ember-2 { animation: ember-drift 4.8s cubic-bezier(0.25, 1, 0.5, 1) infinite 0.8s; --drift-x: 35px; }
+.animate-ember-3 { animation: ember-drift 3.9s cubic-bezier(0.25, 1, 0.5, 1) infinite 1.7s; --drift-x: -15px; }
+.animate-ember-4 { animation: ember-drift 5.2s cubic-bezier(0.25, 1, 0.5, 1) infinite 2.4s; --drift-x: 28px; }
+.animate-ember-5 { animation: ember-drift 4.1s cubic-bezier(0.25, 1, 0.5, 1) infinite 1.1s; --drift-x: 10px; }
+
+.animate-dust-1 { animation: dust-storm 6s linear infinite; }
+.animate-dust-2 { animation: dust-storm 8s linear infinite 1.5s; }
+.animate-dust-3 { animation: dust-storm 7s linear infinite 3.2s; }
+
+.animate-crt-scan { animation: crt-scan 6s linear infinite; }
+.animate-toxic-vapor { animation: toxic-vapor 4.5s ease-in-out infinite; }
+.animate-neon-glow-flow { animation: neon-glow-flow 3.8s ease-in-out infinite; }
+
+/* Pip-Buck Radio Marquee & Equalizer Animations */
+@keyframes marquee-scroll {
+  0% { transform: translateX(0%); }
+  100% { transform: translateX(-50%); }
+}
+
+.animate-marquee-smooth {
+  display: inline-flex;
+  white-space: nowrap;
+  animation: marquee-scroll 14s linear infinite;
+}
+
+.animate-marquee-smooth:hover {
+  animation-play-state: paused;
+}
+
+@keyframes equalizer-bounce {
+  0%, 100% { height: 3px; }
+  50% { height: 14px; }
+}
+
+.animate-eq-bar-1 { animation: equalizer-bounce 0.8s ease-in-out infinite; }
+.animate-eq-bar-2 { animation: equalizer-bounce 0.6s ease-in-out infinite 0.2s; }
+.animate-eq-bar-3 { animation: equalizer-bounce 0.9s ease-in-out infinite 0.4s; }
+.animate-eq-bar-4 { animation: equalizer-bounce 0.7s ease-in-out infinite 0.1s; }
+.animate-eq-bar-5 { animation: equalizer-bounce 1.0s ease-in-out infinite 0.3s; }
+
+
+

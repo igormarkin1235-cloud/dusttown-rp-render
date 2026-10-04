@@ -167,7 +167,7 @@ export const PatchManagerBar: React.FC<PatchManagerBarProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           token: ghToken.trim(),
-          commitMessage: 'feat: move tsx to production dependencies to fix Render start runner'
+          commitMessage: 'fix: restore full keyframe animations and text colors in index.css'
         })
       });
 

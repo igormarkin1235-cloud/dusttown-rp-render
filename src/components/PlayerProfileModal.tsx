@@ -137,7 +137,7 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                 {/* User Meta with Applied Custom Text Style */}
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <h3 className={`text-base sm:text-xl font-black font-heading truncate drop-shadow ${user.activeTextColor || 'text-white'}`}>
+                    <h3 className={`text-base sm:text-xl font-black font-heading truncate ${user.activeTextColor || 'text-white'}`}>
                       {user.displayName}
                     </h3>
                     <span className="text-[11px] px-2 py-0.5 rounded-full bg-zinc-800/80 text-zinc-400 font-mono-pip border border-zinc-700/60 shrink-0">
