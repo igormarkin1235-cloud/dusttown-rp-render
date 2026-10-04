@@ -21,7 +21,8 @@ import {
   UploadCloud,
   GitBranch,
   Key,
-  X
+  X,
+  EyeOff
 } from 'lucide-react';
 
 interface PatchStatus {
@@ -37,11 +38,13 @@ interface PatchStatus {
 interface PatchManagerBarProps {
   viewMode: 'miniapp' | 'bot_panel' | 'split';
   onChangeViewMode: (mode: 'miniapp' | 'bot_panel' | 'split') => void;
+  onHidePanel?: () => void;
 }
 
 export const PatchManagerBar: React.FC<PatchManagerBarProps> = ({
   viewMode,
-  onChangeViewMode
+  onChangeViewMode,
+  onHidePanel
 }) => {
   const [updateStatus, setUpdateStatus] = useState<PatchStatus>({
     hasUpdates: false,
@@ -167,7 +170,7 @@ export const PatchManagerBar: React.FC<PatchManagerBarProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           token: ghToken.trim(),
-          commitMessage: 'fix: restore full keyframe animations and text colors in index.css'
+          commitMessage: 'feat: isolate creator panel to owner with toggle and fix admin auto-login as owner'
         })
       });
 
@@ -316,10 +319,22 @@ export const PatchManagerBar: React.FC<PatchManagerBarProps> = ({
           <button
             onClick={() => setIsExpanded(!isExpanded)}
             className="p-1 rounded bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-zinc-800 transition"
-            title={isExpanded ? 'Свернуть панель патчей' : 'Развернуть панель патчей'}
+            title={isExpanded ? 'Свернуть детали патчей' : 'Развернуть детали патчей'}
           >
             {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </button>
+
+          {/* Hide entire top bar button for Owner */}
+          {onHidePanel && (
+            <button
+              onClick={onHidePanel}
+              className="flex items-center gap-1 px-2.5 py-1 rounded bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-amber-300 border border-zinc-800 transition text-[11px] font-mono-pip ml-1"
+              title="Скрыть эту панель (вы сможете вернуть её в любой момент по плавающей кнопке «Панель Создателя»)"
+            >
+              <EyeOff className="w-3.5 h-3.5 text-zinc-400" />
+              <span className="hidden sm:inline">Скрыть панель</span>
+            </button>
+          )}
         </div>
       </div>
 

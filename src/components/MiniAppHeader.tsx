@@ -6,6 +6,7 @@ import { Shield, Coins, Crown, KeyRound, X, Bell } from 'lucide-react';
 interface MiniAppHeaderProps {
   currentUser: UserProfile;
   admins: AdminInfo[];
+  isOwner?: boolean;
   onOpenMyProfile: () => void;
   onOpenCases: () => void;
   onUnlockOwner?: (pin: string) => boolean;
@@ -16,6 +17,7 @@ interface MiniAppHeaderProps {
 export const MiniAppHeader: React.FC<MiniAppHeaderProps> = ({
   currentUser,
   admins,
+  isOwner: isOwnerProp,
   onOpenMyProfile,
   onOpenCases,
   onUnlockOwner,
@@ -26,7 +28,9 @@ export const MiniAppHeader: React.FC<MiniAppHeaderProps> = ({
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState(false);
 
-  const isOwner = (currentUser?.username || '').toLowerCase() === '@mrwhitepio' || currentUser?.id === 'owner_mrwhitepio';
+  const isOwner = isOwnerProp !== undefined
+    ? isOwnerProp
+    : ((currentUser?.username || '').toLowerCase() === '@mrwhitepio' && currentUser?.id === 'owner_mrwhitepio');
   const isAdmin = isOwner || (Array.isArray(admins) ? admins : []).some(
     a => a && (a.username || '').toLowerCase() === (currentUser?.username || '').toLowerCase()
   );

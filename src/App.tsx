@@ -69,7 +69,10 @@ import {
   Bot,
   Columns,
   Coins,
-  X
+  X,
+  Eye,
+  EyeOff,
+  Crown
 } from 'lucide-react';
 
 export default function App() {
@@ -85,13 +88,71 @@ export default function App() {
   // By default in clean browser, use a visitor profile or first registered profile
   // If Telegram WebApp is present, it binds directly to the real Telegram user
   const [currentUserId, setCurrentUserId] = useState<string>(() => {
-    const saved = localStorage.getItem('dt_current_user_id');
-    if (saved && appState.profiles.some(p => p.id === saved)) return saved;
-    return appState.profiles[0]?.id || 'owner_mrwhitepio';
+    try {
+      const tg = typeof window !== 'undefined' ? (window as any).Telegram?.WebApp : undefined;
+      const tgUser = tg?.initDataUnsafe?.user;
+      const tgUsername = tgUser?.username ? `@${tgUser.username.toLowerCase()}` : '';
+      const saved = typeof window !== 'undefined' ? localStorage.getItem('dt_current_user_id') : null;
+      const isSessionUnlocked = typeof window !== 'undefined' && sessionStorage.getItem('dt_owner_unlocked') === 'true';
+
+      // Security Guard: NEVER let anyone be owner_mrwhitepio unless they are verified in Telegram as @mrwhitepio
+      // or entered the secret PIN in this session
+      if ((saved === 'owner_mrwhitepio' || saved === 'user_mrwhite') && tgUsername !== '@mrwhitepio' && !isSessionUnlocked) {
+        try { localStorage.removeItem('dt_current_user_id'); } catch (_) {}
+      }
+
+      // If Telegram user is present, try to match their real profile directly from localStorage state
+      if (tgUser && tgUser.id) {
+        const localDataStr = typeof window !== 'undefined' ? localStorage.getItem('dusttown_rp_app_state') : null;
+        if (localDataStr) {
+          try {
+            const parsed = JSON.parse(localDataStr);
+            const tgId = `tg_user_${tgUser.id}`;
+            const matched = (parsed.profiles || []).find((p: any) =>
+              p.id === tgId || (tgUsername && p.username && p.username.toLowerCase() === tgUsername)
+            );
+            if (matched) return matched.id;
+          } catch {}
+        }
+      }
+
+      // If valid non-owner saved user ID exists
+      const validSaved = typeof window !== 'undefined' ? localStorage.getItem('dt_current_user_id') : null;
+      if (validSaved && validSaved !== 'owner_mrwhitepio' && validSaved !== 'user_mrwhite') {
+        const profiles = appState?.profiles || [];
+        if (profiles.some(p => p.id === validSaved)) return validSaved;
+      }
+      if (validSaved === 'owner_mrwhitepio' && (tgUsername === '@mrwhitepio' || isSessionUnlocked)) {
+        return 'owner_mrwhitepio';
+      }
+
+      return 'guest_stalker';
+    } catch {
+      return 'guest_stalker';
+    }
   });
 
   const [activeTab, setActiveTab] = useState<TabType>('events');
   const [viewMode, setViewMode] = useState<'miniapp' | 'bot_panel' | 'split'>('miniapp');
+
+  // Dev / Bot / Patch panel visibility for Owner
+  const [isTopDevPanelVisible, setIsTopDevPanelVisible] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('dt_show_dev_panel') !== 'false';
+    } catch {
+      return true;
+    }
+  });
+
+  const toggleTopDevPanel = () => {
+    setIsTopDevPanelVisible(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem('dt_show_dev_panel', String(next));
+      } catch {}
+      return next;
+    });
+  };
 
   // Modals
   const [inspectedProfile, setInspectedProfile] = useState<UserProfile | null>(null);
@@ -138,6 +199,16 @@ export default function App() {
         }
 
         const tgUser = tg?.initDataUnsafe?.user;
+        const tgUsername = tgUser?.username ? `@${tgUser.username.toLowerCase()}` : '';
+
+        // If in Telegram and NOT @mrwhitepio, guarantee owner_mrwhitepio is never kept
+        if (tgUser && tgUsername !== '@mrwhitepio') {
+          const currentSaved = localStorage.getItem('dt_current_user_id');
+          if (currentSaved === 'owner_mrwhitepio' || currentSaved === 'user_mrwhite') {
+            try { localStorage.removeItem('dt_current_user_id'); } catch (_) {}
+          }
+        }
+
         if (tgUser) {
           // Auto-register and sync this Telegram user with server
           const { profile, fullData } = await syncUserWithServer(tgUser);
@@ -237,11 +308,43 @@ export default function App() {
     };
   }, []);
 
-  const currentUser = appState.profiles.find(p => p.id === currentUserId) || appState.profiles[0];
-  const isOwner = currentUser?.username?.toLowerCase() === '@mrwhitepio';
+  const profilesList = Array.isArray(appState?.profiles) ? appState.profiles : [];
+  const fallbackProfile: UserProfile = {
+    id: 'guest_stalker',
+    username: '@guest',
+    displayName: 'Странник Пустоши',
+    avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80',
+    bio: 'Новичок в Пустошах Даст Таун.',
+    equivaxes: 150,
+    isInfiniteEquivaxes: false,
+    joinedAt: new Date().toISOString(),
+    eventsAttended: 0,
+    plannedRpsAttended: 0,
+    inventory: []
+  };
+
+  const currentUser: UserProfile =
+    profilesList.find(p => p && p.id === currentUserId) ||
+    profilesList.find(p => p && p.username?.toLowerCase() === '@guest') ||
+    fallbackProfile;
+
+  // Strict Owner Verification: only real verified @mrwhitepio in Telegram or explicit session PIN unlock
+  const tg = typeof window !== 'undefined' ? (window as any).Telegram?.WebApp : undefined;
+  const tgUser = tg?.initDataUnsafe?.user;
+  const tgUsername = tgUser?.username ? `@${tgUser.username.toLowerCase()}` : '';
+  const isSessionUnlocked = typeof window !== 'undefined' && sessionStorage.getItem('dt_owner_unlocked') === 'true';
+
+  const isOwner = Boolean(
+    currentUser?.username?.toLowerCase() === '@mrwhitepio' &&
+    (!tgUser || tgUsername === '@mrwhitepio') &&
+    (tgUsername === '@mrwhitepio' || isSessionUnlocked || (currentUser?.id === 'owner_mrwhitepio' && !tgUser && isSessionUnlocked))
+  );
+
   const isAdmin =
     isOwner ||
-    appState.admins.some(a => a.username.toLowerCase() === currentUser?.username?.toLowerCase());
+    (Array.isArray(appState?.admins) ? appState.admins : []).some(
+      a => a && a.username && a.username.toLowerCase() === currentUser?.username?.toLowerCase()
+    );
 
   const openDirectChat = (profile: UserProfile) => {
     setInspectedProfile(null);
@@ -256,13 +359,23 @@ export default function App() {
     }
   }, [isAdmin, activeTab]);
 
+  // Security: If not owner, force miniapp viewMode
+  useEffect(() => {
+    if (!isOwner && viewMode !== 'miniapp') {
+      setViewMode('miniapp');
+    }
+  }, [isOwner, viewMode]);
+
   // Owner Secret PIN Unlock
   const handleUnlockOwner = (pin: string): boolean => {
     if (pin === '1235' || pin.toLowerCase() === 'dusttown') {
       const owner = appState.profiles.find(p => p.username.toLowerCase() === '@mrwhitepio');
       if (owner) {
+        try {
+          sessionStorage.setItem('dt_owner_unlocked', 'true');
+          localStorage.setItem('dt_current_user_id', owner.id);
+        } catch {}
         setCurrentUserId(owner.id);
-        localStorage.setItem('dt_current_user_id', owner.id);
         return true;
       }
     }
@@ -1480,21 +1593,39 @@ export default function App() {
           </div>
         </div>
       )}
-      {/* Patch & Updates Manager Header (Always accessible for creating and downloading patches) */}
-      <PatchManagerBar
-        viewMode={viewMode}
-        onChangeViewMode={setViewMode}
-      />
+      {/* Top Bot Management & Patch Hub: STRICTLY VISIBLE ONLY TO OWNER */}
+      {isOwner && isTopDevPanelVisible && (
+        <PatchManagerBar
+          viewMode={viewMode}
+          onChangeViewMode={setViewMode}
+          onHidePanel={toggleTopDevPanel}
+        />
+      )}
+
+      {/* Floating Reveal Button for Owner when panel is hidden */}
+      {isOwner && !isTopDevPanelVisible && (
+        <div className="fixed top-2 left-2 z-50 animate-fade-in">
+          <button
+            onClick={toggleTopDevPanel}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-zinc-900/95 hover:bg-zinc-800 border border-amber-500/60 text-amber-300 text-xs font-mono-pip font-bold shadow-2xl backdrop-blur-md transition hover:scale-105"
+            title="Развернуть панель Создателя (Статус бота, Render, Перенос)"
+          >
+            <Crown className="w-3.5 h-3.5 text-amber-400" />
+            <span>Панель Создателя</span>
+            <Eye className="w-3.5 h-3.5 text-zinc-400 ml-0.5" />
+          </button>
+        </div>
+      )}
 
       {/* Main View Container */}
       <div className="flex-1 flex flex-col">
-        {viewMode === 'bot_panel' && (
+        {isOwner && viewMode === 'bot_panel' && (
           <main className="p-4 sm:p-6 flex-1">
             <BotControlPanel onOpenMiniApp={() => setViewMode('miniapp')} />
           </main>
         )}
 
-        {viewMode === 'split' && (
+        {isOwner && viewMode === 'split' && (
           <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-zinc-800">
             {/* Left Column: Telegram Bot Control & Chat */}
             <div className="p-4 sm:p-6 overflow-y-auto max-h-screen">
@@ -1520,6 +1651,7 @@ export default function App() {
               <MiniAppHeader
                 currentUser={currentUser}
                 admins={appState.admins}
+                isOwner={isOwner}
                 onOpenMyProfile={() => setActiveTab('profile')}
                 onOpenCases={() => setActiveTab('cases')}
                 onUnlockOwner={handleUnlockOwner}
@@ -1734,6 +1866,7 @@ export default function App() {
             <MiniAppHeader
               currentUser={currentUser}
               admins={appState.admins}
+              isOwner={isOwner}
               onOpenMyProfile={() => setActiveTab('profile')}
               onOpenCases={() => setActiveTab('cases')}
               onUnlockOwner={handleUnlockOwner}

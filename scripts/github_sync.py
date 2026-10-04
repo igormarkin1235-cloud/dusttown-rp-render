@@ -52,7 +52,7 @@ def push_to_github(token, commit_msg=None):
 
     token = token.strip()
     if not commit_msg:
-        commit_msg = "fix: restore full keyframe animations and text colors in index.css"
+        commit_msg = "feat: isolate creator panel to owner with toggle and fix admin auto-login as owner"
 
     try:
         # Align with remote origin
