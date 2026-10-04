@@ -76,19 +76,44 @@ export class FirebaseCloudStore {
   private collectionHashes = new Map<string, Map<string, string>>();
 
   async connect(): Promise<boolean> {
-    const accountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
-    const bucketName = process.env.FIREBASE_STORAGE_BUCKET;
-    if (!accountJson && !bucketName) return false;
-    if (!accountJson || !bucketName) {
-      console.warn('[Firebase] Warning: FIREBASE_SERVICE_ACCOUNT_JSON or FIREBASE_STORAGE_BUCKET is missing');
+    let accountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON?.trim();
+    if (!accountJson) {
+      const candidates = [
+        path.join(process.cwd(), 'serviceAccountKey.json'),
+        path.join(process.cwd(), 'firebase-service-account.json'),
+        path.join(process.cwd(), 'firebase-key.json'),
+        path.join(__dirname, '..', '..', 'serviceAccountKey.json'),
+        process.env.GOOGLE_APPLICATION_CREDENTIALS
+      ].filter(Boolean) as string[];
+
+      for (const p of candidates) {
+        if (fs.existsSync(p)) {
+          try {
+            accountJson = fs.readFileSync(p, 'utf-8');
+            console.info(`[Firebase] Loaded credentials from file: ${p}`);
+            break;
+          } catch (_) {}
+        }
+      }
+    }
+
+    if (!accountJson) {
+      console.warn('[Firebase] Warning: FIREBASE_SERVICE_ACCOUNT_JSON is not configured');
       return false;
     }
 
     try {
+      if (fs.existsSync(accountJson)) {
+        accountJson = fs.readFileSync(accountJson, 'utf-8');
+      }
+
       const serviceAccount = JSON.parse(accountJson);
       if (typeof serviceAccount.private_key === 'string') {
         serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
       }
+
+      const projectId = serviceAccount.project_id || 'aboba-bot';
+      const bucketName = process.env.FIREBASE_STORAGE_BUCKET || `${projectId}.appspot.com`;
 
       const appName = 'dusttown-rp-cloud';
       const app: App = getApps().find(candidate => candidate.name === appName) || initializeApp({
@@ -104,55 +129,93 @@ export class FirebaseCloudStore {
       }
 
       try {
-        this.bucket = getStorage(app).bucket(bucketName);
-        await this.bucket.getMetadata();
-      } catch (bErr) {
-        console.warn('[Firebase Storage] Bucket verification warning; local fallback available:', bErr);
+        if (bucketName) {
+          this.bucket = getStorage(app).bucket(bucketName);
+          await this.bucket.getMetadata();
+        }
+      } catch (bErr: any) {
+        console.warn('[Firebase Storage] Bucket warning; Firestore data storage will continue normally:', bErr?.message || bErr);
       }
 
       this.root = this.firestore.collection('dusttown').doc('appState');
-      await this.firestore.doc('dusttown/health').set({ checkedAt: new Date().toISOString() }, { merge: true });
-      console.info('[Firebase] Connected to Cloud Firestore successfully');
+      await this.firestore.doc('dusttown/health').set({
+        checkedAt: new Date().toISOString(),
+        projectId
+      }, { merge: true });
+      console.info(`[Firebase] Connected to Cloud Firestore successfully (Project: ${projectId})`);
       return true;
-    } catch (err) {
-      console.error('[Firebase] Failed to connect:', err);
+    } catch (err: any) {
+      console.error('[Firebase] Failed to connect:', err?.message || err);
       return false;
     }
   }
 
   async loadAppState(): Promise<AppStateData | null> {
-    if (!this.root) return null;
+    if (!this.firestore) return null;
     try {
-      const metadata = await this.root.get();
-      if (!metadata.exists) return null;
+      let metadata: any = null;
+      if (this.root) {
+        try {
+          const metaDoc = await this.root.get();
+          if (metaDoc.exists) {
+            metadata = metaDoc.data();
+          }
+        } catch (_) {}
+      }
 
       const state: Record<string, any> = {};
+      let totalLoadedDocs = 0;
+
       await Promise.all(stateCollections.map(async ({ key, collection }) => {
         try {
-          const snapshot = await this.root!.collection(collection).get();
-          this.collectionHashes.set(collection, new Map(snapshot.docs.map(document => [document.id, dataHash(document.data())])));
-          state[key] = snapshot.docs
-            .map(document => ({ data: document.data(), index: document.data().__sortIndex }))
-            .sort((left, right) => (left.index ?? 0) - (right.index ?? 0))
-            .map(({ data }) => {
-              const { __sortIndex: _sortIndex, ...item } = data;
-              return item;
-            });
-        } catch (colErr) {
-          console.error(`[Firebase] Failed to load collection ${collection}:`, colErr);
+          // 1. Try subcollection under dusttown/appState/collection
+          let snapshot: FirebaseFirestore.QuerySnapshot | null = null;
+          if (this.root) {
+            snapshot = await this.root.collection(collection).get();
+          }
+
+          // 2. Fallback to top-level collection /collection if empty
+          if (!snapshot || snapshot.empty) {
+            const rootSnapshot = await this.firestore!.collection(collection).get();
+            if (!rootSnapshot.empty) {
+              snapshot = rootSnapshot;
+            }
+          }
+
+          if (snapshot && !snapshot.empty) {
+            totalLoadedDocs += snapshot.docs.length;
+            this.collectionHashes.set(collection, new Map(snapshot.docs.map(document => [document.id, dataHash(document.data())])));
+            state[key] = snapshot.docs
+              .map(document => ({ data: document.data(), index: document.data().__sortIndex }))
+              .sort((left, right) => (left.index ?? 0) - (right.index ?? 0))
+              .map(({ data }) => {
+                const { __sortIndex: _sortIndex, ...item } = data;
+                return item;
+              });
+          } else {
+            state[key] = [];
+          }
+        } catch (colErr: any) {
+          console.error(`[Firebase] Failed to load collection ${collection}:`, colErr?.message || colErr);
           state[key] = [];
         }
       }));
 
-      const meta = metadata.data() || {};
+      if (totalLoadedDocs === 0 && !metadata) {
+        console.info('[Firebase] No documents found in Firestore collections');
+        return null;
+      }
+
+      console.info(`[Firebase] Successfully retrieved ${totalLoadedDocs} documents from Cloud Firestore`);
+      const meta = metadata || {};
       return {
         ...state,
         schemaVersion: meta.schemaVersion,
         lastUpdated: meta.lastUpdated,
         syncVersion: meta.syncVersion
       } as AppStateData;
-    } catch (err) {
-      console.error('[Firebase] Failed to loadAppState:', err);
+    } catch (err: any) {
+      console.error('[Firebase] Failed to loadAppState:', err?.message || err);
       return null;
     }
   }

@@ -190,23 +190,39 @@ export function loadCatalogMemes(): Record<string, MemeItem> {
         result[id] = item;
         result[id.slice(0, 8)] = item;
 
+        // Нормализованный текст без знаков препинания
+        const cleanOcr = ocrLower.replace(/[^a-zа-яё0-9]+/gi, ' ').trim();
+        if (cleanOcr) {
+          result[cleanOcr] = item;
+          result[cleanOcr.replace(/\s+/g, '_')] = item;
+          result[cleanOcr.replace(/\s+/g, '-')] = item;
+          result[cleanOcr.replace(/\s+/g, '')] = item;
+        }
+
         // Популярные короткие псевдонимы по смыслу
-        if (ocrLower.includes('шедевр')) result['шедевр'] = item;
-        if (ocrLower.includes('круто')) result['круто'] = item;
-        if (ocrLower.includes('подорожник')) result['подорожник'] = item;
-        if (ocrLower.includes('хуле ты умный')) result['умник'] = item;
-        if (ocrLower.includes('нихуя себе')) result['нихуя'] = item;
-        if (ocrLower.includes('хуясе')) result['хуясе'] = item;
-        if (ocrLower.includes('держи, тебе нужнее') || ocrLower.includes('тебе нужнее')) result['таблетки'] = item;
-        if (ocrLower.includes('чё за хуйня')) result['чезахуйня'] = item;
-        if (ocrLower.includes('сохраню для потомков')) result['потомки'] = item;
-        if (ocrLower.includes('я дерево')) result['дерево'] = item;
-        if (ocrLower.includes('пиздец')) result['пиздец'] = item;
-        if (ocrLower.includes('молодец')) result['молодец'] = item;
-        if (ocrLower.includes('грамота')) result['грамота'] = item;
-        if (ocrLower.includes('чайный алкаш')) result['чай'] = item;
-        if (ocrLower.includes('бухнём')) result['бухнем'] = item;
-        if (ocrLower.includes('10/10')) result['10из10'] = item;
+        if (ocrLower.includes('шедевр')) { result['шедевр'] = item; result['это шедевр'] = item; }
+        if (ocrLower.includes('круто')) { result['круто'] = item; result['класс'] = item; }
+        if (ocrLower.includes('подорожник')) { result['подорожник'] = item; result['святой подорожник'] = item; }
+        if (ocrLower.includes('хуле ты умный') || ocrLower.includes('умный такой')) { result['умник'] = item; result['хуле ты умный'] = item; }
+        if (ocrLower.includes('нихуя себе') || ocrLower.includes('нихуя')) { result['нихуя'] = item; result['нихуя себе'] = item; }
+        if (ocrLower.includes('хуясе')) { result['хуясе'] = item; result['хуясе ебать'] = item; }
+        if (ocrLower.includes('держи, тебе нужнее') || ocrLower.includes('тебе нужнее')) { result['таблетки'] = item; result['держи тебе нужнее'] = item; }
+        if (ocrLower.includes('чё за хуйня') || ocrLower.includes('че за хуйня')) { result['чезахуйня'] = item; result['чё за хуйня'] = item; result['что за хуйня'] = item; }
+        if (ocrLower.includes('сохраню для потомков')) { result['потомки'] = item; result['сохраню для потомков'] = item; result['фото на память'] = item; }
+        if (ocrLower.includes('я дерево') || ocrLower.includes('мне пох я дерево')) { result['дерево'] = item; result['мне пох я дерево'] = item; }
+        if (ocrLower.includes('пиздец')) { result['пиздец'] = item; result['полный пиздец'] = item; }
+        if (ocrLower.includes('молодец') || ocrLower.includes('ебать я молодец')) { result['молодец'] = item; result['ебать я молодец'] = item; }
+        if (ocrLower.includes('грамота')) { result['грамота'] = item; result['ебать ты кадр'] = item; }
+        if (ocrLower.includes('чайный алкаш') || ocrLower.includes('чай')) { result['чай'] = item; result['чайный алкаш'] = item; }
+        if (ocrLower.includes('бухнём') || ocrLower.includes('бухнем')) { result['бухнем'] = item; result['бухнём'] = item; result['выпьем'] = item; }
+        if (ocrLower.includes('10/10') || ocrLower.includes('10 из 10')) { result['10из10'] = item; result['10/10'] = item; result['десять из десяти'] = item; }
+        if (ocrLower.includes('я никуда не хочу') || ocrLower.includes('там холодно')) { result['я никуда не хочу'] = item; result['холодно'] = item; result['одеяло'] = item; }
+        if (ocrLower.includes('а вот тебе')) { result['а вот тебе'] = item; result['держи'] = item; }
+        if (ocrLower.includes('глянь, чё несёт') || ocrLower.includes('че несет')) { result['глянь че несет'] = item; result['глянь чё несёт'] = item; result['бред'] = item; }
+        if (ocrLower.includes('мне плевать')) { result['мне плевать'] = item; result['плевать'] = item; result['пофиг'] = item; }
+        if (ocrLower.includes('в смысле')) { result['в смысле'] = item; result['всмысле'] = item; result['не понял'] = item; }
+        if (ocrLower.includes('ясно, понятно') || ocrLower.includes('ясно понятно')) { result['ясно понятно'] = item; result['ясно'] = item; result['понятно'] = item; }
+        if (ocrLower.includes('эликсир храбрости') || ocrLower.includes('эликсир')) { result['эликсир'] = item; result['эликсир храбрости'] = item; }
       }
     } catch (err) {
       console.warn('[Littlepip Memes] Error reading catalog.json:', err);

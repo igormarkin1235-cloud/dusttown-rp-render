@@ -910,8 +910,15 @@ export async function handleLittlepipUpdate(
     ctx.isSenderOwner
   );
 
-  const wantsMemeMedia = isMemeExplicitlyRequested(cleanText);
-  const { cleanText: cleanReply, meme, mediaUrl } = extractMemeTag(finalReply, wantsMemeMedia);
+  // Всегда разрешаем отправку мема, если Литлпип прикрепила тег [MEME: ...] или если пользователь просил мем
+  let { cleanText: cleanReply, meme, mediaUrl } = extractMemeTag(finalReply, true);
+  if (!meme && !mediaUrl && isMemeExplicitlyRequested(cleanText)) {
+    const randomMeme = findMemeByQuery('random');
+    if (randomMeme) {
+      meme = randomMeme;
+      mediaUrl = randomMeme.mediaUrl;
+    }
+  }
 
   // Отправляем ответ в тот же чат и тему
   await sendMessageFn(chatId, cleanReply || finalReply, {

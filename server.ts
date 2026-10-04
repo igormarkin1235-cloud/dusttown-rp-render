@@ -85,7 +85,15 @@ app.use('/uploads', express.static(UPLOADS_DIR));
 const DATA_FILE = path.join(__dirname, '.dusttown_data.json');
 const BACKUP_FILE = path.join(__dirname, 'backup_seed_data.json');
 const firebaseCloudStore = new FirebaseCloudStore();
-const firebaseConfigured = Boolean(process.env.FIREBASE_SERVICE_ACCOUNT_JSON && process.env.FIREBASE_STORAGE_BUCKET);
+const firebaseConfigured = Boolean(
+  (process.env.FIREBASE_SERVICE_ACCOUNT_JSON && process.env.FIREBASE_SERVICE_ACCOUNT_JSON.trim()) ||
+  process.env.GOOGLE_APPLICATION_CREDENTIALS ||
+  fs.existsSync(path.join(process.cwd(), 'serviceAccountKey.json')) ||
+  fs.existsSync(path.join(__dirname, 'serviceAccountKey.json')) ||
+  fs.existsSync(path.join(process.cwd(), 'firebase-service-account.json')) ||
+  fs.existsSync(path.join(__dirname, 'firebase-service-account.json')) ||
+  fs.existsSync(path.join(process.cwd(), 'firebase-key.json'))
+);
 let firebaseConnected = false;
 let firebaseHealthy = false;
 let firebaseLastError: string | null = null;
@@ -649,6 +657,67 @@ async function initializeFirebasePersistence() {
   }
 }
 
+// Firebase Status and Sync Endpoints
+app.get('/api/firebase/status', async (req, res) => {
+  const data = getOrInitData();
+  res.json({
+    configured: firebaseConfigured,
+    connected: firebaseConnected,
+    healthy: firebaseHealthy,
+    lastSyncedAt: firebaseLastSyncedAt,
+    lastError: firebaseLastError,
+    localProfilesCount: (data.profiles || []).length,
+    localEventsCount: (data.events || []).length,
+    localCharactersCount: (data.characters || []).length
+  });
+});
+
+app.post('/api/firebase/sync', async (req, res) => {
+  try {
+    if (!firebaseConnected) {
+      firebaseConnected = await firebaseCloudStore.connect();
+    }
+    if (!firebaseConnected) {
+      return res.status(500).json({
+        error: 'Не удалось подключиться к Firebase Firestore',
+        details: firebaseLastError || 'Проверьте FIREBASE_SERVICE_ACCOUNT_JSON в переменных окружения'
+      });
+    }
+
+    const cloudState = await firebaseCloudStore.loadAppState();
+    const cloudChat = await firebaseCloudStore.loadChatState();
+    const localState = getOrInitData();
+
+    if (cloudState && Array.isArray(cloudState.profiles) && cloudState.profiles.length > 0) {
+      const merged = {
+        ...localState,
+        ...cloudState,
+        profiles: deduplicateProfiles(cloudState.profiles),
+        chatMessages: cloudChat?.messages ?? localState.chatMessages ?? []
+      };
+      fs.writeFileSync(DATA_FILE, JSON.stringify(merged, null, 2), 'utf-8');
+      firebaseHealthy = true;
+      firebaseLastSyncedAt = new Date().toISOString();
+      return res.json({
+        success: true,
+        message: `Успешно загружено ${merged.profiles.length} игроков из Firebase!`,
+        profilesCount: merged.profiles.length
+      });
+    }
+
+    // If cloudState is empty, seed from local
+    saveData(localState);
+    await cloudSaveQueue;
+    res.json({
+      success: true,
+      message: 'Облако синхронизировано с локальными данными',
+      profilesCount: (localState.profiles || []).length
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 function registerOrUpdateUser(user: { id: number | string; first_name?: string; last_name?: string; username?: string; photo_url?: string }) {
   if (!user || !user.id) return null;
   const data = getOrInitData();
@@ -867,9 +936,11 @@ async function sendTelegramLittlepipMessage(
         formData.append('chat_id', String(chatId));
         if (targetThreadId) formData.append('message_thread_id', String(targetThreadId));
         if (reply_to_message_id) formData.append('reply_to_message_id', String(reply_to_message_id));
-        if (replyText) formData.append('caption', replyText.slice(0, 1024));
+        const captionText = replyText ? replyText.slice(0, 1020) : '';
+        if (captionText) formData.append('caption', captionText);
         if (parse_mode) formData.append('parse_mode', parse_mode);
 
+        let sentMedia = false;
         if (media.isGif) {
           formData.append('animation', blob, media.filename);
           const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendAnimation`, {
@@ -877,7 +948,7 @@ async function sendTelegramLittlepipMessage(
             body: formData
           });
           const data = await res.json();
-          if (data.ok) return data;
+          if (data.ok) sentMedia = true;
         } else if (media.isAudio) {
           formData.append('voice', blob, media.filename);
           const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendVoice`, {
@@ -885,7 +956,7 @@ async function sendTelegramLittlepipMessage(
             body: formData
           });
           const data = await res.json();
-          if (data.ok) return data;
+          if (data.ok) sentMedia = true;
         } else {
           formData.append('photo', blob, media.filename);
           const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`, {
@@ -893,22 +964,35 @@ async function sendTelegramLittlepipMessage(
             body: formData
           });
           const data = await res.json();
-          if (data.ok) return data;
-          // Если parse_mode выдал ошибку разметки в подписи к фото, пробуем без parse_mode
-          if (!data.ok && parse_mode) {
+          if (data.ok) {
+            sentMedia = true;
+          } else if (parse_mode) {
+            // Если parse_mode выдал ошибку разметки в подписи к фото, пробуем без parse_mode
             const retryFormData = new FormData();
             retryFormData.append('chat_id', String(chatId));
             if (targetThreadId) retryFormData.append('message_thread_id', String(targetThreadId));
             if (reply_to_message_id) retryFormData.append('reply_to_message_id', String(reply_to_message_id));
-            if (replyText) retryFormData.append('caption', replyText.slice(0, 1024));
+            if (captionText) retryFormData.append('caption', captionText);
             retryFormData.append('photo', blob, media.filename);
             const retryRes = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`, {
               method: 'POST',
               body: retryFormData
             });
             const retryData = await retryRes.json();
-            if (retryData.ok) return retryData;
+            if (retryData.ok) sentMedia = true;
           }
+        }
+
+        if (sentMedia) {
+          // Если текст ответа был длиннее 1020 символов, досылаем остаток вторым сообщением
+          if (replyText && replyText.length > 1020) {
+            await tgApi('sendMessage', {
+              chat_id: chatId,
+              text: replyText.slice(1020),
+              ...(targetThreadId ? { message_thread_id: targetThreadId } : {})
+            });
+          }
+          return { ok: true };
         }
       }
     } catch (err: any) {
