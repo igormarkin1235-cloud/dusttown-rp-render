@@ -14,7 +14,9 @@
       "activeThemeId": "black_tree",
       "activeAvatarFrame": "frame_rad_pulse",
       "inventory": [],
-      "pinnedArts": []
+      "pinnedArts": [],
+      "activeCardFrame": "card_frame_void_nebula",
+      "activeTextColor": "bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500 bg-clip-text text-transparent font-black"
     }
   ],
   "admins": [
@@ -71,9 +73,41 @@
   ],
   "auctionListings": [],
   "factions": [],
-  "lastUpdated": "2026-10-04T21:18:27.870Z",
+  "lastUpdated": "2026-10-04T21:22:49.160Z",
   "artworks": [],
   "activityLogs": [
+    {
+      "id": "act_1791148969160_qv5b",
+      "timestamp": "2026-10-04T21:22:49.160Z",
+      "userId": "owner_mrwhitepio",
+      "username": "@MrWhitePio",
+      "displayName": "MrWhitePio [Создатель]",
+      "userAvatarUrl": "https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=300&q=80",
+      "category": "profile_update",
+      "title": "Обновление профиля сталкера",
+      "description": "Сталкер @MrWhitePio обновил параметры профиля, гардероб или аватарку",
+      "details": {
+        "targetName": "MrWhitePio [Создатель]"
+      },
+      "serverVerified": true,
+      "handshakeId": "hs_muubuls8_f7blt"
+    },
+    {
+      "id": "act_1791148957861_r769",
+      "timestamp": "2026-10-04T21:22:37.861Z",
+      "userId": "owner_mrwhitepio",
+      "username": "@MrWhitePio",
+      "displayName": "MrWhitePio [Создатель]",
+      "userAvatarUrl": "https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=300&q=80",
+      "category": "profile_update",
+      "title": "Обновление профиля сталкера",
+      "description": "Сталкер @MrWhitePio обновил параметры профиля, гардероб или аватарку",
+      "details": {
+        "targetName": "MrWhitePio [Создатель]"
+      },
+      "serverVerified": true,
+      "handshakeId": "hs_muubud2d_auxyc"
+    },
     {
       "id": "act_init_1",
       "timestamp": "2026-09-29T14:13:59.678Z",
@@ -139,5 +173,5 @@
       "handshakeId": "hs_init_19e48f"
     }
   ],
-  "syncVersion": 12
+  "syncVersion": 14
 }

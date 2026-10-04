@@ -52,7 +52,7 @@ def push_to_github(token, commit_msg=None):
 
     token = token.strip()
     if not commit_msg:
-        commit_msg = "feat: fix Render Docker build & apply custom profile colors/frames to player modals"
+        commit_msg = "feat: move tsx to production dependencies to fix Render start runner"
 
     try:
         # Align with remote origin

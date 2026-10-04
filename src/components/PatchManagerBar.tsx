@@ -167,7 +167,7 @@ export const PatchManagerBar: React.FC<PatchManagerBarProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           token: ghToken.trim(),
-          commitMessage: 'feat: fix Render Docker build & apply custom profile colors/frames to player modals'
+          commitMessage: 'feat: move tsx to production dependencies to fix Render start runner'
         })
       });
 
