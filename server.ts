@@ -21,6 +21,36 @@ import { CloudChatState, FirebaseCloudStore } from './src/services/firebaseCloud
 import { AppStateData } from './src/types';
 import { extractSongSearchQuery, searchYouTubeTrack } from './src/services/youtubeSearch';
 import { generateLittlepipVoice } from './src/services/littlepipVoice';
+import {
+  handleBlackjackMessage,
+  summonBlackjackForViolation
+} from './src/services/blackjackAgent';
+import {
+  loadBlackjackConfig,
+  saveBlackjackConfig,
+  checkBlackjackTopicPermission,
+  isAuthorizedBlackjackAdmin
+} from './src/services/blackjackConfig';
+import {
+  getBlackjackBotStatus,
+  startBlackjackPolling,
+  stopBlackjackPolling,
+  testBlackjackTelegramConnection
+} from './src/services/blackjackTelegram';
+import {
+  loadBlackjackReputations,
+  adjustBlackjackReputation
+} from './src/services/blackjackReputation';
+import {
+  loadModerationState,
+  issueMute,
+  revokeMute,
+  issueBan,
+  revokeBan,
+  blockBotActivity,
+  unblockBotActivity
+} from './src/services/blackjackModeration';
+import { fetchBlackjackWikiDossier } from './src/services/projectHorizonsWiki';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1368,6 +1398,194 @@ app.post('/api/bot/start', async (req, res) => {
 app.post('/api/bot/stop', (req, res) => {
   stopTelegramPolling();
   res.json({ success: true, isPolling: false });
+});
+
+function resolveTelegramUserId(usernameOrTag: string): string | number | null {
+  if (!usernameOrTag) return null;
+  const clean = usernameOrTag.trim().toLowerCase().replace(/^@/, '');
+  try {
+    const data = getOrInitData();
+    const profile = (data.profiles || []).find((p: any) => {
+      if (!p) return false;
+      const u = (p.username || '').trim().toLowerCase().replace(/^@/, '');
+      return u === clean || p.id === clean || p.telegramId === clean || String(p.telegramId) === clean;
+    });
+    if (profile?.telegramId) return profile.telegramId;
+  } catch (_) {}
+  if (/^id\d+$/.test(clean)) return clean.replace('id', '');
+  if (/^\d+$/.test(clean)) return clean;
+  return null;
+}
+
+// ==========================================
+// BLACKJACK ADMIN AI AGENT ENDPOINTS
+// ==========================================
+
+// Get Blackjack status & configuration
+app.get('/api/blackjack/status', async (req, res) => {
+  try {
+    const config = loadBlackjackConfig();
+    const botStatus = getBlackjackBotStatus();
+    let wikiDossier: any = null;
+    try {
+      wikiDossier = await fetchBlackjackWikiDossier();
+    } catch (_) {}
+    res.json({
+      success: true,
+      config,
+      botStatus,
+      wikiDossier
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get moderation blacklist & stats
+app.get('/api/blackjack/blacklist', (req, res) => {
+  try {
+    const data = loadModerationState();
+    res.json({
+      success: true,
+      activeMutes: data.mutes.filter((m: any) => m.status === 'active' && new Date(m.expiresAt) > new Date()),
+      activeBans: data.bans.filter((b: any) => b.status === 'active'),
+      activeBotBlocks: data.botBlocks.filter((bb: any) => bb.status === 'active'),
+      allMutes: data.mutes,
+      allBans: data.bans,
+      allBotBlocks: data.botBlocks,
+      auditLogs: data.auditLogs
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Execute natural language command or message to Blackjack
+app.post('/api/blackjack/command', async (req, res) => {
+  try {
+    const { text, username, displayName, chatId, topicId } = req.body;
+    if (!text) {
+      return res.status(400).json({ error: 'Текст команды обязателен' });
+    }
+    const result = await handleBlackjackMessage({
+      text,
+      senderUsername: username || '@Admin',
+      senderDisplayName: displayName,
+      chatId,
+      topicId
+    });
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Manual Mute
+app.post('/api/blackjack/mute', (req, res) => {
+  try {
+    const { targetUser, adminUser, reason, durationMinutes } = req.body;
+    const rec = issueMute(targetUser, adminUser || '@Admin', reason || 'Нарушение правил', durationMinutes || 10);
+    res.json({ success: true, record: rec });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Manual Unmute
+app.post('/api/blackjack/unmute', (req, res) => {
+  try {
+    const { targetUser, adminUser, reason } = req.body;
+    const result = revokeMute(targetUser, adminUser || '@Admin', reason);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Manual Ban
+app.post('/api/blackjack/ban', (req, res) => {
+  try {
+    const { targetUser, adminUser, reason } = req.body;
+    const rec = issueBan(targetUser, adminUser || '@Admin', reason || 'Бан по решению администрации');
+    res.json({ success: true, record: rec });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Manual Unban
+app.post('/api/blackjack/unban', (req, res) => {
+  try {
+    const { targetUser, adminUser, reason } = req.body;
+    const result = revokeBan(targetUser, adminUser || '@Admin', reason);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Bot Block
+app.post('/api/blackjack/bot-block', (req, res) => {
+  try {
+    const { targetUser, adminUser, reason } = req.body;
+    const rec = blockBotActivity(targetUser, adminUser || '@Admin', reason || 'Блокировка доступа к боту');
+    res.json({ success: true, record: rec });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Bot Unblock
+app.post('/api/blackjack/bot-unblock', (req, res) => {
+  try {
+    const { targetUser, adminUser, reason } = req.body;
+    const rec = unblockBotActivity(targetUser, adminUser || '@Admin', reason || 'Снятие блокировки доступа к боту');
+    res.json({ success: true, record: rec });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Save Blackjack configuration
+app.post('/api/blackjack/config', (req, res) => {
+  try {
+    const current = loadBlackjackConfig();
+    const updated = { ...current, ...req.body };
+    saveBlackjackConfig(updated);
+    res.json({ success: true, config: updated });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Reputation
+app.get('/api/blackjack/reputation', (req, res) => {
+  try {
+    const reps = loadBlackjackReputations();
+    res.json({ success: true, reputations: reps });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Blackjack Bot Lifecycle Endpoints
+app.get('/api/blackjack/bot/status', (req, res) => {
+  res.json(getBlackjackBotStatus());
+});
+
+app.post('/api/blackjack/bot/start', async (req, res) => {
+  const result = await startBlackjackPolling({ resolveUserId: resolveTelegramUserId });
+  res.json(result);
+});
+
+app.post('/api/blackjack/bot/stop', (req, res) => {
+  const result = stopBlackjackPolling();
+  res.json(result);
+});
+
+app.post('/api/blackjack/bot/test', async (req, res) => {
+  const result = await testBlackjackTelegramConnection();
+  res.json(result);
 });
 
 // ==========================================
@@ -3029,6 +3247,9 @@ async function startServer() {
   if (process.env.NODE_ENV === 'production' && process.env.DISABLE_TELEGRAM_POLLING !== 'true') {
     startTelegramPolling().catch(error => {
       console.error('Failed to start Telegram polling:', error);
+    });
+    startBlackjackPolling({ resolveUserId: resolveTelegramUserId }).catch(error => {
+      console.error('Failed to start Blackjack Telegram polling:', error);
     });
   }
 }

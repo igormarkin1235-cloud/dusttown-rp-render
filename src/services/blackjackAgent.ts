@@ -59,7 +59,7 @@ export interface BlackjackCommandParseResult {
  */
 export function hasBlackjackMention(text: string): boolean {
   if (!text) return false;
-  return /(?:блэкджек|блекджек|джеки|блэки|блеки|дилер|blackjack|\/bj|\/blackjack|\/mute|\/unmute|\/ban|\/unban|\/blacklist)/iu.test(text);
+  return /(?:@?bleckjek(?:_bot)?|@?blackjack(?:_bot)?|блэкджек|блекджек|джеки|блэки|блеки|блэк|блек|дилер|шериф|секьюрити|security|blackjack|\/bj|\/blackjack|\/mute|\/unmute|\/ban|\/unban|\/blacklist|\/status|\/help)/iu.test(text);
 }
 
 /**
