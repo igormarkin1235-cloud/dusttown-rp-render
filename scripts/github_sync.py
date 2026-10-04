@@ -1,97 +1,141 @@
 #!/usr/bin/env python3
-import os
+"""
+DustTown Direct GitHub Migration Script
+Syncs files from AI Studio workspace to git repo and pushes directly to GitHub.
+All subprocesses capture stdout/stderr to ensure pure JSON output.
+"""
+
 import sys
-import json
+import os
 import shutil
 import subprocess
-import urllib.request
+import json
 
-REPO = "igormarkin1235-cloud/dusttown-rp-render"
-BRANCH = "main"
-CLONE_URL = f"https://github.com/{REPO}.git"
-TEMP_DIR = "/tmp/dusttown-sync"
-WORKSPACE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+WORKSPACE = '/app/applet'
+REPO_DIR = '/tmp/dusttown-repo'
+REPO_URL = 'https://github.com/igormarkin1235-cloud/dusttown-rp-render.git'
 
-PROTECTED_FILES = {
-    ".dusttown_data.json",
-    ".littlepip_state.json",
-    ".sync_checkpoint.json",
-    "src/components/BotControlPanel.tsx",
-    "scripts/patch_manager.py"
+EXCLUDE_DIRS = {'node_modules', '.git', '.cache', 'dist', '__pycache__', '.temp'}
+EXCLUDE_FILES = {
+    'dusttown-rp-render.zip',
+    'dusttown-update-patch.zip',
+    '.dusttown_data.json',
+    '.sync_checkpoint.json',
+    '.littlepip_state.json',
+    '.littlepip_memory.json',
+    'downloaded.zip',
+    'test.zip'
 }
 
-def get_latest_commit():
-    try:
-        url = f"https://api.github.com/repos/{REPO}/commits/{BRANCH}"
-        req = urllib.request.Request(url, headers={"User-Agent": "DustTownRP-Sync"})
-        with urllib.request.urlopen(req, timeout=10) as response:
-            data = json.loads(response.read().decode())
-            return {
-                "sha": data.get("sha", ""),
-                "shortSha": data.get("sha", "")[:7],
-                "message": data.get("commit", {}).get("message", ""),
-                "author": data.get("commit", {}).get("author", {}).get("name", ""),
-                "date": data.get("commit", {}).get("author", {}).get("date", "")
-            }
-    except Exception as e:
-        return {"error": str(e)}
+def sync_files():
+    if not os.path.exists(REPO_DIR):
+        subprocess.run(['git', 'clone', REPO_URL, REPO_DIR], capture_output=True, check=True)
 
-def pull_and_sync():
-    commit_info = get_latest_commit()
-    if os.path.exists(TEMP_DIR):
-        shutil.rmtree(TEMP_DIR, ignore_errors=True)
-
-    res = subprocess.run(
-        ["git", "clone", "--depth", "1", "-b", BRANCH, CLONE_URL, TEMP_DIR],
-        capture_output=True,
-        text=True,
-        timeout=40
-    )
-    if res.returncode != 0:
-        return {"success": False, "error": f"Git clone failed: {res.stderr}"}
-
-    copied_files = []
-    skipped_files = []
-
-    for root, dirs, files in os.walk(TEMP_DIR):
-        if ".git" in root or "node_modules" in root or "dist" in root:
-            continue
+    copied = 0
+    for root, dirs, files in os.walk(WORKSPACE):
+        dirs[:] = [d for d in dirs if d not in EXCLUDE_DIRS]
+        rel_dir = os.path.relpath(root, WORKSPACE)
+        dest_dir = os.path.join(REPO_DIR, rel_dir) if rel_dir != '.' else REPO_DIR
+        os.makedirs(dest_dir, exist_ok=True)
         for f in files:
-            src_path = os.path.join(root, f)
-            rel_path = os.path.relpath(src_path, TEMP_DIR)
-
-            if rel_path in PROTECTED_FILES:
-                skipped_files.append(rel_path)
+            if f in EXCLUDE_FILES or f.endswith('.zip') or f.endswith('.pyc') or f.endswith('.tmp'):
                 continue
+            src_file = os.path.join(root, f)
+            dest_file = os.path.join(dest_dir, f)
+            shutil.copy2(src_file, dest_file)
+            copied += 1
+    return copied
 
-            dest_path = os.path.join(WORKSPACE_DIR, rel_path)
-            os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+def push_to_github(token, commit_msg=None):
+    if not token or not token.strip():
+        return {'success': False, 'error': 'GitHub Personal Access Token is required.'}
 
-            is_different = True
-            if os.path.exists(dest_path):
-                try:
-                    with open(src_path, "rb") as s, open(dest_path, "rb") as d:
-                        if s.read() == d.read():
-                            is_different = False
-                except Exception:
-                    pass
+    token = token.strip()
+    if not commit_msg:
+        commit_msg = "feat: fix Render Docker build & apply custom profile colors/frames to player modals"
 
-            if is_different:
-                shutil.copy2(src_path, dest_path)
-                copied_files.append(rel_path)
+    try:
+        # Align with remote origin
+        subprocess.run(['git', '-C', REPO_DIR, 'fetch', 'origin', 'main'], capture_output=True, check=False)
+        subprocess.run(['git', '-C', REPO_DIR, 'reset', '--hard', 'origin/main'], capture_output=True, check=False)
 
-    return {
-        "success": True,
-        "commit": commit_info,
-        "updatedCount": len(copied_files),
-        "updatedFiles": copied_files[:50]
-    }
+        sync_files()
 
-if __name__ == "__main__":
-    action = sys.argv[1] if len(sys.argv) > 1 else "status"
-    if action == "pull":
-        result = pull_and_sync()
-        print(json.dumps(result, ensure_ascii=False, indent=2))
-    else:
-        info = get_latest_commit()
-        print(json.dumps(info, ensure_ascii=False, indent=2))
+        # Configure git identity
+        subprocess.run(['git', '-C', REPO_DIR, 'config', 'user.name', 'DustTown Sync Agent'], capture_output=True, check=True)
+        subprocess.run(['git', '-C', REPO_DIR, 'config', 'user.email', 'dusttown@render.internal'], capture_output=True, check=True)
+
+        # Stage all changes
+        subprocess.run(['git', '-C', REPO_DIR, 'add', '-A'], capture_output=True, check=True)
+
+        # Check status
+        status_proc = subprocess.run(
+            ['git', '-C', REPO_DIR, 'status', '--porcelain'],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+
+        if not status_proc.stdout.strip():
+            return {
+                'success': True,
+                'message': 'Репозиторий на GitHub уже содержит все последние файлы!',
+                'alreadyUpToDate': True
+            }
+
+        # Commit
+        subprocess.run(
+            ['git', '-C', REPO_DIR, 'commit', '-m', commit_msg],
+            capture_output=True,
+            check=True
+        )
+
+        # Get commit hash
+        hash_proc = subprocess.run(
+            ['git', '-C', REPO_DIR, 'rev-parse', '--short', 'HEAD'],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        commit_hash = hash_proc.stdout.strip()
+
+        # Push using token
+        push_url = f"https://x-access-token:{token}@github.com/igormarkin1235-cloud/dusttown-rp-render.git"
+
+        push_proc = subprocess.run(
+            ['git', '-C', REPO_DIR, 'push', push_url, 'main'],
+            capture_output=True,
+            text=True
+        )
+
+        if push_proc.returncode == 0:
+            try:
+                subprocess.run(['python3', '/app/applet/scripts/patch_manager.py', 'confirm'], cwd='/app/applet', capture_output=True)
+            except Exception:
+                pass
+
+            return {
+                'success': True,
+                'commitHash': commit_hash,
+                'message': f'Успешно отправлено на GitHub (коммит {commit_hash})! Render начал автоматический деплой.'
+            }
+        else:
+            err_msg = push_proc.stderr or push_proc.stdout or 'Ошибка при выполнении git push'
+            err_msg = err_msg.replace(token, '***TOKEN***')
+            return {
+                'success': False,
+                'error': err_msg
+            }
+
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+if __name__ == '__main__':
+    if len(sys.argv) < 2:
+        print(json.dumps({'success': False, 'error': 'Token argument missing'}))
+        sys.exit(1)
+
+    gh_token = sys.argv[1]
+    msg = sys.argv[2] if len(sys.argv) > 2 else None
+    result = push_to_github(gh_token, msg)
+    print(json.dumps(result, ensure_ascii=False))

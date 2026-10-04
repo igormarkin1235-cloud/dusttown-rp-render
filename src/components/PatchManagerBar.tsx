@@ -17,7 +17,11 @@ import {
   Columns,
   RefreshCw,
   Clock,
-  Layers
+  Layers,
+  UploadCloud,
+  GitBranch,
+  Key,
+  X
 } from 'lucide-react';
 
 interface PatchStatus {
@@ -56,6 +60,23 @@ export const PatchManagerBar: React.FC<PatchManagerBarProps> = ({
   const [showFileList, setShowFileList] = useState(false);
   const [isExpanded, setIsExpanded] = useState(true);
   const [isChecked, setIsChecked] = useState(false);
+
+  // GitHub direct migration state
+  const [showGitModal, setShowGitModal] = useState(false);
+  const [ghToken, setGhToken] = useState(() => {
+    try {
+      return localStorage.getItem('dusttown_gh_token') || '';
+    } catch {
+      return '';
+    }
+  });
+  const [isPushing, setIsPushing] = useState(false);
+  const [pushResult, setPushResult] = useState<{
+    success?: boolean;
+    message?: string;
+    error?: string;
+    commitHash?: string;
+  } | null>(null);
 
   // Poll update status from server
   const fetchStatus = async () => {
@@ -126,6 +147,44 @@ export const PatchManagerBar: React.FC<PatchManagerBarProps> = ({
       setPatchError(err?.message || 'Ошибка генерации патча');
     } finally {
       setIsDownloading(false);
+    }
+  };
+
+  // Direct GitHub Push handler
+  const handleGitPush = async () => {
+    if (!ghToken.trim()) {
+      alert('Укажите ваш GitHub Personal Access Token');
+      return;
+    }
+
+    setIsPushing(true);
+    setPushResult(null);
+
+    try {
+      localStorage.setItem('dusttown_gh_token', ghToken.trim());
+      const res = await fetch('/api/git/push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: ghToken.trim(),
+          commitMessage: 'feat: fix Render Docker build & apply custom profile colors/frames to player modals'
+        })
+      });
+
+      const data = await res.json();
+      setPushResult(data);
+
+      if (data.success) {
+        setIsChecked(true);
+        await fetchStatus();
+      }
+    } catch (err: any) {
+      setPushResult({
+        success: false,
+        error: err?.message || 'Не удалось связаться с сервером для пуша'
+      });
+    } finally {
+      setIsPushing(false);
     }
   };
 
@@ -297,6 +356,15 @@ export const PatchManagerBar: React.FC<PatchManagerBarProps> = ({
                 )}
               </button>
 
+              {/* DIRECT GITHUB MIGRATION BUTTON */}
+              <button
+                onClick={() => setShowGitModal(true)}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-mono-pip font-bold tracking-wide transition shadow-lg bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:from-blue-500 hover:to-indigo-500 text-white border border-blue-400/40"
+              >
+                <UploadCloud className="w-4 h-4" />
+                <span>🚀 Отправить в GitHub (миграция)</span>
+              </button>
+
               {/* PRIMARY: "PATCH DOWNLOADED" CHECKBOX / CONFIRM BUTTON */}
               <label
                 className={`flex items-center gap-2 px-3.5 py-2 rounded-xl border cursor-pointer select-none transition ${
@@ -405,6 +473,126 @@ export const PatchManagerBar: React.FC<PatchManagerBarProps> = ({
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* GITHUB DIRECT MIGRATION MODAL */}
+      {showGitModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-zinc-950 border border-zinc-800 rounded-3xl max-w-lg w-full p-5 sm:p-6 space-y-4 shadow-2xl relative font-mono-pip">
+            <button
+              onClick={() => setShowGitModal(false)}
+              className="absolute top-4 right-4 p-1.5 rounded-xl bg-zinc-900 text-zinc-400 hover:text-white transition"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-blue-950/50">
+                <UploadCloud className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-white text-base">Миграция файлов в GitHub в 1 клик</h3>
+                <p className="text-zinc-400 text-xs">Прямой пуш в igormarkin1235-cloud/dusttown-rp-render</p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-blue-950/40 border border-blue-500/30 text-xs text-blue-200 space-y-2 leading-relaxed">
+              <div className="flex items-center gap-1.5 font-bold text-blue-300">
+                <Key className="w-4 h-4" />
+                <span>Бесплатные токены GitHub:</span>
+              </div>
+              <p>
+                GitHub токены (Personal Access Token) <b>абсолютно бесплатны и бесконечны</b>. Если старый токен истёк или утерян, новый создаётся бесплатно за 20 секунд:
+              </p>
+              <a
+                href="https://github.com/settings/tokens/new?scopes=repo&description=DustTown-Render-AutoPush"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-amber-300 hover:text-amber-200 underline font-bold"
+              >
+                <span>👉 Создать новый токен на GitHub (готовая ссылка с правами repo)</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+              <p className="text-[11px] text-zinc-400">
+                (Просто перейдите по ссылке выше, прокрутите вниз, нажмите зелёную кнопку <b>Generate token</b> и скопируйте сюда токен начинающийся на <code>ghp_...</code>)
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs text-zinc-300 font-bold block">
+                GitHub Personal Access Token (PAT):
+              </label>
+              <input
+                type="password"
+                value={ghToken}
+                onChange={e => setGhToken(e.target.value)}
+                placeholder="ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-700 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500 font-mono"
+              />
+              <span className="text-[10px] text-zinc-500 block">
+                Токен сохраняется в вашем браузере, чтобы не вводить его каждый раз.
+              </span>
+            </div>
+
+            {pushResult && (
+              <div
+                className={`p-3 rounded-xl border text-xs leading-relaxed ${
+                  pushResult.success
+                    ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-200'
+                    : 'bg-red-950/60 border-red-500/50 text-red-200'
+                }`}
+              >
+                {pushResult.success ? (
+                  <div className="space-y-1">
+                    <p className="font-bold flex items-center gap-1.5 text-emerald-300">
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>{pushResult.message || 'Успешно отправлено!'}</span>
+                    </p>
+                    <p className="text-[11px] text-emerald-400">
+                      Render уже подхватил коммит и начал автоматический деплой Блэкджек.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <p className="font-bold flex items-center gap-1.5 text-red-300">
+                      <AlertTriangle className="w-4 h-4" />
+                      <span>Ошибка пуша:</span>
+                    </p>
+                    <p className="text-[11px] whitespace-pre-wrap">{pushResult.error}</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowGitModal(false)}
+                className="px-4 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs font-bold transition"
+              >
+                Закрыть
+              </button>
+              <button
+                type="button"
+                onClick={handleGitPush}
+                disabled={isPushing || !ghToken.trim()}
+                className="px-5 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 text-white text-xs font-bold transition flex items-center gap-2 shadow-lg shadow-blue-950/50"
+              >
+                {isPushing ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Синхронизация и отправка...</span>
+                  </>
+                ) : (
+                  <>
+                    <UploadCloud className="w-4 h-4" />
+                    <span>Запустить миграцию на GitHub</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

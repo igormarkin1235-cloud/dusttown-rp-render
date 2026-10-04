@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { UserProfile, Award, CharacterSheet, AdminInfo } from '../types';
 import { AvatarWithFrame } from './AvatarWithFrame';
+import { PlayerCardFrame } from './PlayerCardFrame';
 import { ProfileAnimatedTheme } from './ProfileAnimatedTheme';
 import { ProfilePinnedArtsShowcase } from './ProfilePinnedArtsShowcase';
 import {
@@ -71,114 +72,155 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
       {/* Background backdrop click to close */}
       <div className="absolute inset-0" onClick={onClose} />
 
-      <div className="relative w-full max-w-xl max-h-[92dvh] sm:max-h-[88vh] overflow-hidden rounded-t-3xl sm:rounded-3xl bg-zinc-950 border border-zinc-800 shadow-2xl text-zinc-100 flex flex-col z-10">
-        {/* Mobile Swipe Bar Handle */}
-        <div
-          className="sm:hidden pt-2.5 pb-1 flex justify-center cursor-pointer active:opacity-60"
-          onClick={onClose}
+      <div className="relative z-10 w-full max-w-xl">
+        <PlayerCardFrame
+          frameId={user.activeCardFrame || user.activeAvatarFrame}
+          isOwner={isOwner}
+          isAdmin={isTargetAdmin}
+          className="w-full shadow-2xl transition-all duration-300"
         >
-          <div className="w-12 h-1.5 rounded-full bg-zinc-700/80 active:bg-amber-400 transition" />
-        </div>
-
-        {/* Sticky Close Button */}
-        <button
-          onClick={onClose}
-          aria-label="Закрыть профиль"
-          className="absolute top-3 right-3 z-30 w-10 h-10 rounded-full bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-700/80 flex items-center justify-center text-zinc-300 hover:text-white transition shadow-lg active:scale-95 touch-manipulation"
-        >
-          <X className="w-4 h-4" />
-        </button>
-
-        {/* Compact Top Profile Header with Applied Theme & Cosmetics */}
-        <div className={`relative px-4 py-4 sm:px-6 sm:py-5 overflow-hidden shrink-0 ${user.activeTextBg || 'bg-gradient-to-b from-zinc-900 to-zinc-950 border-b border-zinc-800'}`}>
-          <ProfileAnimatedTheme
-            themeId={user.activeThemeId || 'default'}
-            customBgUrl={user.customBgUrl}
-            customBgEffect={user.customBgEffect}
-            customBgPosition={user.customBgPosition}
-          />
-
-          <div className="relative z-10 flex items-center gap-3.5 sm:gap-5 pr-8">
-            {/* Avatar & Badges */}
-            <div className="relative shrink-0 flex flex-col items-center">
-              <AvatarWithFrame
-                avatarUrl={user.avatarUrl}
-                frameId={user.activeAvatarFrame}
-                size="md"
-              />
-              {isOwner && (
-                <div className="mt-1 badge-owner-shimmer text-black font-black text-[9px] tracking-wider uppercase px-2 py-0.5 rounded-full shadow-lg flex items-center gap-1 z-20">
-                  <Crown className="w-2.5 h-2.5 text-black" />
-                  <span>Создатель</span>
-                </div>
-              )}
-              {isTargetAdmin && (
-                <div className="mt-1 badge-admin-shimmer text-white font-black text-[9px] tracking-wider uppercase px-2 py-0.5 rounded-full shadow-lg flex items-center gap-1 z-20">
-                  <Shield className="w-2.5 h-2.5 text-white" />
-                  <span>Админ</span>
-                </div>
-              )}
+          <div className={`relative w-full max-h-[92dvh] sm:max-h-[88vh] overflow-hidden rounded-t-3xl sm:rounded-3xl border shadow-2xl text-zinc-100 flex flex-col ${
+            user.activeTextBg || 'bg-zinc-950 border-zinc-800'
+          }`}>
+            {/* Mobile Swipe Bar Handle */}
+            <div
+              className="sm:hidden pt-2.5 pb-1 flex justify-center cursor-pointer active:opacity-60"
+              onClick={onClose}
+            >
+              <div className="w-12 h-1.5 rounded-full bg-zinc-700/80 active:bg-amber-400 transition" />
             </div>
 
-            {/* User Meta with Applied Custom Text Style */}
-            <div className="flex-1 min-w-0">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <h3 className={`text-base sm:text-lg font-bold font-heading truncate ${user.activeTextColor || 'text-white'}`}>
-                  {user.displayName}
-                </h3>
-                <span className="text-[11px] px-2 py-0.5 rounded-full bg-zinc-800/80 text-zinc-400 font-mono-pip border border-zinc-700/60 shrink-0">
-                  {user.username}
-                </span>
-              </div>
+            {/* Sticky Close Button */}
+            <button
+              onClick={onClose}
+              aria-label="Закрыть профиль"
+              className="absolute top-3 right-3 z-30 w-10 h-10 rounded-full bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-700/80 flex items-center justify-center text-zinc-300 hover:text-white transition shadow-lg active:scale-95 touch-manipulation"
+            >
+              <X className="w-4 h-4" />
+            </button>
 
-              {/* Faction & Role Badge */}
-              <div className="mt-1 flex items-center gap-2 flex-wrap">
-                {user.factionName && (
-                  <div className="px-2 py-0.5 rounded-lg bg-zinc-900/90 border border-amber-500/40 text-[10px] flex items-center gap-1 shadow">
-                    <Shield className="w-3 h-3 text-amber-400" />
-                    <span className="font-bold text-zinc-100 font-heading">
-                      {user.factionName}
-                    </span>
-                    <span className="text-zinc-600">•</span>
-                    <span className="text-amber-300 font-mono-pip">
-                      {user.factionRole || 'Боец'}
+            {/* Compact Top Profile Header with Applied Theme & Cosmetics */}
+            <div className={`relative px-4 py-4 sm:px-6 sm:py-5 overflow-hidden shrink-0 ${user.activeTextBg || 'bg-gradient-to-b from-zinc-900 to-zinc-950 border-b border-zinc-800'}`}>
+              <ProfileAnimatedTheme
+                themeId={user.activeThemeId || 'default'}
+                customBgUrl={user.customBgUrl}
+                customBgEffect={user.customBgEffect}
+                customBgPosition={user.customBgPosition}
+              />
+
+              <div className="relative z-10 flex items-center gap-3.5 sm:gap-5 pr-8">
+                {/* Avatar & Badges with full custom positioning & frame */}
+                <div className="relative shrink-0 flex flex-col items-center">
+                  <AvatarWithFrame
+                    avatarUrl={user.avatarUrl}
+                    frameId={user.activeAvatarFrame}
+                    size="lg"
+                    fitMode={user.avatarFitMode || 'cover'}
+                    zoom={user.avatarZoom || 1}
+                    offsetY={user.avatarOffsetY || 0}
+                    offsetX={user.avatarOffsetX || 0}
+                  />
+                  {isOwner && (
+                    <div className="mt-1 badge-owner-shimmer text-black font-black text-[9px] tracking-wider uppercase px-2 py-0.5 rounded-full shadow-lg flex items-center gap-1 z-20">
+                      <Crown className="w-2.5 h-2.5 text-black" />
+                      <span>Создатель</span>
+                    </div>
+                  )}
+                  {isTargetAdmin && (
+                    <div className="mt-1 badge-admin-shimmer text-white font-black text-[9px] tracking-wider uppercase px-2 py-0.5 rounded-full shadow-lg flex items-center gap-1 z-20">
+                      <Shield className="w-2.5 h-2.5 text-white" />
+                      <span>Админ</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* User Meta with Applied Custom Text Style */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <h3 className={`text-base sm:text-xl font-black font-heading truncate drop-shadow ${user.activeTextColor || 'text-white'}`}>
+                      {user.displayName}
+                    </h3>
+                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-zinc-800/80 text-zinc-400 font-mono-pip border border-zinc-700/60 shrink-0">
+                      {user.username}
                     </span>
                   </div>
-                )}
 
-                {/* Balance Badge */}
-                <div
-                  className={`flex items-center gap-1 px-2 py-0.5 rounded-lg border font-mono-pip text-[11px] font-bold ${
-                    user.equivaxes < 0
-                      ? 'bg-rose-950/80 border-rose-500/80 text-rose-300'
-                      : 'bg-amber-500/10 border-amber-500/30 text-amber-300'
-                  }`}
-                >
-                  <Coins className={`w-3 h-3 ${user.equivaxes < 0 ? 'text-rose-400 animate-pulse' : 'text-amber-400'}`} />
-                  <span>
-                    {user.isInfiniteEquivaxes || isOwner
-                      ? '∞ ℰQ'
-                      : user.equivaxes < 0
-                      ? `ДОЛГ: ${user.equivaxes.toLocaleString()} ℰQ`
-                      : `${user.equivaxes.toLocaleString()} ℰQ`}
-                  </span>
+                  {/* Faction & Role Badge */}
+                  <div className="mt-1 flex items-center gap-2 flex-wrap">
+                    {user.factionName && (
+                      <div className="px-2 py-0.5 rounded-lg bg-zinc-900/90 border border-amber-500/40 text-[10px] flex items-center gap-1 shadow">
+                        <Shield className="w-3 h-3 text-amber-400" />
+                        <span className="font-bold text-zinc-100 font-heading">
+                          {user.factionName}
+                        </span>
+                        <span className="text-zinc-600">•</span>
+                        <span className="text-amber-300 font-mono-pip">
+                          {user.factionRole || 'Боец'}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Balance Badge */}
+                    <div
+                      className={`flex items-center gap-1 px-2 py-0.5 rounded-lg border font-mono-pip text-[11px] font-bold ${
+                        user.equivaxes < 0
+                          ? 'bg-rose-950/80 border-rose-500/80 text-rose-300'
+                          : 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+                      }`}
+                    >
+                      <Coins className={`w-3 h-3 ${user.equivaxes < 0 ? 'text-rose-400 animate-pulse' : 'text-amber-400'}`} />
+                      <span>
+                        {user.isInfiniteEquivaxes || isOwner
+                          ? '∞ ℰQ'
+                          : user.equivaxes < 0
+                          ? `ДОЛГ: ${user.equivaxes.toLocaleString()} ℰQ`
+                          : `${user.equivaxes.toLocaleString()} ℰQ`}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Cosmetics & Aura Status Indicators */}
+                  {(user.activeCardFrame || (user.activeAvatarFrame && user.activeAvatarFrame !== 'frame_none') || (user.activeThemeId && user.activeThemeId !== 'default') || user.hasNeonAura || user.hasVip || user.hasHonoredCitizen) && (
+                    <div className="mt-1.5 flex items-center gap-1.5 flex-wrap text-[10px] font-mono-pip">
+                      {user.hasNeonAura && (
+                        <span className="px-2 py-0.5 rounded-full bg-cyan-950/80 border border-cyan-400/50 text-cyan-300 flex items-center gap-1 shadow-[0_0_8px_rgba(6,182,212,0.4)]">
+                          <Sparkles className="w-2.5 h-2.5 text-cyan-400" />
+                          <span>Неоновая аура</span>
+                        </span>
+                      )}
+                      {user.hasVip && (
+                        <span className="px-2 py-0.5 rounded-full bg-amber-950/80 border border-amber-400/50 text-amber-300 flex items-center gap-1">
+                          <Crown className="w-2.5 h-2.5 text-amber-400" />
+                          <span>VIP</span>
+                        </span>
+                      )}
+                      {user.hasHonoredCitizen && (
+                        <span className="px-2 py-0.5 rounded-full bg-purple-950/80 border border-purple-400/50 text-purple-300 flex items-center gap-1">
+                          <span>🎖️ Почётный гражданин</span>
+                        </span>
+                      )}
+                      {user.activeCardFrame && user.activeCardFrame !== 'card_frame_none' && (
+                        <span className="px-2 py-0.5 rounded-full bg-zinc-800/80 border border-zinc-700 text-zinc-300 flex items-center gap-1">
+                          <span>🖼️ Рамка</span>
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Quick DM Button */}
+                  {onStartChat && user.id !== currentUser.id && (
+                    <div className="mt-1.5">
+                      <button
+                        onClick={() => onStartChat(user)}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-700/60 bg-cyan-950/60 px-2.5 py-1 text-[11px] font-bold text-cyan-200 transition hover:border-cyan-400 hover:bg-cyan-900/80 active:scale-95"
+                      >
+                        <MessageCircle className="h-3 w-3 text-cyan-400" /> Написать в ЛС
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
-
-              {/* Quick DM Button */}
-              {onStartChat && user.id !== currentUser.id && (
-                <div className="mt-1.5">
-                  <button
-                    onClick={() => onStartChat(user)}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-700/60 bg-cyan-950/60 px-2.5 py-1 text-[11px] font-bold text-cyan-200 transition hover:border-cyan-400 hover:bg-cyan-900/80 active:scale-95"
-                  >
-                    <MessageCircle className="h-3 w-3 text-cyan-400" /> Написать в ЛС
-                  </button>
-                </div>
-              )}
             </div>
-          </div>
-        </div>
 
         {/* Mobile Navigation Segmented Tabs Bar */}
         <div className="flex items-center border-b border-zinc-800 bg-zinc-900/90 px-2 py-1.5 gap-1 shrink-0 overflow-x-auto scrollbar-none">
@@ -274,11 +316,11 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
 
               {/* Bio / Quote Card */}
               {user.bio ? (
-                <div className="p-3.5 rounded-2xl bg-zinc-900/40 border border-zinc-800/80">
+                <div className={`p-3.5 rounded-2xl border ${user.activeTextBg ? 'bg-zinc-950/70 border-zinc-700/60' : 'bg-zinc-900/40 border-zinc-800/80'}`}>
                   <span className="text-[10px] font-mono-pip text-zinc-500 uppercase tracking-wider block mb-1">
                     О себе:
                   </span>
-                  <p className="text-xs text-zinc-300 leading-relaxed italic">
+                  <p className={`text-xs leading-relaxed italic ${user.activeTextColor || 'text-zinc-300'}`}>
                     "{user.bio}"
                   </p>
                 </div>
@@ -640,6 +682,8 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
             <span>Закрыть</span>
           </button>
         </div>
+          </div>
+        </PlayerCardFrame>
       </div>
     </div>
   );

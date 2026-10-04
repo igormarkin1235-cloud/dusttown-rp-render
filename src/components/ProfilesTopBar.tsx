@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { UserProfile, AdminInfo } from '../types';
 import { PlayerCardFrame } from './PlayerCardFrame';
+import { AvatarWithFrame } from './AvatarWithFrame';
 import { Users, Search, Shield, Crown, Flame, Trophy } from 'lucide-react';
 
 interface ProfilesTopBarProps {
   profiles: UserProfile[];
   admins: AdminInfo[];
+  activityLogs?: any[];
   currentUserId: string;
   onSelectProfile: (profile: UserProfile) => void;
 }
@@ -110,9 +112,10 @@ export const ProfilesTopBar: React.FC<ProfilesTopBarProps> = ({
                   type="button"
                   onClick={() => onSelectProfile(profile)}
                   className={`w-full flex items-center gap-2.5 px-3 py-2 text-left transition select-none group ${
-                    isMe
+                    profile.activeTextBg ||
+                    (isMe
                       ? 'bg-amber-500/10 text-amber-200'
-                      : 'bg-zinc-950/80 hover:bg-zinc-900/90 text-zinc-300 hover:text-white'
+                      : 'bg-zinc-950/80 hover:bg-zinc-900/90 text-zinc-300 hover:text-white')
                   }`}
                   title={`Открыть профиль: ${profile.displayName} (${profile.username})`}
                 >
@@ -132,19 +135,17 @@ export const ProfilesTopBar: React.FC<ProfilesTopBarProps> = ({
                       #{rank}
                     </span>
 
-                    {/* Small uncropped clean Avatar inside card frame */}
-                    <div className="relative mt-1">
-                      <div className="w-8 h-8 rounded-xl overflow-hidden border border-zinc-700/80 bg-black flex items-center justify-center shadow-inner">
-                        <img
-                          src={profile.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'}
-                          alt={profile.displayName}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                          onError={e => {
-                            (e.target as HTMLImageElement).src =
-                              'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80';
-                          }}
-                        />
-                      </div>
+                    {/* Small styled Avatar with Frame inside card */}
+                    <div className="relative mt-1 flex items-center justify-center">
+                      <AvatarWithFrame
+                        avatarUrl={profile.avatarUrl}
+                        frameId={profile.activeAvatarFrame}
+                        size="sm"
+                        fitMode={profile.avatarFitMode || 'cover'}
+                        zoom={profile.avatarZoom || 1}
+                        offsetX={profile.avatarOffsetX || 0}
+                        offsetY={profile.avatarOffsetY || 0}
+                      />
                       {isOwner && (
                         <Crown className="w-3.5 h-3.5 text-amber-400 absolute -top-1.5 -right-1.5 drop-shadow z-20 animate-bounce" />
                       )}

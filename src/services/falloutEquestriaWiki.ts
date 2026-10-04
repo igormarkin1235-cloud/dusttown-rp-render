@@ -6,6 +6,7 @@
  */
 
 export const FALLOUT_EQUISTRIA_FORUM_URL = 'https://falloutequestria.fandom.com/ru/wiki/%D0%9B%D0%B8%D1%82%D0%BB%D0%BF%D0%B8%D0%BF';
+export const LITTLEPIP_FANDOM_PAGE_URL = FALLOUT_EQUISTRIA_FORUM_URL;
 
 export interface WikiArticle {
   title: string;

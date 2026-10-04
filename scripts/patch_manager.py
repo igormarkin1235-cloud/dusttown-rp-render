@@ -4,10 +4,6 @@ import json
 import hashlib
 import zipfile
 import datetime
-import warnings
-
-# Suppress warnings so stdout only contains pure JSON
-warnings.filterwarnings('ignore')
 
 # Root directory of the project
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -21,6 +17,7 @@ EXCLUDE_FILES = {
     '.dusttown_data.json',
     '.sync_checkpoint.json',
     '.littlepip_state.json',
+    '.littlepip_memory.json',
     'downloaded.zip',
     'test.zip'
 }
@@ -123,7 +120,7 @@ def get_diff():
         'isInitial': False
     }
 
-def make_patch_zip(include_base64=True):
+def make_patch_zip():
     diff = get_diff()
     files_to_pack = diff['changedFiles']
 
@@ -132,8 +129,6 @@ def make_patch_zip(include_base64=True):
         current_files = scan_project_files()
         sorted_by_mtime = sorted(current_files.items(), key=lambda x: x[1]['mtime'], reverse=True)
         files_to_pack = [x[0] for x in sorted_by_mtime[:15]]
-
-    files_to_pack = [f for f in files_to_pack if f not in ('PATCH_README.md', 'patch_manifest.json')]
 
     now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
     clean_date = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
@@ -184,20 +179,17 @@ def make_patch_zip(include_base64=True):
         }
         zipf.writestr('patch_manifest.json', json.dumps(manifest, indent=2, ensure_ascii=False))
 
-    size_bytes = os.path.getsize(OUTPUT_PATCH_ZIP) if os.path.exists(OUTPUT_PATCH_ZIP) else 0
-    b64_str = ''
-    if include_base64 and os.path.exists(OUTPUT_PATCH_ZIP):
-        import base64
-        with open(OUTPUT_PATCH_ZIP, 'rb') as f:
-            b64_str = base64.b64encode(f.read()).decode('utf-8')
+    import base64
+    with open(OUTPUT_PATCH_ZIP, 'rb') as f:
+        zip_bytes = f.read()
 
     return {
         'success': True,
         'filename': filename,
         'changedFiles': files_to_pack,
         'filesCount': len(files_to_pack),
-        'sizeBytes': size_bytes,
-        'base64': b64_str,
+        'sizeBytes': len(zip_bytes),
+        'base64': base64.b64encode(zip_bytes).decode('utf-8'),
         'createdAt': now_iso
     }
 
@@ -211,10 +203,7 @@ def main():
         diff = get_diff()
         print(json.dumps(diff, ensure_ascii=False))
     elif cmd == 'make-patch':
-        want_b64 = '--base64' in sys.argv or '--no-base64' not in sys.argv
-        if '--no-base64' in sys.argv:
-            want_b64 = False
-        res = make_patch_zip(include_base64=want_b64)
+        res = make_patch_zip()
         print(json.dumps(res, ensure_ascii=False))
     elif cmd in ('confirm', 'mark-synced'):
         current_files = scan_project_files()

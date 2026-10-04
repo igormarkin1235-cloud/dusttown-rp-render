@@ -71,7 +71,7 @@
   ],
   "auctionListings": [],
   "factions": [],
-  "lastUpdated": "2026-10-03T10:54:02.279Z",
+  "lastUpdated": "2026-10-04T21:18:27.870Z",
   "artworks": [],
   "activityLogs": [
     {
@@ -139,5 +139,5 @@
       "handshakeId": "hs_init_19e48f"
     }
   ],
-  "syncVersion": 11
+  "syncVersion": 12
 }

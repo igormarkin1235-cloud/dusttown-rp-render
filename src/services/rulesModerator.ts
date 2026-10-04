@@ -75,6 +75,7 @@ export interface ViolationCheckResult {
   ruleTitle?: string;
   reason?: string;
   harshWarningReply?: string;
+  warningText?: string;
   memeTag?: string;
 }
 

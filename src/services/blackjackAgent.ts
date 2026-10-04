@@ -59,7 +59,7 @@ export interface BlackjackCommandParseResult {
  */
 export function hasBlackjackMention(text: string): boolean {
   if (!text) return false;
-  return /(?:@?bleckjek(?:_bot)?|@?blackjack(?:_bot)?|блэкджек|блекджек|джеки|блэки|блеки|блэк|блек|дилер|шериф|секьюрити|security|blackjack|\/bj|\/blackjack|\/mute|\/unmute|\/ban|\/unban|\/blacklist|\/status|\/help)/iu.test(text);
+  return /(?:блэкджек|блекджек|джеки|блэки|блеки|дилер|blackjack|\/bj|\/blackjack|\/mute|\/unmute|\/ban|\/unban|\/blacklist)/iu.test(text);
 }
 
 /**
@@ -130,8 +130,8 @@ export function parseModerationIntent(text: string): BlackjackCommandParseResult
       action: 'mute',
       targetUser,
       durationMinutes,
-      reason,
-      needsReasonPrompt: !reason
+      reason: reason || 'Нарушение правил общения',
+      needsReasonPrompt: false
     };
   }
 
@@ -156,21 +156,19 @@ export function parseModerationIntent(text: string): BlackjackCommandParseResult
       isBlackjackTrigger: true,
       action: 'ban',
       targetUser,
-      reason,
-      needsReasonPrompt: !reason
+      reason: reason || 'Грубейшее нарушение правил и дебош',
+      needsReasonPrompt: false
     };
   }
 
   // 7. Bot block
-  if (/(?:заблокируй в боте|блокни в боте|блокировка активности|запрети бота|блок в боте|блокни)/iu.test(clean)) {
+  if (/(?:заблокируй в боте|блокни в боте|блокировка активности|запрети бота)/iu.test(clean)) {
     const reasonMatch = clean.match(/(?:по причине|причина|из-за|за)\s*[:\-—]?\s*(.+)$/iu);
-    const reason = reasonMatch ? reasonMatch[1].trim() : undefined;
     return {
       isBlackjackTrigger: true,
       action: 'bot_block',
       targetUser,
-      reason,
-      needsReasonPrompt: !reason
+      reason: reasonMatch ? reasonMatch[1].trim() : 'Нарушение правил использования бота'
     };
   }
 
@@ -302,131 +300,104 @@ export async function handleBlackjackMessage(params: {
 
     const adminTag = senderUsername || '@Admin';
     const target = intent.targetUser;
-    const hasExplicitReason = Boolean(intent.reason && intent.reason.trim());
-    const reason = hasExplicitReason ? intent.reason!.trim() : 'Причина не указана (ожидается рапорт шерифа)';
-
-    let record: any = null;
-    let fallbackText = '';
-    const dur = intent.durationMinutes || 10;
+    const reason = intent.reason || 'Распоряжение дежурного администратора';
 
     if (intent.action === 'mute') {
-      record = issueMute(target, adminTag, reason, dur);
+      const dur = intent.durationMinutes || 10;
+      const muteRec = issueMute(target, adminTag, reason, dur);
       recordBlackjackInfraction(target, target, 'mute');
+
       if (chatId) {
+        // Attempt Telegram API restriction in background
         executeTelegramModerationAction(chatId, target.replace('@', ''), 'mute', Date.now() + dur * 60 * 1000).catch(() => {});
       }
-      fallbackText = hasExplicitReason
-        ? `🔇 **Наручники накинуты, пасть ${target} заткнута на ${dur} минут.**\n📋 **Причина в рапорте:** ${reason}\n_До ${new Date(record.expiresAt).toLocaleTimeString()} ни звука не издаст._`
-        : `🔒 **Пасть ${target} заткнута на ${dur} минут!**\n⚠️ **Шериф, живо назови причину для рапорта Стойла 99!** Я внесла наказание в журнал, но без причины инспекторы с меня шкуру спустят!`;
-    } else if (intent.action === 'unmute') {
+
+      return {
+        replyText: `🔇 **Принято, шериф!** Заткнула пасть ${target} на ${dur} минут.\n` +
+          `📋 **Причина в рапорте:** ${reason}\n` +
+          `_Пусть посидит в изоляторе Стойла 99 и почистит стволы. До ${new Date(muteRec.expiresAt).toLocaleTimeString()} ни звука не издаст._`,
+        actionTaken: 'mute',
+        moderationRecord: muteRec
+      };
+    }
+
+    if (intent.action === 'unmute') {
       const res = revokeMute(target, adminTag, reason);
-      record = res.record;
       if (chatId) {
         executeTelegramModerationAction(chatId, target.replace('@', ''), 'unmute').catch(() => {});
       }
-      fallbackText = `🔊 **Наручники сняты.** Мут с ${target} аннулирован.\n📋 **Причина амнистии:** ${reason}\n_Смотри у меня, ${target}, второй раз картечь дважды просить не будет._`;
-    } else if (intent.action === 'ban') {
-      record = issueBan(target, adminTag, reason);
+      return {
+        replyText: `🔊 **Наручники сняты.** Мут с ${target} аннулирован.\n` +
+          `📋 **Причина амнистии:** ${reason}\n` +
+          `_Смотри у меня, ${target}, второй раз картечь дважды просить не будет._`,
+        actionTaken: 'unmute',
+        moderationRecord: res.record
+      };
+    }
+
+    if (intent.action === 'ban') {
+      const banRec = issueBan(target, adminTag, reason);
       recordBlackjackInfraction(target, target, 'ban');
       if (chatId) {
         executeTelegramModerationAction(chatId, target.replace('@', ''), 'ban').catch(() => {});
       }
-      fallbackText = hasExplicitReason
-        ? `⛔ **Вышвырнула за шлюз Стойла 99!** Пользователь ${target} отправлен в перманентный бан.\n📋 **Причина ликвидации:** ${reason}\n_Дверь гермозатвора запечатана намертво._`
-        : `⛔ **Вышвырнула ${target} за ворота Стойла 99!**\n⚠️ **Шериф, а причина какая?** Живо назови причину ликвидации нарушителя для журнала учета!`;
-    } else if (intent.action === 'unban') {
+      return {
+        replyText: `⛔ **Вышвырнула за шлюз Стойла 99!** Пользователь ${target} отправлен в перманентный бан.\n` +
+          `📋 **Причина ликвидации:** ${reason}\n` +
+          `_Дверь гермозатвора запечатана намертво._`,
+        actionTaken: 'ban',
+        moderationRecord: banRec
+      };
+    }
+
+    if (intent.action === 'unban') {
       const res = revokeBan(target, adminTag, reason);
-      record = res.record;
       if (chatId) {
         executeTelegramModerationAction(chatId, target.replace('@', ''), 'unban').catch(() => {});
       }
-      fallbackText = `🔓 **Гермозатвор открыт.** Бан с ${target} снят по приказу администрации.\n📋 **Причина амнистии:** ${reason}`;
-    } else if (intent.action === 'bot_block') {
-      record = blockBotActivity(target, adminTag, reason);
-      fallbackText = hasExplicitReason
-        ? `🤖 **Доступ к боту перекрыт.** Пользователь ${target} заблокирован.\n📋 **Причина:** ${reason}`
-        : `🤖 **Доступ к боту для ${target} заблокирован!**\n⚠️ **Шериф, укажи причину для рапорта!** Внесу её в протокол безопасности.`;
-    } else if (intent.action === 'bot_unblock') {
-      record = unblockBotActivity(target, adminTag, reason);
-      fallbackText = `✅ **Доступ к боту восстановлен.** Пользователь ${target} снова может использовать Mini App.\n📋 **Причина:** ${reason}`;
+      return {
+        replyText: `🔓 **Гермозатвор открыт.** Бан с ${target} снят по приказу администрации.\n` +
+          `📋 **Причина амнистии:** ${reason}`,
+        actionTaken: 'unban',
+        moderationRecord: res.record
+      };
     }
 
-    // Попытка сгенерировать ответ через собственный ИИ Блэкджек (Gemini + Fandom Wiki)
-    const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-    if (apiKey) {
-      try {
-        const wikiRef = await fetchBlackjackWikiDossier();
-        const sysPrompt = getBlackjackSystemPrompt(wikiRef?.extract);
-        const ai = new GoogleGenAI({ apiKey });
-
-        let aiPrompt = '';
-        if (intent.action === 'mute') {
-          aiPrompt = hasExplicitReason
-            ? `Шериф ${senderDisplayName || senderUsername} приказал замутить ${target} на ${dur} минут за «${reason}». Ты накинула кляп. Ответь кратко и сурово от лица Блэкджек (Project Horizons), подтверждая рапорт.`
-            : `Шериф ${senderDisplayName || senderUsername} приказал замутить ${target} на ${dur} минут БЕЗ указания причины. Ты УЖЕ применила мут к ${target}, но ОБЯЗАТЕЛЬНО потребуй у шерифа прямо сейчас назвать причину для рапорта Стойла 99! Ответь живо, сурово и характерно от лица Блэкджек.`;
-        } else if (intent.action === 'ban') {
-          aiPrompt = hasExplicitReason
-            ? `Шериф ${senderDisplayName || senderUsername} приказал забанить ${target} за «${reason}». Ты захлопнула шлюз Стойла 99. Подтверди от лица Блэкджек.`
-            : `Шериф ${senderDisplayName || senderUsername} приказал забанить ${target} БЕЗ причины. Ты вышвырнула нарушителя за шлюз Стойла 99, но ОБЯЗАТЕЛЬНО потребуй у шерифа причину для протокола! Ответь от лица Блэкджек.`;
-        } else if (intent.action === 'bot_block') {
-          aiPrompt = hasExplicitReason
-            ? `Шериф ${senderDisplayName || senderUsername} приказал заблокировать активность в боте для ${target} за «${reason}». Ты отключила терминал. Подтверди в стиле Блэкджек.`
-            : `Шериф ${senderDisplayName || senderUsername} приказал заблокировать активность в боте для ${target} БЕЗ причины. Ты отключила терминал, но потребуй от шерифа причину для рапорта!`;
-        } else if (intent.action === 'unmute') {
-          aiPrompt = `Шериф ${senderDisplayName || senderUsername} приказал снять мут с ${target} по причине «${reason}». Ты сняла наручники. Подтверди от лица Блэкджек, предупредив, чтобы больше не дебоширил.`;
-        } else if (intent.action === 'unban') {
-          aiPrompt = `Шериф ${senderDisplayName || senderUsername} приказал разбанить ${target} по причине «${reason}». Ты открыла шлюз. Подтверди от лица Блэкджек.`;
-        } else if (intent.action === 'bot_unblock') {
-          aiPrompt = `Шериф ${senderDisplayName || senderUsername} приказал вернуть доступ к боту для ${target} по причине «${reason}». Подтверди от лица Блэкджек.`;
-        }
-
-        const resp = await ai.models.generateContent({
-          model: BLACKJACK_GEMINI_MODEL,
-          contents: aiPrompt,
-          config: {
-            systemInstruction: sysPrompt,
-            temperature: 0.7,
-            maxOutputTokens: 250
-          }
-        });
-
-        if (resp.text && resp.text.trim()) {
-          return {
-            replyText: resp.text.trim(),
-            actionTaken: intent.action,
-            moderationRecord: record
-          };
-        }
-      } catch (err) {
-        console.warn('Blackjack AI generation error, using fallback:', err);
-      }
+    if (intent.action === 'bot_block') {
+      const rec = blockBotActivity(target, adminTag, reason);
+      return {
+        replyText: `🤖 **Доступ к боту заблокирован.** Пользователю ${target} перекрыты каналы терминала.\n` +
+          `📋 **Причина:** ${reason}`,
+        actionTaken: 'bot_block',
+        moderationRecord: rec
+      };
     }
 
-    return {
-      replyText: fallbackText,
-      actionTaken: intent.action,
-      moderationRecord: record
-    };
+    if (intent.action === 'bot_unblock') {
+      const rec = unblockBotActivity(target, adminTag, reason);
+      return {
+        replyText: `✅ **Доступ к боту восстановлен.** Пользователь ${target} снова может использовать Mini App.\n` +
+          `📋 **Причина:** ${reason}`,
+        actionTaken: 'bot_unblock',
+        moderationRecord: rec
+      };
+    }
   }
 
-  // 6. Conversational / Lore / Assistance via Gemini + Wiki
+  // 6. Conversational / Lore / Assistance via Gemini
   try {
-    const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY;
     if (apiKey) {
-      const wikiRef = await fetchBlackjackWikiDossier();
-      const sysPrompt = getBlackjackSystemPrompt(wikiRef?.extract);
-
       const ai = new GoogleGenAI({ apiKey });
       const prompt = `Пользователь ${senderDisplayName || senderUsername} пишет: "${text}".
-Ответь от лица Блэкджек — кибер-кобылы и офицера безопасности Стойла 99 из «Fallout: Equestria — Project Horizons».
-Используй каноничные факты из вики: шасси EC-1101, дробовик, магнум .44, виски, P-21, Глори, Хуффингтон и правила Даст Таун.
-Ответь кратко (2-4 предложения) в своем фирменном саркастичном характере с черным юмором.`;
+Ответь кратко (2-4 предложения) в своем фирменном характере сурового охранника Стойла 99 Блэкджек (Project Horizons).
+Если спрашивают о боте или правилах, помоги чётко и без лишней воды.`;
 
       const response = await ai.models.generateContent({
         model: BLACKJACK_GEMINI_MODEL,
         contents: prompt,
         config: {
-          systemInstruction: sysPrompt,
+          systemInstruction: getBlackjackSystemPrompt(),
           temperature: 0.7,
           maxOutputTokens: 350
         }

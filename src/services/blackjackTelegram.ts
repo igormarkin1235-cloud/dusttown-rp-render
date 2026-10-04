@@ -52,7 +52,7 @@ export function getBlackjackBotLogs(): BlackjackBotLog[] {
 
 export function getBlackjackBotStatus() {
   const cfg = loadBlackjackConfig();
-  const token = process.env.BLACKJACK_TELEGRAM_BOT_TOKEN || cfg.telegramBotToken || '';
+  const token = cfg.telegramBotToken || process.env.BLACKJACK_TELEGRAM_BOT_TOKEN || '8818102467:AAGCBUGpBf2_pTwBhogsG-5Wt3mujzlgNjE';
   return {
     isPolling: isBlackjackPolling,
     botInfo: blackjackBotInfo,
@@ -72,7 +72,7 @@ export function getBlackjackBotStatus() {
  */
 export async function tgBlackjackApi(method: string, body?: any) {
   const cfg = loadBlackjackConfig();
-  const token = process.env.BLACKJACK_TELEGRAM_BOT_TOKEN || cfg.telegramBotToken;
+  const token = cfg.telegramBotToken || process.env.BLACKJACK_TELEGRAM_BOT_TOKEN || '8818102467:AAGCBUGpBf2_pTwBhogsG-5Wt3mujzlgNjE';
   if (!token) {
     throw new Error('Токен Telegram для Блэкджек не настроен');
   }
@@ -100,9 +100,6 @@ export async function testBlackjackTelegramConnection() {
       blackjackBotInfo = me.result;
       lastBlackjackError = null;
       addBlackjackLog('info', `✅ Связь с Telegram подтверждена: @${me.result.username} (${me.result.first_name}) [ID: ${me.result.id}]`);
-      if (me.result.can_read_all_group_messages === false) {
-        addBlackjackLog('info', 'ℹ️ Подсказка: у @Bleckjek_bot в Telegram включен Privacy Mode. Чтобы Блэкджек слышала все сообщения в группах без обязательного упоминания @Bleckjek_bot, сделайте бота администратором беседы или отключите Privacy Mode в @BotFather (/setprivacy -> Disable)');
-      }
       return { success: true, botInfo: me.result };
     }
     return { success: false, error: 'Telegram вернул пустой результат' };
@@ -135,8 +132,7 @@ export async function startBlackjackPolling(options: { resolveUserId?: (username
     while (isBlackjackPolling && blackjackAbortController && !blackjackAbortController.signal.aborted) {
       try {
         const cfg = loadBlackjackConfig();
-        const token = process.env.BLACKJACK_TELEGRAM_BOT_TOKEN || cfg.telegramBotToken;
-        if (!token) break;
+        const token = cfg.telegramBotToken || process.env.BLACKJACK_TELEGRAM_BOT_TOKEN || '8818102467:AAGCBUGpBf2_pTwBhogsG-5Wt3mujzlgNjE';
         const url = `https://api.telegram.org/bot${token}/getUpdates?offset=${lastUpdateId + 1}&timeout=20`;
 
         const res = await fetch(url, { signal: blackjackAbortController.signal });
@@ -207,16 +203,11 @@ async function processBlackjackUpdate(
 
   // Check if addressed to Blackjack
   const isDirect = msg.chat.type === 'private';
-  const isReplyToBlackjack = Boolean(
-    msg.reply_to_message?.from?.id === blackjackBotInfo?.id ||
-    msg.reply_to_message?.from?.username?.toLowerCase() === 'bleckjek_bot' ||
-    msg.reply_to_message?.from?.username?.toLowerCase() === 'blackjack_bot'
-  );
+  const isReplyToBlackjack = msg.reply_to_message?.from?.id === blackjackBotInfo?.id;
   const isMentioned = hasBlackjackMention(text);
   const isPipAlert = text.includes('🚨 @Blackjack') || text.includes('🚨 @Bleckjek_bot');
-  const isCommand = text.startsWith('/') && /(?:bj|blackjack|mute|unmute|ban|unban|blacklist|status|help)/i.test(text);
 
-  if (!isDirect && !isReplyToBlackjack && !isMentioned && !isPipAlert && !isCommand) {
+  if (!isDirect && !isReplyToBlackjack && !isMentioned && !isPipAlert) {
     return;
   }
 
@@ -280,7 +271,7 @@ async function processBlackjackUpdate(
       }
     }
 
-    // Send reply to Telegram with Markdown fallback
+    // Send reply to Telegram
     if (result.replyText) {
       const sendBody: any = {
         chat_id: chatId,
@@ -290,17 +281,7 @@ async function processBlackjackUpdate(
       if (topicId) {
         sendBody.message_thread_id = parseInt(topicId, 10);
       }
-      try {
-        await tgBlackjackApi('sendMessage', sendBody);
-      } catch (sendErr: any) {
-        // If Markdown parsing failed, retry as plain text without parse_mode
-        delete sendBody.parse_mode;
-        try {
-          await tgBlackjackApi('sendMessage', sendBody);
-        } catch (retryErr: any) {
-          addBlackjackLog('error', `Не удалось отправить сообщение: ${retryErr.message}`);
-        }
-      }
+      await tgBlackjackApi('sendMessage', sendBody);
     }
   } catch (err: any) {
     addBlackjackLog('error', `Ошибка обработки сообщения: ${err.message}`);
