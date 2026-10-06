@@ -7,9 +7,10 @@ import {
   loadBlackjackConfig,
   checkBlackjackTopicPermission,
   setBlackjackTopic,
-  parseBlackjackTopicLink
+  parseBlackjackTopicLink,
+  isAuthorizedBlackjackAdmin
 } from './blackjackConfig';
-import { handleBlackjackMessage, hasBlackjackMention } from './blackjackAgent';
+import { handleBlackjackMessage, hasBlackjackMention, isModerationCommand } from './blackjackAgent';
 import { executeTelegramModerationAction } from './blackjackModeration';
 import {
   rememberBlackjackObservation,
@@ -22,6 +23,118 @@ export interface BlackjackBotLog {
   time: string;
   type: 'info' | 'message' | 'action' | 'error';
   text: string;
+}
+
+// In-memory cache for chat administrators and username -> numeric ID resolution
+const blackjackChatAdminsCache = new Map<string, { admins: any[]; cachedAt: number }>();
+const telegramUserMap = new Map<string, number>();
+
+export function cacheTelegramUser(username: string | undefined, id: number) {
+  if (id) {
+    telegramUserMap.set(String(id), id);
+    if (username) {
+      const clean = username.toLowerCase().replace(/^@/, '');
+      telegramUserMap.set(clean, id);
+      telegramUserMap.set(`@${clean}`, id);
+    }
+  }
+}
+
+export function resolveNumericTelegramId(tagOrId: string | number | undefined): number | undefined {
+  if (!tagOrId) return undefined;
+  if (typeof tagOrId === 'number') return tagOrId;
+  const str = String(tagOrId).trim();
+  const cleanId = str.replace(/^@id/, '').replace(/^id/, '');
+  if (/^\d+$/.test(cleanId)) {
+    return parseInt(cleanId, 10);
+  }
+  const cleanUsername = str.toLowerCase().replace(/^@/, '');
+  return telegramUserMap.get(cleanUsername) || telegramUserMap.get(`@${cleanUsername}`);
+}
+
+export async function getBlackjackChatAdmins(chatId: number | string): Promise<any[]> {
+  const key = String(chatId);
+  const cached = blackjackChatAdminsCache.get(key);
+  if (cached && Date.now() - cached.cachedAt < 10 * 60 * 1000) {
+    return cached.admins;
+  }
+
+  try {
+    const res = await tgBlackjackApi('getChatAdministrators', { chat_id: chatId });
+    if (res && res.ok && Array.isArray(res.result)) {
+      const admins = res.result.map((member: any) => ({
+        userId: member.user.id,
+        username: member.user.username ? `@${member.user.username}` : undefined,
+        displayName: [member.user.first_name, member.user.last_name].filter(Boolean).join(' ') || 'Администратор',
+        isOwner: member.status === 'creator',
+        customTitle: member.custom_title
+      }));
+      blackjackChatAdminsCache.set(key, { admins, cachedAt: Date.now() });
+      return admins;
+    }
+  } catch (err: any) {
+    console.warn(`[Blackjack Admins] Could not load admins for chat ${key}:`, err.message);
+  }
+  return cached?.admins || [];
+}
+
+export async function isSenderTelegramAdmin(
+  chatId: number | string,
+  userId: number | string,
+  username?: string,
+  isPrivateChat = false
+): Promise<boolean> {
+  // 1. Static config / owner check
+  if (isAuthorizedBlackjackAdmin(username || userId)) return true;
+  if (isPrivateChat) return isAuthorizedBlackjackAdmin(username || userId);
+
+  const cleanUser = username ? username.toLowerCase().replace(/^@/, '') : '';
+  const uId = String(userId);
+
+  // 2. Check cached/loaded admins
+  const admins = await getBlackjackChatAdmins(chatId);
+  const found = admins.find(a =>
+    String(a.userId) === uId ||
+    (a.username && a.username.toLowerCase().replace(/^@/, '') === cleanUser)
+  );
+  if (found) return true;
+
+  // 3. Fallback: getChatMember direct call
+  try {
+    const res = await tgBlackjackApi('getChatMember', { chat_id: chatId, user_id: userId });
+    if (res && res.ok && res.result) {
+      const status = res.result.status;
+      if (status === 'creator' || status === 'administrator') {
+        const key = String(chatId);
+        const existing = blackjackChatAdminsCache.get(key)?.admins || [];
+        existing.push({
+          userId,
+          username: username ? (username.startsWith('@') ? username : `@${username}`) : undefined,
+          displayName: res.result.user?.first_name || 'Администратор',
+          isOwner: status === 'creator'
+        });
+        blackjackChatAdminsCache.set(key, { admins: existing, cachedAt: Date.now() });
+        return true;
+      }
+    }
+  } catch {
+    // If Blackjack doesn't have permissions, test with Littlepip token
+    if (process.env.TELEGRAM_BOT_TOKEN) {
+      try {
+        const pipRes = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/getChatMember`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: chatId, user_id: userId })
+        });
+        const pipData = await pipRes.json();
+        if (pipData && pipData.ok && (pipData.result?.status === 'creator' || pipData.result?.status === 'administrator')) {
+          return true;
+        }
+      } catch {}
+    }
+  }
+
+  return false;
 }
 
 let isBlackjackPolling = false;
@@ -366,12 +479,22 @@ async function processBlackjackUpdate(
 
   // Check if addressed to Blackjack
   const isDirect = msg.chat.type === 'private';
-  const isReplyToBlackjack = msg.reply_to_message?.from?.id === blackjackBotInfo?.id;
-  const isMentioned = hasBlackjackMention(text);
+  const isReplyToBlackjack = Boolean(
+    msg.reply_to_message?.from?.id === blackjackBotInfo?.id ||
+    msg.reply_to_message?.from?.username?.toLowerCase() === 'bleckjek_bot' ||
+    msg.reply_to_message?.from?.username?.toLowerCase() === 'blackjack_bot' ||
+    msg.reply_to_message?.from?.first_name?.toLowerCase().includes('блэкджек')
+  );
+  const isMentioned = hasBlackjackMention(text) || isModerationCommand(text);
   const isPipAlert = text.includes('🚨 @Blackjack') || text.includes('🚨 @Bleckjek_bot');
 
   if (!isDirect && !isReplyToBlackjack && !isMentioned && !isPipAlert) {
     return;
+  }
+
+  cacheTelegramUser(user.username, user.id);
+  if (msg.reply_to_message && msg.reply_to_message.from) {
+    cacheTelegramUser(msg.reply_to_message.from.username, msg.reply_to_message.from.id);
   }
 
   addBlackjackLog('message', `[${msg.chat.title || 'ЛС'}] ${senderUsername}: "${text.length > 50 ? text.substring(0, 50) + '...' : text}"`);
@@ -386,14 +509,26 @@ async function processBlackjackUpdate(
       : `@id${msg.reply_to_message.from.id}`;
   }
 
+  const isGroup = (typeof chatId === 'number' && chatId < 0) || String(chatId).startsWith('-');
+  const chatAdmins = isGroup ? await getBlackjackChatAdmins(chatId) : [];
+  const adminTags = chatAdmins.map(a => a.username).filter(Boolean) as string[];
+
+  // Comprehensive Admin Check
+  const isSenderAdmin = await isSenderTelegramAdmin(chatId, user.id, user.username, isDirect);
+
   // Handle message
   try {
     const result = await handleBlackjackMessage({
       text,
       senderUsername,
       senderDisplayName,
+      senderId: String(user.id),
+      isSenderAdmin,
       chatId,
-      topicId
+      topicId,
+      adminsList: adminTags,
+      replyTargetUserId,
+      replyTargetUsername
     });
 
     // If an action was taken (mute/ban/unmute), execute actual Telegram restriction if needed
@@ -401,8 +536,8 @@ async function processBlackjackUpdate(
       addBlackjackLog('action', `⚡ Действие: ${result.actionTaken.toUpperCase()} от ${senderUsername}`);
 
       // Attempt to resolve target numeric user ID
-      let targetNumericId = replyTargetUserId;
-      const targetTag = (result as any).moderationRecord?.targetUser || '';
+      const targetTag = (result as any).moderationRecord?.targetUser || replyTargetUsername || '';
+      let targetNumericId = replyTargetUserId || resolveNumericTelegramId(targetTag);
 
       if (!targetNumericId && targetTag && resolveUserId) {
         const resolved = resolveUserId(targetTag);
@@ -421,11 +556,14 @@ async function processBlackjackUpdate(
           untilDate
         ).then(res => {
           if (res.success) {
-            addBlackjackLog('action', `🔒 Telegram restrictChatMember применён к ID ${targetNumericId}`);
+            addBlackjackLog('action', `🔒 Telegram ${result.actionTaken} применён к ID ${targetNumericId}`);
           } else {
             addBlackjackLog('error', `Не удалось применить Telegram ограничение: ${res.error}`);
+            sendBlackjackReply(chatId, topicId, msg.message_id, `⚠️ _Внимание: наказание внесено в журнал СБ, но Telegram отклонил системное ограничение (${res.error}). Проверьте, выданы ли боту права администратора на «Блокировку пользователей»._`).catch(() => {});
           }
         }).catch(() => {});
+      } else {
+        addBlackjackLog('error', `Не удалось определить числовой Telegram ID для ${targetTag}. Используйте ответ (reply) на сообщение нарушителя.`);
       }
     }
 

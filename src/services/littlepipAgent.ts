@@ -50,7 +50,8 @@ import {
   getRandomAnecdote
 } from './littlepipMemesQuotes';
 import { checkMessageForViolations, CHANNEL_RULES } from './rulesModerator';
-import { summonBlackjackForViolation } from './blackjackAgent';
+import { summonBlackjackForViolation, hasBlackjackMention, isModerationCommand } from './blackjackAgent';
+import { getPlayerRestrictions } from './blackjackModeration';
 import {
   extractLittlepipMemeTag,
   getLittlepipMemeCatalog,
@@ -58,9 +59,10 @@ import {
 } from './littlepipMemes';
 
 // Стабильный стек моделей
-export const LITTLEPIP_GEMINI_MODEL = 'gemini-3.1-flash-lite';
+export const LITTLEPIP_GEMINI_MODEL = 'gemini-3.8-flash';
 const LITTLEPIP_GEMINI_FALLBACK_MODELS = [
-  'gemini-3.8-flash'
+  'gemini-2.5-flash',
+  'gemini-flash-latest'
 ];
 
 // ==========================================
@@ -132,6 +134,7 @@ export interface LittlepipConversationMessage {
   username: string;
   text: string;
   timestamp: number;
+  isAssistant?: boolean;
 }
 
 const recentConversations = new Map<string, LittlepipConversationMessage[]>();
@@ -179,12 +182,13 @@ function rememberConversationMessage(
   chatId: number | string,
   threadId: number | undefined,
   username: string,
-  text: string
+  text: string,
+  isAssistant = false
 ): void {
   if (!text || text.startsWith('/')) return;
   const key = getBindingKey(chatId, threadId);
   const messages = recentConversations.get(key) || [];
-  messages.push({ username, text, timestamp: Date.now() });
+  messages.push({ username, text, timestamp: Date.now(), isAssistant });
   recentConversations.set(key, messages.slice(-10));
 }
 
@@ -369,9 +373,14 @@ export function buildLittlepipPrompt(
   userId: string | number = 0
 ): string {
   const recentContext = conversationHistory.slice(-10);
+  const previousAssistantMessage = conversationHistory.slice().reverse().find(m => m.isAssistant || m.username.includes('Литлпип'));
   let promptText = recentContext.length
     ? `Последние сообщения в чате перед обращением к тебе (от старых к новым):\n${recentContext.map(message => `${message.username}: ${message.text}`).join('\n')}\n\n`
     : '';
+
+  if (previousAssistantMessage) {
+    promptText = `[ПРОЧИТАННЫЙ АРХИВ ЧАТА]:\n${promptText}`;
+  }
 
   // Проверка зацикливания на сидре / макинтоше
   const recentTexts = recentContext.map(m => m.text.toLowerCase()).join(' ');
@@ -380,7 +389,9 @@ export function buildLittlepipPrompt(
 
   promptText += `Текущее обращение от ${username}: "${cleanText}"`;
 
-  if (ciderCount >= 2 || macCount >= 2) {
+  if (previousAssistantMessage) {
+    promptText += `\n\n[ТВОЙ ПРЕДЫДУЩИЙ ОТВЕТ СТАЛКЕРАМ]: "${previousAssistantMessage.text}"\n[ДИРЕКТИВА АНТИ-ПОВТОРА]: КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО повторять те же самые детали и фразы из твоего предыдущего ответа! Смени тему, подколи собеседника или расскажи что-то новое!`;
+  } else if (ciderCount >= 2 || macCount >= 2) {
     promptText += `\n\n[ДИРЕКТИВА АНТИ-ПОВТОРА]: В предыдущих сообщениях уже много раз мусолили сидр и оружие! В этом ответе тебе СТРОЖАЙШЕ ЗАПРЕЩЕНО использовать слова "сидр" и "Макинтош"! Ответь под совершенно другим углом: подколи игроков за их странные фантазии, предложи проверить их на радиацию Пип-Баком, вспомни тостеры, Стойло 2 или друзей!`;
   }
 
@@ -393,11 +404,11 @@ export function buildLittlepipPrompt(
   promptText += `\n\n${memeGuidance}`;
 
   if (chatAdmins.length > 0) {
-    promptText += `\n\nАдминистраторы чата: ${chatAdmins
-      .map(admin => `${admin.username || admin.displayName}${admin.isOwner ? ' (создатель)' : ''}`)
+    promptText += `\n\nРУКОВОДСТВО И АДМИНИСТРАЦИЯ: ${chatAdmins
+      .map(admin => `${admin.username || admin.displayName}${admin.isOwner ? ' (СОЗДАТЕЛЬ / ВЛАДЕЛЕЦ)' : ''}`)
       .join(', ')}.`;
     if (isSenderOwner || isSenderAdmin) {
-      promptText += ` Собеседник — ${isSenderOwner ? 'создатель' : 'администратор'}: общайся с ним на равных, дружески подкалывай и иногда легко флиртуй, без подобострастия и навязчивости.`;
+      promptText += ` Собеседник — ${isSenderOwner ? 'СОЗДАТЕЛЬ / ВЛАДЕЛЕЦ' : 'АДМИНИСТРАТОР'}: общайся с ним на равных, дружески подкалывай и иногда легко флиртуй, без подобострастия и навязчивости.`;
     }
   }
 
@@ -520,6 +531,11 @@ function generateLocalLittlepipReply(
     return `Всегда пожалуйста, ${address}! Сталкеры Стойла 2 своих в беде не бросают.`;
   }
 
+  // Комплименты и лёгкий флирт
+  if (/(красив|мил|кобыл|люблю|нравишься|симпатичн|прелесть)/iu.test(lowerText)) {
+    return `Ой, ${address}... *[смущённо прижимает ушки и постукивает копытцем]* Ну ты и скажешь тоже! В Пустошах от таких слов даже мой Pip-Buck начинает ярче светиться. Комплимент засчитан, милашка!`;
+  }
+
   // Живые атмосферные реплики
   const ambientReplies = [
     `Слушаю тебя, ${address}. Мысль интересная, хотя у нас в Стойле за такие фокусы Смотрительница отправила бы чистить фильтры на неделю!`,
@@ -545,7 +561,9 @@ export interface TelegramMessageContext {
   text: string;
   replyToMessage?: any;
   botUsername?: string;
+  botId?: number | string;
   isMedia?: boolean;
+  mediaGroupId?: string;
   chatAdmins?: ChatAdminInfo[];
   isSenderAdmin?: boolean;
   isSenderOwner?: boolean;
@@ -559,18 +577,18 @@ export function hasBlackjackTrigger(text: string, ..._args: any[]): boolean {
 
 export function hasAggressionTowardsPipka(text: string, ..._args: any[]): boolean {
   if (!text) return false;
-  return /(?:в банку|запихну|проверить пробитие|убью|порву|разобью|ударю)/i.test(text);
+  return /(?:в банку|запихну|проверить пробитие|убью|порву|разобью|ударю|разберу|померла)/i.test(text);
 }
 
 export function isBlackjackSender(username: string, ..._args: any[]): boolean {
-  return /blackjack|bleckjek/i.test(username || '');
+  return /blackjack|bleckjek|джеки|блэкджек/i.test(username || '');
 }
 
 export function markBlackjackCalled(chatId?: number | string): void {}
 export function resetBlackjackWaiting(chatId?: number | string): void {}
 
 export function generateRandomJoke(_topic?: string, _lang?: string): string {
-  return 'Знаешь, почему рейдеры не чистят зубы? Потому что пуля стоматолога дешевле!';
+  return 'Знаешь, почему рейдеры не чистят зубы? Потому что пуля стоматолога дешевле! [MEME: gigachad]';
 }
 
 export interface LittlepipProcessResult {
@@ -588,6 +606,41 @@ export async function handleLittlepipUpdate(
   const { chatId, threadId, text, username, messageId, replyToMessage, botUsername, userId } = ctx;
   const cleanText = (text || '').trim();
   const lower = cleanText.toLowerCase();
+
+  // BOT LOOP GUARD: Never respond to other bots or Blackjack!
+  if (ctx.isSenderBot || isBlackjackSender(username)) {
+    return { handled: true, replyText: '' };
+  }
+
+  // If reply is to Blackjack (@Bleckjek_bot) or text addresses Blackjack or is a moderation command, Littlepip must never intercept!
+  const isReplyToBlackjack = Boolean(
+    replyToMessage && (
+      replyToMessage.from?.username?.toLowerCase() === 'bleckjek_bot' ||
+      replyToMessage.from?.username?.toLowerCase() === 'blackjack_bot' ||
+      replyToMessage.from?.id === 8818102467 ||
+      replyToMessage.from?.first_name?.toLowerCase().includes('блэкджек')
+    )
+  );
+  if ((hasBlackjackMention(cleanText) || isModerationCommand(cleanText) || isReplyToBlackjack) && !hasPipMention(cleanText)) {
+    return { handled: false };
+  }
+
+  // Check if sender is currently blocked in bot or muted
+  const senderRestrictions = getPlayerRestrictions(username || String(userId) || '');
+  if (senderRestrictions.isBotBlocked) {
+    const remaining = senderRestrictions.botBlockRecord?.expiresAt
+      ? Math.max(1, Math.round((new Date(senderRestrictions.botBlockRecord.expiresAt).getTime() - Date.now()) / 60000))
+      : 0;
+    const expStr = senderRestrictions.botBlockRecord?.expiresAt
+      ? new Date(senderRestrictions.botBlockRecord.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      : '';
+    if (ctx.chatType === 'private' || hasPipMention(cleanText)) {
+      const sendOptsBlocked: any = { parse_mode: 'Markdown', reply_to_message_id: messageId };
+      if (threadId) sendOptsBlocked.message_thread_id = threadId;
+      await sendMessageFn(chatId, `🚫 **Доступ к боту заблокирован протоколом СБ Стойла 99!**\nТаймер: ещё **${remaining} мин** (до ${expStr}).\n📋 Причина: ${senderRestrictions.botBlockRecord?.reason || 'Решение СБ'}.`, sendOptsBlocked);
+    }
+    return { handled: true };
+  }
 
   // Проверка прав топика (только чтение / разрешено писать / заблокировано)
   const topicPerms = checkTopicPermissions(threadId);
@@ -630,29 +683,22 @@ export async function handleLittlepipUpdate(
   }
 
   const violation = checkMessageForViolations(
-    cleanText, username, ctx.userId, chatId, Boolean(ctx.isMedia)
+    cleanText, username, ctx.userId, chatId, Boolean(ctx.isMedia), undefined, ctx.mediaGroupId
   );
   const warnText = violation.warningText || violation.harshWarningReply || '';
   if (violation.isViolation && warnText) {
     await sendMessageFn(chatId, warnText, sendOpts);
 
     try {
-      const bjResult = await summonBlackjackForViolation({
+      await summonBlackjackForViolation({
         violatorTag: username.startsWith('@') ? username : `@${username}`,
+        violatorUserId: ctx.userId,
         ruleNumber: violation.ruleNumber || 1,
         ruleTitle: violation.ruleTitle || 'Нарушение правил',
         reason: violation.reason || 'Нарушение правил',
         chatId,
         adminUsernames: ctx.chatAdmins?.map(a => a.username).filter((u): u is string => Boolean(u))
       });
-
-      await sendMessageFn(chatId, bjResult.blackjackMessage, sendOpts);
-
-      if (bjResult.triggerDialogueToLittlepip) {
-        await sendMessageFn(chatId, bjResult.triggerDialogueToLittlepip, sendOpts);
-        // Littlepip one-off response (anti-loop protected)
-        await sendMessageFn(chatId, `Литлпип: Видела, Джеки! Сработала быстро и чётко. Пусть остынет в изоляторе.`, sendOpts);
-      }
     } catch (bjErr) {
       console.warn('Blackjack summon error:', bjErr);
     }
@@ -859,8 +905,14 @@ export async function handleLittlepipUpdate(
   if (command) return { handled: false };
 
   // 11. ПРОВЕРКА ОБРАЩЕНИЯ К ЛИТЛПИП
+  if (isReplyToBlackjack && !hasPipMention(cleanText)) {
+    return { handled: false };
+  }
+
   const binding = getBinding(chatId, threadId);
-  const isDirect = ctx.chatType === 'private' || (!threadId && String(chatId) > '0');
+  const isDirect = ctx.chatType === 'private' || (
+    !ctx.chatType && !threadId && (typeof chatId === 'number' ? chatId > 0 : /^\d+$/.test(String(chatId)))
+  );
   const isBoundTopic = Boolean(binding && binding.isActive);
   const isMentioned = hasPipMention(cleanText) ||
     Boolean(botUsername && cleanText.toLowerCase().includes('@' + botUsername.toLowerCase())) ||
@@ -868,7 +920,7 @@ export async function handleLittlepipUpdate(
   const isReplyToMe = Boolean(
     replyToMessage && (
       (botUsername && replyToMessage.from?.username?.toLowerCase() === botUsername.toLowerCase()) ||
-      replyToMessage.from?.is_bot
+      (ctx.botId && String(replyToMessage.from?.id) === String(ctx.botId))
     )
   );
 
@@ -908,6 +960,7 @@ export async function handleLittlepipUpdate(
   const { cleanText: finalReply, meme } = extractLittlepipMemeTag(generatedReply, availableMemes);
 
   await sendMessageFn(chatId, finalReply, meme ? { ...sendOpts, meme } : sendOpts);
+  rememberConversationMessage(chatId, threadId, 'Литлпип', finalReply, true);
   if (meme) lastMemeSentAt.set(bindingKey, Date.now());
 
   return {

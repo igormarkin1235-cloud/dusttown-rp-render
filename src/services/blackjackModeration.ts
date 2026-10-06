@@ -44,8 +44,10 @@ export interface BotBlockRecord {
   targetDisplayName?: string;
   adminUser: string;
   reason: string;
+  durationMinutes?: number;
   blockedAt: string;
-  status: 'active' | 'revoked';
+  expiresAt?: string;
+  status: 'active' | 'expired' | 'revoked';
   revokedAt?: string;
   revokeReason?: string;
 }
@@ -79,7 +81,7 @@ export function loadModerationState(): BlackjackModerationState {
     if (fs.existsSync(MODERATION_FILE)) {
       const raw = fs.readFileSync(MODERATION_FILE, 'utf-8');
       const parsed = JSON.parse(raw);
-      // Auto-expire stale mutes
+      // Auto-expire stale mutes and bot-blocks
       const now = Date.now();
       const updatedMutes = (parsed.mutes || []).map((m: MuteRecord) => {
         if (m.status === 'active' && new Date(m.expiresAt).getTime() <= now) {
@@ -87,10 +89,16 @@ export function loadModerationState(): BlackjackModerationState {
         }
         return m;
       });
+      const updatedBotBlocks = (parsed.botBlocks || []).map((b: BotBlockRecord) => {
+        if (b.status === 'active' && b.expiresAt && new Date(b.expiresAt).getTime() <= now) {
+          return { ...b, status: 'expired' as const };
+        }
+        return b;
+      });
       return {
         mutes: updatedMutes,
         bans: parsed.bans || [],
-        botBlocks: parsed.botBlocks || [],
+        botBlocks: updatedBotBlocks,
         auditLogs: parsed.auditLogs || []
       };
     }
@@ -118,20 +126,50 @@ export async function executeTelegramModerationAction(
   untilDateTimestamp?: number
 ): Promise<{ success: boolean; error?: string }> {
   const cfg = loadBlackjackConfig();
-  const token = process.env.BLACKJACK_TELEGRAM_BOT_TOKEN || cfg.telegramBotToken || process.env.TELEGRAM_BOT_TOKEN;
-  if (!token) return { success: false, error: 'Telegram bot token is not configured' };
+  const bjToken = process.env.BLACKJACK_TELEGRAM_BOT_TOKEN || cfg.telegramBotToken;
+  const pipToken = process.env.TELEGRAM_BOT_TOKEN;
+  const candidateTokens = [bjToken, pipToken].filter((t): t is string => Boolean(t && t.length > 10));
+  if (candidateTokens.length === 0) return { success: false, error: 'Ни один токен Telegram не настроен' };
+
+  // Telegram requires numeric user ID for restrictChatMember and banChatMember
+  let numericUserId: number | undefined;
+  if (typeof userId === 'number') {
+    numericUserId = userId;
+  } else if (typeof userId === 'string') {
+    const cleanId = userId.replace(/^@id/, '').replace(/^id/, '').replace(/^@/, '');
+    if (/^\d+$/.test(cleanId)) {
+      numericUserId = parseInt(cleanId, 10);
+    }
+  }
+
+  if (!numericUserId || isNaN(numericUserId)) {
+    return {
+      success: false,
+      error: `Невозможно применить Telegram ограничение: user_id [${userId}] не является числовым ID Telegram. Ответьте на сообщение нарушителя через reply.`
+    };
+  }
 
   try {
     let endpoint = '';
-    let body: any = { chat_id: chatId, user_id: userId };
+    let body: any = { chat_id: chatId, user_id: numericUserId };
 
     if (action === 'mute') {
       endpoint = 'restrictChatMember';
       body.permissions = {
         can_send_messages: false,
-        can_send_media_messages: false,
+        can_send_audios: false,
+        can_send_documents: false,
+        can_send_photos: false,
+        can_send_videos: false,
+        can_send_video_notes: false,
+        can_send_voice_notes: false,
+        can_send_polls: false,
         can_send_other_messages: false,
-        can_add_web_page_previews: false
+        can_add_web_page_previews: false,
+        can_change_info: false,
+        can_invite_users: false,
+        can_pin_messages: false,
+        can_manage_topics: false
       };
       if (untilDateTimestamp) {
         body.until_date = Math.floor(untilDateTimestamp / 1000);
@@ -140,29 +178,47 @@ export async function executeTelegramModerationAction(
       endpoint = 'restrictChatMember';
       body.permissions = {
         can_send_messages: true,
-        can_send_media_messages: true,
+        can_send_audios: true,
+        can_send_documents: true,
+        can_send_photos: true,
+        can_send_videos: true,
+        can_send_video_notes: true,
+        can_send_voice_notes: true,
+        can_send_polls: true,
         can_send_other_messages: true,
-        can_add_web_page_previews: true
+        can_add_web_page_previews: true,
+        can_invite_users: true
       };
     } else if (action === 'ban') {
       endpoint = 'banChatMember';
+      if (untilDateTimestamp) {
+        body.until_date = Math.floor(untilDateTimestamp / 1000);
+      }
     } else if (action === 'unban') {
       endpoint = 'unbanChatMember';
       body.only_if_banned = true;
     }
 
-    const res = await fetch(`https://api.telegram.org/bot${token}/${endpoint}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
+    let lastError = 'Telegram API call failed';
+    for (const token of candidateTokens) {
+      try {
+        const res = await fetch(`https://api.telegram.org/bot${token}/${endpoint}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
 
-    const data = await res.json();
-    if (data.ok) {
-      return { success: true };
-    } else {
-      return { success: false, error: data.description || 'Telegram API call failed' };
+        const data = await res.json();
+        if (data.ok) {
+          return { success: true };
+        } else {
+          lastError = data.description || 'Telegram API call failed';
+        }
+      } catch (err: any) {
+        lastError = err?.message || 'Network error';
+      }
     }
+    return { success: false, error: lastError };
   } catch (err: any) {
     return { success: false, error: err?.message || 'Network error' };
   }
@@ -355,16 +411,19 @@ export function blockBotActivity(
   targetUser: string,
   adminUser: string,
   reason: string,
+  durationMinutes: number = 60,
   targetDisplayName?: string
 ): BotBlockRecord {
   const state = loadModerationState();
   const cleanTarget = targetUser.trim();
   const now = new Date();
+  const expiresAt = new Date(now.getTime() + durationMinutes * 60 * 1000);
 
   state.botBlocks.forEach(b => {
     if (b.targetUser.toLowerCase() === cleanTarget.toLowerCase() && b.status === 'active') {
       b.status = 'revoked';
       b.revokedAt = now.toISOString();
+      b.revokeReason = 'Перезаписано новой блокировкой';
     }
   });
 
@@ -374,7 +433,9 @@ export function blockBotActivity(
     targetDisplayName,
     adminUser,
     reason: reason || 'Злоупотребление функционалом бота',
+    durationMinutes,
     blockedAt: now.toISOString(),
+    expiresAt: expiresAt.toISOString(),
     status: 'active'
   };
 
@@ -385,7 +446,8 @@ export function blockBotActivity(
     action: 'BOT_BLOCK',
     admin: adminUser,
     target: cleanTarget,
-    reason: record.reason
+    reason: record.reason,
+    details: `Срок: ${durationMinutes} мин (до ${expiresAt.toISOString()})`
   });
 
   saveModerationState(state);
@@ -447,10 +509,19 @@ export function getPlayerRestrictions(targetUser: string): {
 } {
   const state = loadModerationState();
   const clean = targetUser.trim().toLowerCase();
+  const now = Date.now();
 
-  const muteRecord = state.mutes.find(m => m.targetUser.toLowerCase() === clean && m.status === 'active');
+  const muteRecord = state.mutes.find(m =>
+    m.targetUser.toLowerCase() === clean &&
+    m.status === 'active' &&
+    new Date(m.expiresAt).getTime() > now
+  );
   const banRecord = state.bans.find(b => b.targetUser.toLowerCase() === clean && b.status === 'active');
-  const botBlockRecord = state.botBlocks.find(b => b.targetUser.toLowerCase() === clean && b.status === 'active');
+  const botBlockRecord = state.botBlocks.find(b =>
+    b.targetUser.toLowerCase() === clean &&
+    b.status === 'active' &&
+    (!b.expiresAt || new Date(b.expiresAt).getTime() > now)
+  );
 
   return {
     isMuted: Boolean(muteRecord),
@@ -500,7 +571,10 @@ export function generateBlacklistReport(): string {
   if (activeBlocks.length > 0) {
     text += `🤖 **Блокировка активности в боте (${activeBlocks.length}):**\n`;
     activeBlocks.forEach((bb, idx) => {
-      text += `${idx + 1}. **${bb.targetUser}**\n   └ Причина: ${bb.reason} [выдал: ${bb.adminUser}]\n`;
+      const expires = bb.expiresAt
+        ? ` (до ${new Date(bb.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`
+        : '';
+      text += `${idx + 1}. **${bb.targetUser}**${expires}\n   └ Причина: ${bb.reason} [выдал: ${bb.adminUser}]\n`;
     });
     text += '\n';
   }

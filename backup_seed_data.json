@@ -87,7 +87,7 @@
   ],
   "auctionListings": [],
   "factions": [],
-  "lastUpdated": "2026-10-06T13:58:22.025Z",
+  "lastUpdated": "2026-10-06T14:46:50.129Z",
   "artworks": [],
   "activityLogs": [
     {
@@ -171,7 +171,7 @@
       "handshakeId": "hs_init_19e48f"
     }
   ],
-  "syncVersion": 22,
+  "syncVersion": 21,
   "notifications": [
     {
       "id": "notif_user_tg_user_12345678",
@@ -202,8 +202,5 @@
         "textColorClass": "text-emerald-100"
       }
     }
-  ],
-  "preReleasePosts": [],
-  "achievements": [],
-  "botVersions": []
+  ]
 }

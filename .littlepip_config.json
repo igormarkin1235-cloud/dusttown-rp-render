@@ -21,7 +21,15 @@
   ],
   "model": "gemini-2.5-flash",
   "temperature": 0.84,
+  "telegramBotToken": "",
   "topics": {
+    "19": {
+      "threadId": "19",
+      "title": "Топик #19",
+      "permission": "read_write",
+      "enabled": true,
+      "notes": "Обнаружен в группе"
+    },
     "root": {
       "threadId": "root",
       "title": "Основной чат (Главная ветка)",

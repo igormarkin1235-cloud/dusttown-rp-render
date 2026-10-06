@@ -60,7 +60,7 @@ const DEFAULT_CONFIG: BlackjackConfigData = {
       notes: 'Оперативная работа и исполнение наказаний'
     }
   },
-  adminUsernames: ['@MrWhitePio', '@mrwhitepio', 'MrWhitePio'],
+  adminUsernames: ['@MrWhitePio', '@mrwhitepio', 'MrWhitePio', 'whitepio', 'mrwhite', 'WhitePio'],
   defaultMuteDurationMinutes: 10,
   antiLoopProtection: true
 };
@@ -255,9 +255,18 @@ export function checkBlackjackTopicPermission(topicId?: string | number | null):
 /**
  * Checks if a user is an authorized admin for issuing moderation commands to Blackjack
  */
-export function isAuthorizedBlackjackAdmin(usernameOrId?: string): boolean {
+export function isAuthorizedBlackjackAdmin(usernameOrId?: string | number, dynamicAdmins?: string[]): boolean {
   if (!usernameOrId) return false;
-  const clean = usernameOrId.trim().toLowerCase().replace(/^@/, '');
+  const raw = String(usernameOrId).trim();
+  const clean = raw.toLowerCase().replace(/^@/, '');
   const cfg = loadBlackjackConfig();
-  return cfg.adminUsernames.some(adm => adm.toLowerCase().replace(/^@/, '') === clean);
+  if (cfg.adminUsernames.some(adm => {
+    const cAdm = adm.toLowerCase().replace(/^@/, '');
+    return cAdm === clean || adm === raw;
+  })) return true;
+  if (dynamicAdmins && dynamicAdmins.some(adm => {
+    const cAdm = adm.toLowerCase().replace(/^@/, '');
+    return cAdm === clean || adm === raw;
+  })) return true;
+  return false;
 }

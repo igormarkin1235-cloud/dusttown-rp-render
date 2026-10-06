@@ -1,4 +1,158 @@
 {
+  "99": {
+    "userId": 99,
+    "username": "@SecurityBlackjack",
+    "score": 0,
+    "attitude": "neutral",
+    "strikes": 0,
+    "praises": 0,
+    "notes": [],
+    "lastImpression": "Новый знакомый на волне Даст Тауна.",
+    "lastInteractionAt": "2026-10-06T14:52:14.857Z"
+  },
+  "100": {
+    "userId": 100,
+    "username": "@user0",
+    "score": 0,
+    "attitude": "neutral",
+    "strikes": 0,
+    "praises": 0,
+    "notes": [],
+    "lastImpression": "Новый знакомый на волне Даст Тауна.",
+    "lastInteractionAt": "2026-10-06T14:59:48.935Z"
+  },
+  "101": {
+    "userId": 101,
+    "username": "@user1",
+    "score": 0,
+    "attitude": "neutral",
+    "strikes": 0,
+    "praises": 0,
+    "notes": [],
+    "lastImpression": "Новый знакомый на волне Даст Тауна.",
+    "lastInteractionAt": "2026-10-06T14:59:48.939Z"
+  },
+  "102": {
+    "userId": 102,
+    "username": "@user2",
+    "score": 0,
+    "attitude": "neutral",
+    "strikes": 0,
+    "praises": 0,
+    "notes": [],
+    "lastImpression": "Новый знакомый на волне Даст Тауна.",
+    "lastInteractionAt": "2026-10-06T14:59:48.939Z"
+  },
+  "103": {
+    "userId": 103,
+    "username": "@user3",
+    "score": 0,
+    "attitude": "neutral",
+    "strikes": 0,
+    "praises": 0,
+    "notes": [],
+    "lastImpression": "Новый знакомый на волне Даст Тауна.",
+    "lastInteractionAt": "2026-10-06T14:59:48.940Z"
+  },
+  "104": {
+    "userId": 104,
+    "username": "@user4",
+    "score": 0,
+    "attitude": "neutral",
+    "strikes": 0,
+    "praises": 0,
+    "notes": [],
+    "lastImpression": "Новый знакомый на волне Даст Тауна.",
+    "lastInteractionAt": "2026-10-06T14:59:48.941Z"
+  },
+  "105": {
+    "userId": 105,
+    "username": "@user5",
+    "score": 0,
+    "attitude": "neutral",
+    "strikes": 0,
+    "praises": 0,
+    "notes": [],
+    "lastImpression": "Новый знакомый на волне Даст Тауна.",
+    "lastInteractionAt": "2026-10-06T14:59:48.942Z"
+  },
+  "106": {
+    "userId": 106,
+    "username": "@user6",
+    "score": 0,
+    "attitude": "neutral",
+    "strikes": 0,
+    "praises": 0,
+    "notes": [],
+    "lastImpression": "Новый знакомый на волне Даст Тауна.",
+    "lastInteractionAt": "2026-10-06T14:59:48.942Z"
+  },
+  "107": {
+    "userId": 107,
+    "username": "@user7",
+    "score": 0,
+    "attitude": "neutral",
+    "strikes": 0,
+    "praises": 0,
+    "notes": [],
+    "lastImpression": "Новый знакомый на волне Даст Тауна.",
+    "lastInteractionAt": "2026-10-06T14:59:48.943Z"
+  },
+  "108": {
+    "userId": 108,
+    "username": "@user8",
+    "score": 0,
+    "attitude": "neutral",
+    "strikes": 0,
+    "praises": 0,
+    "notes": [],
+    "lastImpression": "Новый знакомый на волне Даст Тауна.",
+    "lastInteractionAt": "2026-10-06T14:59:48.944Z"
+  },
+  "109": {
+    "userId": 109,
+    "username": "@user9",
+    "score": 0,
+    "attitude": "neutral",
+    "strikes": 0,
+    "praises": 0,
+    "notes": [],
+    "lastImpression": "Новый знакомый на волне Даст Тауна.",
+    "lastInteractionAt": "2026-10-06T14:59:48.946Z"
+  },
+  "110": {
+    "userId": 110,
+    "username": "@user10",
+    "score": 0,
+    "attitude": "neutral",
+    "strikes": 0,
+    "praises": 0,
+    "notes": [],
+    "lastImpression": "Новый знакомый на волне Даст Тауна.",
+    "lastInteractionAt": "2026-10-06T14:59:48.946Z"
+  },
+  "111": {
+    "userId": 111,
+    "username": "@user11",
+    "score": 0,
+    "attitude": "neutral",
+    "strikes": 0,
+    "praises": 0,
+    "notes": [],
+    "lastImpression": "Новый знакомый на волне Даст Тауна.",
+    "lastInteractionAt": "2026-10-06T14:59:48.947Z"
+  },
+  "123": {
+    "userId": 123,
+    "username": "@tester",
+    "score": 0,
+    "attitude": "neutral",
+    "strikes": 0,
+    "praises": 0,
+    "notes": [],
+    "lastImpression": "Новый знакомый на волне Даст Тауна.",
+    "lastInteractionAt": "2026-10-06T14:59:48.918Z"
+  },
   "test-user-praise-1791150128748": {
     "userId": "test-user-praise-1791150128748",
     "username": "NiceStalker",
@@ -126,5 +280,113 @@
     "notes": [],
     "lastImpression": "Новый знакомый на волне Даст Тауна.",
     "lastInteractionAt": "2026-10-04T21:42:53.539Z"
+  },
+  "tester": {
+    "userId": 0,
+    "username": "@tester",
+    "score": 0,
+    "attitude": "neutral",
+    "strikes": 0,
+    "praises": 0,
+    "notes": [],
+    "lastImpression": "Новый знакомый на волне Даст Тауна.",
+    "lastInteractionAt": "2026-10-06T14:53:59.297Z"
+  },
+  "stalker1": {
+    "userId": 0,
+    "username": "@stalker1",
+    "score": 0,
+    "attitude": "neutral",
+    "strikes": 0,
+    "praises": 0,
+    "notes": [],
+    "lastImpression": "Новый знакомый на волне Даст Тауна.",
+    "lastInteractionAt": "2026-10-06T14:53:59.312Z"
+  },
+  "mrwhitepio": {
+    "userId": 0,
+    "username": "@MrWhitePio",
+    "score": 0,
+    "attitude": "neutral",
+    "strikes": 0,
+    "praises": 0,
+    "notes": [],
+    "lastImpression": "Новый знакомый на волне Даст Тауна.",
+    "lastInteractionAt": "2026-10-06T14:53:59.315Z"
+  },
+  "stalker": {
+    "userId": 0,
+    "username": "@stalker",
+    "score": 0,
+    "attitude": "neutral",
+    "strikes": 0,
+    "praises": 0,
+    "notes": [],
+    "lastImpression": "Новый знакомый на волне Даст Тауна.",
+    "lastInteractionAt": "2026-10-06T14:53:59.320Z"
+  },
+  "test-user-praise-1791298440899": {
+    "userId": "test-user-praise-1791298440899",
+    "username": "NiceStalker",
+    "score": 4,
+    "attitude": "neutral",
+    "strikes": 0,
+    "praises": 1,
+    "notes": [
+      "Часто хвалит и поддерживает"
+    ],
+    "lastImpression": "тёплые слова и искренняя поддержка",
+    "lastInteractionAt": "2026-10-06T14:54:00.900Z"
+  },
+  "test-user-bully-1791298440903": {
+    "userId": "test-user-bully-1791298440903",
+    "username": "BadRaider",
+    "score": -18,
+    "attitude": "suspicious",
+    "strikes": 1,
+    "praises": 0,
+    "notes": [
+      "Наехал на Пипку: \"Мелкая дура, заткнись!\""
+    ],
+    "lastImpression": "грубые наезды и оскорбления личности",
+    "lastInteractionAt": "2026-10-06T14:54:00.904Z",
+    "grudgeUntil": 1791301140904
+  },
+  "test-user-apology-1791298440905": {
+    "userId": "test-user-apology-1791298440905",
+    "username": "Regretful",
+    "score": -3,
+    "attitude": "neutral",
+    "strikes": 1,
+    "praises": 0,
+    "notes": [
+      "Наехал на Пипку: \"Заткнись ты\"",
+      "Извинился за прошлые выпады"
+    ],
+    "lastImpression": "принёс извинения и предложил мир",
+    "lastInteractionAt": "2026-10-06T14:54:00.906Z",
+    "grudgeUntil": 0
+  },
+  "test-user-ctx-1791298440906": {
+    "userId": "test-user-ctx-1791298440906",
+    "username": "StalkerOne",
+    "score": 0,
+    "attitude": "neutral",
+    "strikes": 0,
+    "praises": 0,
+    "notes": [],
+    "lastImpression": "Новый знакомый на волне Даст Тауна.",
+    "lastInteractionAt": "2026-10-06T14:54:00.907Z"
+  },
+  "test-user-rep-1791298440907": {
+    "userId": "test-user-rep-1791298440907",
+    "username": "GoodFellow",
+    "score": 0,
+    "attitude": "neutral",
+    "strikes": 0,
+    "praises": 0,
+    "notes": [],
+    "lastImpression": "Новый знакомый на волне Даст Тауна.",
+    "lastInteractionAt": "2026-10-06T14:54:00.907Z"
   }
 }

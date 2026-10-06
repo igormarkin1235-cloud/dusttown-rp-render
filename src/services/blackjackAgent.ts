@@ -40,8 +40,8 @@ import {
 import { fetchBlackjackWikiDossier } from './projectHorizonsWiki';
 import { getBlackjackMemoryContextForPrompt } from './blackjackMemory';
 
-export const BLACKJACK_GEMINI_MODEL = 'gemini-3.1-flash-lite';
-export const BLACKJACK_GEMINI_FALLBACK_MODELS = ['gemini-3.8-flash'];
+export const BLACKJACK_GEMINI_MODEL = 'gemini-3.8-flash';
+export const BLACKJACK_GEMINI_FALLBACK_MODELS = ['gemini-2.5-flash', 'gemini-flash-latest'];
 
 // Anti-loop trigger flag
 let lastInterBotTriggerTime = 0;
@@ -57,18 +57,27 @@ export interface BlackjackCommandParseResult {
 }
 
 /**
+ * Checks if a text is a moderation command (mute, ban, block, etc.)
+ */
+export function isModerationCommand(text: string): boolean {
+  if (!text) return false;
+  const t = text.trim();
+  return /(?:^\/(?:mute|unmute|ban|unban|block|bot_block|botblock|bj|blackjack|blacklist)\b|(?:^|\s)(?:замуть|кинь в мут|выдай мут|\bмут\b|размут|размуть|сними мут|забань|выдай бан|\bбан\b|разбан|разбань|сними бан|заблокируй в боте|блокни в боте|блок в боте|\bблок\b|черный список|чёрный список|блеклист|blacklist|досье|статус)\b)/iu.test(t);
+}
+
+/**
  * Checks if a text mentions or addresses Blackjack
  */
 export function hasBlackjackMention(text: string): boolean {
   if (!text) return false;
-  return /(?:блэкджек|блекджек|джеки|блэки|блеки|дилер|шериф|blackjack|bleckjek|@bleckjek_bot|@blackjack|\/bj|\/blackjack|\/mute|\/unmute|\/ban|\/unban|\/blacklist)/iu.test(text);
+  return /(?:блэкджек|блекджек|блэкджэк|блекджэк|джеки|блэки|блеки|блэк|блек|джека|джекич|дилер|шериф|офицер|blackjack|bleckjek|@bleckjek_bot|@blackjack|\/bj|\/blackjack|\/mute|\/unmute|\/ban|\/unban|\/blacklist|\/block|\/bot_block|\/botblock|\bмут\b|\bзамуть\b|\bбан\b|\bзабань\b|\bразмут\b|\bразбан\b|\bразмуть\b|\bразбань\b|\bблок\b|\bзаблокируй\b)/iu.test(text);
 }
 
 /**
  * Fast deterministic parser for moderation commands in natural language
  */
 export function parseModerationIntent(text: string): BlackjackCommandParseResult {
-  const isTrigger = hasBlackjackMention(text);
+  const isTrigger = hasBlackjackMention(text) || isModerationCommand(text);
   if (!isTrigger) {
     return { isBlackjackTrigger: false, action: 'chat' };
   }
@@ -81,7 +90,7 @@ export function parseModerationIntent(text: string): BlackjackCommandParseResult
   }
 
   // 2. Help command
-  if (/(?:помощь|команды|что умеешь|help|\/help)/iu.test(clean) && !/(?:мут|бан|блокиров)/iu.test(clean)) {
+  if (/(?:помощь|команды|что умеешь|help|\/help|\/bj_help)/iu.test(clean) && !/(?:мут|бан|блокиров)/iu.test(clean)) {
     return { isBlackjackTrigger: true, action: 'help' };
   }
 
@@ -89,20 +98,20 @@ export function parseModerationIntent(text: string): BlackjackCommandParseResult
   const userMatch = clean.match(/@([a-zA-Z0-9_]{3,32})/);
   const targetUser = userMatch ? `@${userMatch[1]}` : undefined;
 
-  // Extract duration: "на 10 минут", "на минут так 10", "на 15 мин", "на час"
+  // Extract duration: "на 10 минут", "на минут так 10", "на 15 мин", "на час", "на 2 часа", "10m", "60m"
   let durationMinutes = 10;
-  const durMatch = clean.match(/(?:минут\s+так\s+(\d+)|\b(\d+)\s*(?:мин|минут|m)\b|на\s+(\d+)\s*(?:мин|минут)|на\s+(\d+)\s*(?:час|часа|часов)|(\d+)\s*(?:час|часа|часов|h))/iu);
+  let customDurationFound = false;
+  const durMatch = clean.match(/(?:минут\s+так\s+(\d+)|\b(\d+)\s*(?:мин|минут|m)\b|на\s+(\d+)\s*(?:мин|минут)|на\s+(\d+)\s*(?:час|часа|часов)|(\d+)\s*(?:час|часа|часов|h)|\b(\d+)\b)/iu);
   if (durMatch) {
-    if (durMatch[1]) durationMinutes = parseInt(durMatch[1], 10);
-    else if (durMatch[2]) durationMinutes = parseInt(durMatch[2], 10);
-    else if (durMatch[3]) durationMinutes = parseInt(durMatch[3], 10);
-    else if (durMatch[4]) durationMinutes = parseInt(durMatch[4], 10) * 60;
-    else if (durMatch[5]) durationMinutes = parseInt(durMatch[5], 10) * 60;
+    if (durMatch[1]) { durationMinutes = parseInt(durMatch[1], 10); customDurationFound = true; }
+    else if (durMatch[2]) { durationMinutes = parseInt(durMatch[2], 10); customDurationFound = true; }
+    else if (durMatch[3]) { durationMinutes = parseInt(durMatch[3], 10); customDurationFound = true; }
+    else if (durMatch[4]) { durationMinutes = parseInt(durMatch[4], 10) * 60; customDurationFound = true; }
+    else if (durMatch[5]) { durationMinutes = parseInt(durMatch[5], 10) * 60; customDurationFound = true; }
   }
 
   // 3. Unmute
-  if (/(?:сними\s+(?:с\s+(?:него|неё)\s+)?мут|размут|снять\s+мут|размути|\bunmute\b)/iu.test(clean)) {
-    // Extract reason if present: "по причине [причина]", "за [причина]"
+  if (/(?:сними\s+(?:с\s+(?:него|неё)\s+)?мут|размут|размуть|снять\s+мут|\bunmute\b|^\/unmute\b)/iu.test(clean)) {
     const reasonMatch = clean.match(/(?:по причине|причина|из-за|за)\s*[:\-—]?\s*(.+)$/iu);
     const reason = reasonMatch ? reasonMatch[1].trim() : undefined;
     return {
@@ -115,10 +124,9 @@ export function parseModerationIntent(text: string): BlackjackCommandParseResult
   }
 
   // 4. Mute
-  if (/(?:выдай\s+(?:ему\s+|ей\s+)?мут|кинь\s+(?:его\s+|её\s+)?в\s+мут|замуть|дай\s+(?:ему\s+|ей\s+)?мут|\bмут\b|заглуши|заткни|\bmute\b)/iu.test(clean)) {
+  if (/(?:выдай\s+(?:ему\s+|ей\s+)?мут|кинь\s+(?:его\s+|её\s+)?в\s+мут|замуть|дай\s+(?:ему\s+|ей\s+)?мут|\bмут\b|заглуши|заткни|\bmute\b|^\/mute\b)/iu.test(clean)) {
     let reason: string | undefined;
 
-    // Check specific "слишком ... умный" or descriptive phrasing
     const smartMatch = clean.match(/,\s*(слишком\s+[^,]+?),/iu) || clean.match(/(слишком\s+[^,]+)/iu);
     if (smartMatch) {
       reason = smartMatch[1].trim();
@@ -138,7 +146,7 @@ export function parseModerationIntent(text: string): BlackjackCommandParseResult
   }
 
   // 5. Unban
-  if (/(?:разбан|сними бан|снять бан|разбань|unban)/iu.test(clean)) {
+  if (/(?:разбан|разбань|сними бан|снять бан|\bunban\b|^\/unban\b)/iu.test(clean)) {
     const reasonMatch = clean.match(/(?:по причине|причина|из-за|за)\s*[:\-—]?\s*(.+)$/iu);
     const reason = reasonMatch ? reasonMatch[1].trim() : undefined;
     return {
@@ -151,7 +159,7 @@ export function parseModerationIntent(text: string): BlackjackCommandParseResult
   }
 
   // 6. Ban
-  if (/(?:выдай бан|забань|кинь в бан|вышвырни|ban)/iu.test(clean)) {
+  if (/(?:выдай бан|забань|кинь в бан|вышвырни|\bбан\b|\bban\b|^\/ban\b)/iu.test(clean)) {
     const reasonMatch = clean.match(/(?:по причине|причина|из-за|за)\s*[:\-—]?\s*(.+)$/iu);
     const reason = reasonMatch ? reasonMatch[1].trim() : undefined;
     return {
@@ -163,19 +171,21 @@ export function parseModerationIntent(text: string): BlackjackCommandParseResult
     };
   }
 
-  // 7. Bot block
-  if (/(?:заблокируй в боте|блокни в боте|блокировка активности|запрети бота)/iu.test(clean)) {
+  // 7. Bot block (with explicit timer)
+  if (/(?:заблокируй в боте|блокни в боте|блокировка активности|запрети бота|блок в боте|заблокируй|блокни|\bблок\b|^\/bot_block\b|^\/block\b|^\/botblock\b)/iu.test(clean)) {
     const reasonMatch = clean.match(/(?:по причине|причина|из-за|за)\s*[:\-—]?\s*(.+)$/iu);
+    const dur = customDurationFound ? durationMinutes : 60;
     return {
       isBlackjackTrigger: true,
       action: 'bot_block',
       targetUser,
+      durationMinutes: dur,
       reason: reasonMatch ? reasonMatch[1].trim() : 'Нарушение правил использования бота'
     };
   }
 
   // 8. Bot unblock
-  if (/(?:разблокируй в боте|сними блок с бота|верни доступ к боту)/iu.test(clean)) {
+  if (/(?:разблокируй в боте|сними блок с бота|верни доступ к боту|разблокируй|\bunblock\b|^\/unblock\b|^\/bot_unblock\b)/iu.test(clean)) {
     const reasonMatch = clean.match(/(?:по причине|причина|из-за|за)\s*[:\-—]?\s*(.+)$/iu);
     const reason = reasonMatch ? reasonMatch[1].trim() : undefined;
     return {
@@ -188,31 +198,36 @@ export function parseModerationIntent(text: string): BlackjackCommandParseResult
   }
 
   // 9. Status of player
-  if (/(?:статус|что по|кто такой|досье|инфо|проверь)\s+@?/iu.test(clean)) {
+  if (/(?:статус|что по|кто такой|досье|инфо|проверь|^\/status\b)\s*@?/iu.test(clean)) {
     return { isBlackjackTrigger: true, action: 'status', targetUser };
   }
 
   return { isBlackjackTrigger: true, action: 'chat' };
 }
 
-/**
- * Handle message with Blackjack AI Agent
- */
-export async function handleBlackjackMessage(params: {
+export interface BlackjackMessageParams {
   text: string;
   senderUsername: string;
   senderDisplayName?: string;
-  senderId?: string;
+  senderId?: string | number;
+  isSenderAdmin?: boolean;
   topicId?: string | number | null;
   chatId?: string | number;
   adminsList?: string[];
-}): Promise<{
+  replyTargetUserId?: number | string;
+  replyTargetUsername?: string;
+}
+
+/**
+ * Handle message with Blackjack AI Agent
+ */
+export async function handleBlackjackMessage(params: BlackjackMessageParams): Promise<{
   replyText: string;
   actionTaken?: string;
   moderationRecord?: any;
   interBotTrigger?: string;
 }> {
-  const { text, senderUsername, senderDisplayName, senderId, topicId, chatId, adminsList } = params;
+  const { text, senderUsername, senderDisplayName, senderId, topicId, chatId, adminsList, replyTargetUsername, replyTargetUserId } = params;
 
   // 1. Topic permission check
   const topicCheck = checkBlackjackTopicPermission(topicId);
@@ -222,8 +237,16 @@ export async function handleBlackjackMessage(params: {
     };
   }
 
-  const isAdmin = isAuthorizedBlackjackAdmin(senderUsername);
+  const isAdmin = params.isSenderAdmin ?? (
+    isAuthorizedBlackjackAdmin(senderUsername, adminsList) ||
+    Boolean(senderId && adminsList && adminsList.some(a => a.toLowerCase() === String(senderId)))
+  );
   const intent = parseModerationIntent(text);
+
+  // If command was sent in reply to another user, adopt the replied user as target!
+  if (!intent.targetUser && replyTargetUsername) {
+    intent.targetUser = replyTargetUsername;
+  }
 
   // 2. Action: Blacklist report
   if (intent.action === 'blacklist') {
@@ -241,10 +264,10 @@ export async function handleBlackjackMessage(params: {
       replyText: `🛡️ **ОФИЦЕР БОЕВОЙ БЕЗОПАСНОСТИ БЛЭКДЖЕК (Project Horizons)**\n\n` +
         `Я старший офицер Стойла 99 и боевой помощник шерифов DustTown RP. Моя работа — порядок, наручники и картечь.\n\n` +
         `**Что я умею распознавать на русском языке:**\n` +
-        `• 🔇 **Мут**: «Блэкджек, замуть @пользователь на 10 минут за флуд»\n` +
+        `• 🔇 **Мут**: «Блэкджек, замуть @пользователь на 10 минут за флуд» (или ответом через reply)\n` +
         `• 🔊 **Размут**: «Блэкджек, сними мут с @пользователь по причине [причина]»\n` +
         `• ⛔ **Бан**: «Блэкджек, вышвырни @пользователь за оскорбления»\n` +
-        `• 🤖 **Блок в боте**: «Блэкджек, заблокируй активность в боте для @пользователь»\n` +
+        `• 🤖 **Блок в боте**: «Блэкджек, заблокируй в боте @пользователь на 30 минут за читы»\n` +
         `• 📋 **Черный список**: «Блэкджек, покажи черный список»\n` +
         `• 🔍 **Досье игрока**: «Блэкджек, статус @пользователь»\n\n` +
         `_Помни: на любое снятие или ограничение я требую внятную причину для рапорта._`
@@ -252,8 +275,8 @@ export async function handleBlackjackMessage(params: {
   }
 
   // 4. Action: Player Status
-  if (intent.action === 'status' && intent.targetUser) {
-    const target = intent.targetUser;
+  if (intent.action === 'status' && (intent.targetUser || replyTargetUsername)) {
+    const target = intent.targetUser || replyTargetUsername!;
     const restr = getPlayerRestrictions(target);
     const rep = getOrCreateBlackjackReputation(target, target, target);
 
@@ -262,14 +285,17 @@ export async function handleBlackjackMessage(params: {
       `• Предупреждений: **${rep.warningsCount}** | Мутов: **${rep.mutesCount}**\n\n`;
 
     if (restr.isMuted) {
-      const exp = new Date(restr.muteRecord!.expiresAt).toLocaleTimeString();
+      const exp = new Date(restr.muteRecord!.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       statusMsg += `🔇 **АКТИВНЫЙ МУТ**: до ${exp}\n   └ Причина: ${restr.muteRecord!.reason} [выдал: ${restr.muteRecord!.adminUser}]\n`;
     }
     if (restr.isBanned) {
       statusMsg += `⛔ **АКТИВНЫЙ БАН**: бессрочно\n   └ Причина: ${restr.banRecord!.reason}\n`;
     }
     if (restr.isBotBlocked) {
-      statusMsg += `🤖 **БЛОКИРОВКА В БОТЕ**: доступ закрыт\n   └ Причина: ${restr.botBlockRecord!.reason}\n`;
+      const exp = restr.botBlockRecord!.expiresAt
+        ? ` до ${new Date(restr.botBlockRecord!.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+        : '';
+      statusMsg += `🤖 **БЛОКИРОВКА В БОТЕ**: доступ закрыт${exp}\n   └ Причина: ${restr.botBlockRecord!.reason}\n`;
     }
     if (!restr.isMuted && !restr.isBanned && !restr.isBotBlocked) {
       statusMsg += `✅ Ограничений нет. Оружие в кобуре, чист перед законом.`;
@@ -280,15 +306,51 @@ export async function handleBlackjackMessage(params: {
 
   // 5. Moderation actions (Mute, Unmute, Ban, Unban, Bot Block)
   if (['mute', 'unmute', 'ban', 'unban', 'bot_block', 'bot_unblock'].includes(intent.action)) {
+    // If ordinary player tries to command moderation: brush them off in character!
     if (!isAdmin) {
+      try {
+        const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+        if (apiKey) {
+          const ai = new GoogleGenAI({ apiKey });
+          const brushOffPrompt = `Пользователь ${senderDisplayName || senderUsername} (обычный игрок пустоши без прав шерифа) пытается скомандовать тебе применить наказание: "${text}".
+Ответь ему кратко (1-2 предложения) в своем фирменном характере сурового офицера СБ Стойла 99 Блэкджек (Project Horizons).
+Осади его, отмахнись от его команды, скажи что ты подчиняешься только шерифам поселения (@админам), а не обычным сталкерам, и чтобы не смел тобой командовать. Нахально, саркастично, жестко.`;
+          const resp = await ai.models.generateContent({
+            model: BLACKJACK_GEMINI_MODEL,
+            contents: brushOffPrompt,
+            config: {
+              systemInstruction: getBlackjackSystemPrompt(),
+              temperature: 0.8,
+              maxOutputTokens: 150
+            }
+          });
+          if (resp.text?.trim()) {
+            return {
+              replyText: resp.text.trim(),
+              actionTaken: 'brush_off_unauthorized'
+            };
+          }
+        }
+      } catch (_) {}
+
+      const brushOffs = [
+        `🔫 **Копыта придержи, бродяга.** Ты кем себя возомнил — смотрителем Стойла 99? Наручники и карцер работают только по приказу шерифов и администрации (@админов). А ты сиди смирно и не пытайся отдавать мне команды.`,
+        `🥃 **Ага, сейчас, разбежалась.** Я подчиняюсь только шерифам поселения. Вот получишь значок и допуск службы безопасности — тогда и поговорим, а пока займись своими делами.`,
+        `💥 **Слышь, сталкер, палец с курка убери.** Командовать службой безопасности здесь не в твоей юрисдикции. Ещё раз попробуешь мной помыкать — сама тебя в изолятор определю для профилактики!`,
+        `🃏 **Ха, шустрый какой.** Заказы на наручники я от простых зевак не принимаю. Если кто-то нарушает — зови шерифов, а мной распоряжаться нечего.`,
+        `📻 **Твой рапорт отправлен прямиком в мусорку.** У тебя нет жетона шерифа. Не лезь под горячее копыто, пока я не вспомнила, где оставила свой боевой дробовик.`,
+        `🛡️ **Осади назад.** В Стойле 99 субординация строгая. Командовать мутами и банами могут только дежурные офицеры, а ты тут обычный посетитель. Отдыхай.`
+      ];
+      const pick = brushOffs[Math.floor(Math.random() * brushOffs.length)];
       return {
-        replyText: `🚫 **Осади назад, бродяга.**\nУ тебя нет полномочий шерифа отдавать приказы службе безопасности Стойла 99. Командовать мутами и банами могут только администраторы сообщества.`
+        replyText: pick,
+        actionTaken: 'brush_off_unauthorized'
       };
     }
 
     if (!intent.targetUser) {
       return {
-        replyText: `❓ **Шериф, а на кого наручники цеплять?**\nУкажи тег пользователя через @ (например, «Блэкджек, замуть @нарушитель на 10 минут за спам»).`
+        replyText: `❓ **Шериф, а на кого наручники цеплять?**\nУкажи тег пользователя через @ (например, «Блэкджек, замуть @нарушитель на 10 минут за спам») или просто ответь реплаем (reply) на его сообщение.`
       };
     }
 
@@ -308,16 +370,45 @@ export async function handleBlackjackMessage(params: {
       const dur = intent.durationMinutes || 10;
       const muteRec = issueMute(target, adminTag, reason, dur);
       recordBlackjackInfraction(target, target, 'mute');
+      const expTime = new Date(muteRec.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-      if (chatId) {
-        // Attempt Telegram API restriction in background
-        executeTelegramModerationAction(chatId, target.replace('@', ''), 'mute', Date.now() + dur * 60 * 1000).catch(() => {});
-      }
+      // Dynamic report generation via Gemini
+      try {
+        const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+        if (apiKey) {
+          const ai = new GoogleGenAI({ apiKey });
+          const repPrompt = `Шериф ${adminTag} отдал приказ замутить нарушителя ${target} на ${dur} минут по причине: "${reason}".
+Срок мута: до ${expTime}.
+Напиши короткий (2 предложения) сочный и атмосферный рапорт от лица офицера безопасности Стойла 99 Блэкджек (Project Horizons):
+Подтверди исполнение, упомяни ${target}, срок (${dur} мин) и причину, используя атмосферу пустошей (карцер, наручники, дробовик, Pip-Buck, изолятор Стойла 99).`;
+          const resp = await ai.models.generateContent({
+            model: BLACKJACK_GEMINI_MODEL,
+            contents: repPrompt,
+            config: {
+              systemInstruction: getBlackjackSystemPrompt(),
+              temperature: 0.75,
+              maxOutputTokens: 180
+            }
+          });
+          if (resp.text?.trim()) {
+            return {
+              replyText: `🔇 ${resp.text.trim()}\n\n📋 **Запись в рапорте СБ:** ${reason} | До ${expTime}`,
+              actionTaken: 'mute',
+              moderationRecord: muteRec
+            };
+          }
+        }
+      } catch (_) {}
 
+      const muteResponses = [
+        `🔇 **Принято, шериф!** Защёлкнула наручники на ${target}. Пасть запечатана на ${dur} мин (до ${expTime}).\n📋 **Причина в рапорте:** ${reason}\n_Пусть посидит в тёмном карцере Стойла 99, остынет и послушает тишину в эфире._`,
+        `🔒 **Исполнено!** Нарушитель ${target} изолирован от радиоэфира на ${dur} мин (до ${expTime}).\n📋 **Основание:** ${reason}\n_Оружие сдано на склад, передатчик заглушен. Ни пикнет, пока таймер не оттикает._`,
+        `💥 **Есть, шериф!** Выбила предохранитель у ${target}. Мут на ${dur} мин (до ${expTime}).\n📋 **Запись в журнале СБ:** ${reason}\n_Сидит в изоляторе под прицелом турелей Стойла 99._`,
+        `⛔ **Наручники на копытах!** ${target} отправлен в режим тишины на ${dur} мин (до ${expTime}).\n📋 **Причина:** ${reason}\n_Будет думать над своими словами, пока шерифы не решат иначе._`
+      ];
+      const replyText = muteResponses[Math.floor(Math.random() * muteResponses.length)];
       return {
-        replyText: `🔇 **Принято, шериф!** Заткнула пасть ${target} на ${dur} минут.\n` +
-          `📋 **Причина в рапорте:** ${reason}\n` +
-          `_Пусть посидит в изоляторе Стойла 99 и почистит стволы. До ${new Date(muteRec.expiresAt).toLocaleTimeString()} ни звука не издаст._`,
+        replyText,
         actionTaken: 'mute',
         moderationRecord: muteRec
       };
@@ -325,11 +416,8 @@ export async function handleBlackjackMessage(params: {
 
     if (intent.action === 'unmute') {
       const res = revokeMute(target, adminTag, reason);
-      if (chatId) {
-        executeTelegramModerationAction(chatId, target.replace('@', ''), 'unmute').catch(() => {});
-      }
       return {
-        replyText: `🔊 **Наручники сняты.** Мут с ${target} аннулирован.\n` +
+        replyText: `🔊 **Наручники сняты.** Мут с ${target} аннулирован по приказу шерифа.\n` +
           `📋 **Причина амнистии:** ${reason}\n` +
           `_Смотри у меня, ${target}, второй раз картечь дважды просить не будет._`,
         actionTaken: 'unmute',
@@ -340,13 +428,10 @@ export async function handleBlackjackMessage(params: {
     if (intent.action === 'ban') {
       const banRec = issueBan(target, adminTag, reason);
       recordBlackjackInfraction(target, target, 'ban');
-      if (chatId) {
-        executeTelegramModerationAction(chatId, target.replace('@', ''), 'ban').catch(() => {});
-      }
       return {
-        replyText: `⛔ **Вышвырнула за шлюз Стойла 99!** Пользователь ${target} отправлен в перманентный бан.\n` +
+        replyText: `⛔ **Вышвырнула за гермозатвор!** Пользователь ${target} отправлен в перманентный бан из сообщества.\n` +
           `📋 **Причина ликвидации:** ${reason}\n` +
-          `_Дверь гермозатвора запечатана намертво._`,
+          `_Дверь шлюза Стойла 99 запечатана намертво, турели взведены._`,
         actionTaken: 'ban',
         moderationRecord: banRec
       };
@@ -354,9 +439,6 @@ export async function handleBlackjackMessage(params: {
 
     if (intent.action === 'unban') {
       const res = revokeBan(target, adminTag, reason);
-      if (chatId) {
-        executeTelegramModerationAction(chatId, target.replace('@', ''), 'unban').catch(() => {});
-      }
       return {
         replyText: `🔓 **Гермозатвор открыт.** Бан с ${target} снят по приказу администрации.\n` +
           `📋 **Причина амнистии:** ${reason}`,
@@ -366,10 +448,11 @@ export async function handleBlackjackMessage(params: {
     }
 
     if (intent.action === 'bot_block') {
-      const rec = blockBotActivity(target, adminTag, reason);
+      const dur = intent.durationMinutes || 60;
+      const rec = blockBotActivity(target, adminTag, reason, dur);
+      const expTime = rec.expiresAt ? new Date(rec.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'таймер';
       return {
-        replyText: `🤖 **Доступ к боту заблокирован.** Пользователю ${target} перекрыты каналы терминала.\n` +
-          `📋 **Причина:** ${reason}`,
+        replyText: `🤖 **Доступ к терминалам заблокирован!**\nПользователь ${target} отключен от функционала бота на **${dur} мин** (до ${expTime}).\n📋 **Основание:** ${reason}\n_Терминал опечатан протоколом службы безопасности Стойла 99._`,
         actionTaken: 'bot_block',
         moderationRecord: rec
       };
@@ -387,6 +470,31 @@ export async function handleBlackjackMessage(params: {
   }
 
   // 6. Conversational / Lore / Assistance via Gemini
+  // If the user has an active mute or bot block, enforce it: do not engage in cheerful chat!
+  const senderRestrictions = getPlayerRestrictions(senderUsername || String(senderId || ''));
+  if (senderRestrictions.isMuted) {
+    const muteRec = senderRestrictions.muteRecord!;
+    const remaining = Math.max(1, Math.round((new Date(muteRec.expiresAt).getTime() - Date.now()) / 60000));
+    const expTime = new Date(muteRec.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return {
+      replyText: `🔇 **В эфире радиомолчание!**\nТы находишься в изоляторе (активный мут). До окончания срока: **${remaining} мин** (до ${expTime}).\n📋 **Причина в рапорте:** ${muteRec.reason} [выдал: ${muteRec.adminUser}].\n_Оружие на складе, микрофон запечатан. Сиди тихо и жди окончания срока._`,
+      actionTaken: 'muted_response'
+    };
+  }
+  if (senderRestrictions.isBotBlocked) {
+    const blockRec = senderRestrictions.botBlockRecord!;
+    const remaining = blockRec.expiresAt
+      ? Math.max(1, Math.round((new Date(blockRec.expiresAt).getTime() - Date.now()) / 60000))
+      : 0;
+    const expTime = blockRec.expiresAt
+      ? new Date(blockRec.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      : 'бессрочно';
+    return {
+      replyText: `🤖 **Доступ к функциям бота заблокирован!**\nТаймер блокировки: ещё **${remaining} мин** (до ${expTime}).\n📋 **Причина:** ${blockRec.reason} [выдал: ${blockRec.adminUser}].\n_Протокол безопасности СБ Стойла 99. Команды не принимаются._`,
+      actionTaken: 'bot_blocked_response'
+    };
+  }
+
   try {
     const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
     if (apiKey) {
@@ -464,11 +572,12 @@ export async function summonBlackjackForViolation(params: {
   reason: string;
   chatId?: string | number;
   adminUsernames?: string[];
+  violatorUserId?: number | string;
 }): Promise<{
   blackjackMessage: string;
   triggerDialogueToLittlepip?: string;
 }> {
-  const { violatorTag, ruleNumber, ruleTitle, reason, chatId, adminUsernames } = params;
+  const { violatorTag, ruleNumber, ruleTitle, reason, chatId, adminUsernames, violatorUserId } = params;
   const cfg = loadBlackjackConfig();
 
   // 1. Issue 10-minute mute
@@ -477,7 +586,8 @@ export async function summonBlackjackForViolation(params: {
   recordBlackjackInfraction(violatorTag, violatorTag, 'mute');
 
   if (chatId) {
-    executeTelegramModerationAction(chatId, violatorTag.replace('@', ''), 'mute', Date.now() + 10 * 60 * 1000).catch(() => {});
+    const targetId = violatorUserId || violatorTag.replace('@', '');
+    executeTelegramModerationAction(chatId, targetId, 'mute', Date.now() + 10 * 60 * 1000).catch(() => {});
   }
 
   // 2. Format admin pings

@@ -43,20 +43,21 @@ test('does not flag constructive feedback or Fallout-lore references as violatio
   );
 });
 
-test('warns after four media messages in less than one second, not at one second', () => {
+test('does not flag 4-5 photos, warns on mass rapid media flood (16+)', () => {
   const userId = `media-test-${Date.now()}`;
   const chatId = `chat-${Date.now()}`;
 
-  assert.equal(checkMessageForViolations('', '@tester', userId, chatId, true, 1000).isViolation, false);
-  assert.equal(checkMessageForViolations('', '@tester', userId, chatId, true, 1500).isViolation, false);
-  assert.equal(checkMessageForViolations('', '@tester', userId, chatId, true, 1999).isViolation, false);
-  assert.equal(checkMessageForViolations('', '@tester', userId, chatId, true, 2000).isViolation, false);
+  // 4-5 photos are legitimate RP / fanart sharing and should NOT be flagged
+  for (let i = 0; i < 5; i++) {
+    assert.equal(checkMessageForViolations('', '@tester', userId, chatId, true, 1000 + i * 100).isViolation, false);
+  }
 
+  // Mass raid / flood (16+ rapid media messages outside albums)
   const rapidUserId = `${userId}-rapid`;
-  assert.equal(checkMessageForViolations('', '@tester', rapidUserId, chatId, true, 1000).isViolation, false);
-  assert.equal(checkMessageForViolations('', '@tester', rapidUserId, chatId, true, 1200).isViolation, false);
-  assert.equal(checkMessageForViolations('', '@tester', rapidUserId, chatId, true, 1500).isViolation, false);
-  const fourth = checkMessageForViolations('', '@tester', rapidUserId, chatId, true, 1999);
-  assert.equal(fourth.isViolation, true);
-  assert.equal(fourth.ruleNumber, 4);
+  for (let i = 0; i < 15; i++) {
+    assert.equal(checkMessageForViolations('', '@tester', rapidUserId, chatId, true, 1000 + i * 50).isViolation, false);
+  }
+  const sixteenth = checkMessageForViolations('', '@tester', rapidUserId, chatId, true, 1800);
+  assert.equal(sixteenth.isViolation, true);
+  assert.equal(sixteenth.ruleNumber, 4);
 });

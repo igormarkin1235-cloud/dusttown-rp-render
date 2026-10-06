@@ -38,7 +38,7 @@ export const CHANNEL_RULES: RuleDefinition[] = [
   {
     number: 4,
     title: 'Спам и флуд',
-    description: 'Спам медиа-контентом запрещён (отправка 4-х и более элементов за менее чем 1 секунду или повторы).'
+    description: 'Массовый спам медиа-контентом запрещён (рейд/флуд от 15+ быстрых медиа-сообщений вне альбомов или навязчивый флуд).'
   },
   {
     number: 5,
@@ -83,6 +83,7 @@ export interface ViolationCheckResult {
 interface UserActivity {
   timestamps: number[];
   recentMessages: string[];
+  recentMediaGroups: Set<string>;
 }
 const userActivityCache = new Map<string, UserActivity>();
 
@@ -92,36 +93,51 @@ export function checkMessageForViolations(
   userId: number | string = 0,
   chatId: number | string = 0,
   isMediaMessage = false,
-  timestampMs?: number
+  timestampMs?: number,
+  mediaGroupId?: string
 ): ViolationCheckResult {
   const clean = text.trim();
   const lower = clean.toLowerCase();
   const address = userTag.startsWith('@') ? userTag : `@${userTag}`;
 
-  // 0. Rule 4 check: Flood & Spam (4+ media msgs in <1s or repeating identical text)
+  // 0. Rule 4 check: Flood & Spam (media spam: 16+ rapid media outside albums in < 3s, or repeating identical text)
   if (userId && isMediaMessage) {
     const actKey = `${chatId}:${userId}`;
     const now = typeof timestampMs === 'number' ? timestampMs : Date.now();
     let act = userActivityCache.get(actKey);
     if (!act) {
-      act = { timestamps: [], recentMessages: [] };
+      act = { timestamps: [], recentMessages: [], recentMediaGroups: new Set() };
       userActivityCache.set(actKey, act);
     }
+
+    // In Telegram, albums share a media_group_id. Multiple photos in an album are 1 legitimate post!
+    if (mediaGroupId) {
+      if (act.recentMediaGroups.has(mediaGroupId)) {
+        return { isViolation: false };
+      }
+      act.recentMediaGroups.add(mediaGroupId);
+      if (act.recentMediaGroups.size > 50) {
+        act.recentMediaGroups.clear();
+      }
+      return { isViolation: false };
+    }
+
     act.timestamps.push(now);
     if (clean) act.recentMessages.push(clean);
-    // In less than 1 second: strictly < 1000ms
-    act.timestamps = act.timestamps.filter(t => now - t < 1000);
-    act.recentMessages = act.recentMessages.slice(-6);
+    // 3 second window for real raid/flood detection
+    act.timestamps = act.timestamps.filter(t => now - t < 3000);
+    act.recentMessages = act.recentMessages.slice(-15);
 
     const msgsInWindow = act.timestamps.length;
     const sameTextCount = clean ? act.recentMessages.filter(m => m === clean).length : 0;
 
-    if (msgsInWindow >= 4 || sameTextCount >= 3) {
+    // Real raid threshold: 16+ rapid media messages outside albums or 6+ identical texts
+    if (msgsInWindow >= 16 || sameTextCount >= 6) {
       return {
         isViolation: true,
         ruleNumber: 4,
         ruleTitle: CHANNEL_RULES[3].title,
-        reason: 'Флуд/спам сообщениями',
+        reason: 'Массовый рейд/спам сообщениями',
         harshWarningReply: `⚠️ **[НАРУШЕНИЕ ПРАВИЛА №4: СПАМ И ФЛУД]**\n\n` +
           `Слышь, блядь, ${address}, палец с клавиатуры убрал! Ты какого хера чат спамом засираешь, у тебя реле переклинило? ` +
           `Ещё одна строчка флуда — и я лично достану свой Макинтош 32-го калибра и прострелю твой передатчик!\n\n` +

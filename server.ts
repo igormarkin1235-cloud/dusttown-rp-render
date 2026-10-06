@@ -40,9 +40,11 @@ import {
 import {
   handleBlackjackMessage,
   hasBlackjackMention,
+  isModerationCommand,
   parseModerationIntent,
   summonBlackjackForViolation
 } from './src/services/blackjackAgent';
+import { cacheTelegramUser } from './src/services/blackjackTelegram';
 import {
   loadModerationState,
   issueMute,
@@ -752,6 +754,38 @@ async function getTelegramChatAdmins(chatId: number | string): Promise<ChatAdmin
   }
 }
 
+async function isTelegramGroupAdmin(
+  chatId: number | string,
+  userId: number | string,
+  username?: string
+): Promise<{ isAdmin: boolean; isOwner: boolean }> {
+  const clean = (username || '').toLowerCase().replace(/^@/, '');
+  if (['mrwhitepio', 'whitepio'].includes(clean)) {
+    return { isAdmin: true, isOwner: true };
+  }
+
+  const admins = await getTelegramChatAdmins(chatId);
+  const found = admins.find(a =>
+    String(a.userId) === String(userId) ||
+    (a.username && a.username.toLowerCase().replace(/^@/, '') === clean)
+  );
+  if (found) {
+    return { isAdmin: true, isOwner: Boolean(found.isOwner) };
+  }
+
+  // Fallback getChatMember direct call
+  try {
+    const res = await tgApi('getChatMember', { chat_id: chatId, user_id: userId });
+    if (res && res.ok && res.result) {
+      const status = res.result.status;
+      if (status === 'creator') return { isAdmin: true, isOwner: true };
+      if (status === 'administrator') return { isAdmin: true, isOwner: false };
+    }
+  } catch {}
+
+  return { isAdmin: false, isOwner: false };
+}
+
 async function discoverTelegramTopic(message: any): Promise<void> {
   const threadId = message.message_thread_id ?? (
     message.forum_topic_created ? message.message_id : undefined
@@ -941,6 +975,7 @@ async function handleTelegramUpdate(update: any) {
     msg.photo || msg.video || msg.animation || msg.document || msg.audio ||
     msg.voice || msg.video_note || msg.sticker
   );
+  const mediaGroupId = msg.media_group_id ? String(msg.media_group_id) : undefined;
   const messageText = typeof msg.text === 'string'
     ? msg.text
     : typeof msg.caption === 'string'
@@ -954,6 +989,12 @@ async function handleTelegramUpdate(update: any) {
   const userTag = user.username ? `@${user.username}` : user.first_name;
   const text = messageText.trim();
 
+  // Cache user IDs for moderation lookups
+  cacheTelegramUser(user.username, user.id);
+  if (msg.reply_to_message && msg.reply_to_message.from) {
+    cacheTelegramUser(msg.reply_to_message.from.username, msg.reply_to_message.from.id);
+  }
+
   // Automatic registration of Telegram user in the shared database
   if (user) {
     registerOrUpdateUser(user);
@@ -962,10 +1003,44 @@ async function handleTelegramUpdate(update: any) {
   addBotLog('message', `[${userTag}]: ${text}`);
 
   const appUrl = process.env.APP_URL || 'https://t.me/DustTown_RP_bot/app';
-  const isPipAddressed = hasPipMention(text) ||
-    Boolean(msg.reply_to_message?.from?.is_bot);
-  const chatAdmins = isPipAddressed ? await getTelegramChatAdmins(chatId) : [];
-  const senderAdmin = chatAdmins.find(admin => String(admin.userId) === String(user.id));
+  const isGroup = (typeof chatId === 'number' && chatId < 0) || String(chatId).startsWith('-');
+
+  // Enforce restrictions (Mute / Bot Block)
+  const userRestrictions = getPlayerRestrictions(user.username ? `@${user.username}` : user.id);
+  if (userRestrictions.isBotBlocked) {
+    const remaining = userRestrictions.botBlockRecord?.expiresAt
+      ? Math.max(1, Math.round((new Date(userRestrictions.botBlockRecord.expiresAt).getTime() - Date.now()) / 60000))
+      : 0;
+    const expStr = userRestrictions.botBlockRecord?.expiresAt
+      ? new Date(userRestrictions.botBlockRecord.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      : '';
+    if (msg.chat.type === 'private' || hasPipMention(text)) {
+      await tgApi('sendMessage', {
+        chat_id: chatId,
+        text: `🚫 **Доступ к боту заблокирован!**\nТаймер блокировки: ещё **${remaining} мин** (до ${expStr}).\n📋 Причина: ${userRestrictions.botBlockRecord?.reason || 'Решение службы безопасности'}.\n_Служба безопасности Стойла 99._`,
+        reply_to_message_id: msg.message_id
+      });
+    }
+    return;
+  }
+
+  // If the message is addressed to Blackjack or is a moderation command or is a reply to Blackjack: Littlepip steps aside!
+  const isReplyToBlackjack = Boolean(
+    msg.reply_to_message && (
+      msg.reply_to_message.from?.username?.toLowerCase() === 'bleckjek_bot' ||
+      msg.reply_to_message.from?.username?.toLowerCase() === 'blackjack_bot' ||
+      msg.reply_to_message.from?.id === 8818102467 ||
+      msg.reply_to_message.from?.first_name?.toLowerCase().includes('блэкджек')
+    )
+  );
+
+  if ((hasBlackjackMention(text) || isModerationCommand(text) || isReplyToBlackjack) && !hasPipMention(text)) {
+    // Blackjack has her own bot and will handle this message directly.
+    return;
+  }
+
+  const chatAdmins = isGroup ? await getTelegramChatAdmins(chatId) : [];
+  const adminCheck = isGroup ? await isTelegramGroupAdmin(chatId, user.id, user.username) : { isAdmin: false, isOwner: false };
 
   // 1. Littlepip AI Agent processing (commands /pip_start, /support, /pip_bind, /stop, /pip_status, and dialogue)
   try {
@@ -983,10 +1058,12 @@ async function handleTelegramUpdate(update: any) {
         text,
         replyToMessage: msg.reply_to_message,
         botUsername: botInfo?.username || 'DustTown_RP_bot',
+        botId: botInfo?.id,
         isMedia,
+        mediaGroupId,
         chatAdmins,
-        isSenderAdmin: Boolean(senderAdmin),
-        isSenderOwner: Boolean(senderAdmin?.isOwner)
+        isSenderAdmin: adminCheck.isAdmin,
+        isSenderOwner: adminCheck.isOwner
       },
       async (targetChatId, replyText, options) => {
         return sendLittlepipReply(targetChatId, replyText, options);
@@ -1008,30 +1085,6 @@ async function handleTelegramUpdate(update: any) {
         ...(msg.message_thread_id ? { message_thread_id: msg.message_thread_id } : {})
       });
       return;
-    }
-  }
-
-  // 1.5. Blackjack AI processing if addressed to Blackjack (@Bleckjek_bot, Джеки, Блэкджек, /bj_ commands, moderation)
-  if (hasBlackjackMention(text) || text.startsWith('/bj') || text.startsWith('/mute') || text.startsWith('/unmute') || text.startsWith('/ban')) {
-    try {
-      const topicId = msg.message_thread_id ? String(msg.message_thread_id) : undefined;
-      const bjResult = await handleBlackjackMessage({
-        text,
-        senderUsername: userTag,
-        senderDisplayName: [user.first_name, user.last_name].filter(Boolean).join(' ') || userTag,
-        chatId,
-        topicId
-      });
-      if (bjResult.replyText) {
-        await sendLittlepipReply(chatId, bjResult.replyText, {
-          reply_to_message_id: msg.message_id,
-          ...(topicId ? { message_thread_id: parseInt(topicId, 10) } : {})
-        });
-        addBotLog('info', `[Блэкджек ИИ (шлюз)]: ответ в чат ${chatId} (${bjResult.actionTaken || 'диалог'})`);
-        return;
-      }
-    } catch (bjErr: any) {
-      console.warn('[Blackjack Gateway Error]:', bjErr);
     }
   }
 
@@ -2181,15 +2234,24 @@ app.get('/api/blackjack/reputation', (req, res) => {
 // Helper to resolve numeric Telegram user ID from username
 function resolveTelegramUserId(usernameOrTag: string): string | number | null {
   if (!usernameOrTag) return null;
-  const clean = usernameOrTag.trim().toLowerCase().replace(/^@/, '');
+  const raw = usernameOrTag.trim();
+  const clean = raw.toLowerCase().replace(/^@/, '');
+  if (/^\d+$/.test(clean)) return parseInt(clean, 10);
   try {
     const data = getOrInitData();
     const profile = data.profiles.find((p: any) => {
       const u = (p.username || '').toLowerCase().replace(/^@/, '');
-      return u === clean || p.id === 'tg_user_' + clean;
+      const tId = String(p.telegramId || '').replace(/^tg_user_/, '');
+      return u === clean || p.id === 'tg_user_' + clean || tId === clean;
     });
-    if (profile && profile.id && profile.id.startsWith('tg_user_')) {
-      return profile.id.replace('tg_user_', '');
+    if (profile) {
+      if (profile.telegramId && /^\d+$/.test(String(profile.telegramId))) {
+        return parseInt(String(profile.telegramId), 10);
+      }
+      if (profile.id && profile.id.startsWith('tg_user_')) {
+        const idPart = profile.id.replace('tg_user_', '');
+        if (/^\d+$/.test(idPart)) return parseInt(idPart, 10);
+      }
     }
   } catch {
     // fallback
@@ -3230,7 +3292,8 @@ async function startServer() {
     const isRenderOrProd = process.env.RENDER === 'true' || process.env.NODE_ENV === 'production' || process.env.AUTOSTART_BOTS === 'true';
     if (isRenderOrProd) {
       console.log('🚀 Running in production/Render environment: starting Telegram Polling workers for BOTH bots...');
-      if (TELEGRAM_BOT_TOKEN) {
+      const pipToken = getTelegramBotToken();
+      if (pipToken) {
         startTelegramPolling().catch(err => {
           console.error('Failed to start Littlepip polling on boot:', err.message);
         });
