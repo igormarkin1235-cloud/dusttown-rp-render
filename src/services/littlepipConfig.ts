@@ -35,8 +35,11 @@ export interface LittlepipSettings {
   callBlackjackTriggers: string[];                  // триггеры вызова ('блэкджек', 'блэки', 'джеки', 'blackjack', 'blackie', 'jackie')
 
   // ИИ Модель
-  model: string;                                    // gemini-2.5-flash
+  model: string;                                    // gemini-3.8-flash
   temperature: number;                              // 0.84
+
+  // Telegram Bot Token (опционально для локального хранения или Render)
+  telegramBotToken?: string;
 
   // Вкладки (топики) супергруппы
   topics: Record<string, TelegramTopicConfig>;
@@ -57,8 +60,9 @@ const DEFAULT_CONFIG: LittlepipSettings = {
   callBlackjackOnViolations: true,
   callBlackjackOnAggression: true,
   callBlackjackTriggers: ['блэкджек', 'блэки', 'джеки', 'блэк', 'blackjack', 'blackie', 'jackie'],
-  model: 'gemini-2.5-flash',
+  model: 'gemini-3.1-flash-lite',
   temperature: 0.84,
+  telegramBotToken: process.env.TELEGRAM_BOT_TOKEN || '',
   topics: {
     'root': {
       threadId: 'root',
@@ -203,8 +207,16 @@ export function updateBlackjackUsername(username: string): void {
 export function parseTelegramTopicLink(input: string): { threadId: string; rawUrl?: string } | null {
   if (!input) return null;
   const trimmed = input.trim();
-  if (/^\d+$/.test(trimmed)) {
-    return { threadId: trimmed };
+  const cleanId = trimmed.replace(/^#/, '');
+  if (/^\d+$/.test(cleanId)) {
+    return { threadId: cleanId, rawUrl: trimmed };
+  }
+  if (['root', 'main', 'general'].includes(trimmed.toLowerCase())) {
+    return { threadId: 'root', rawUrl: trimmed };
+  }
+  const matchQuery = trimmed.match(/[?&](?:topic|thread|thread_id|message_thread_id)=(\d+)/i);
+  if (matchQuery?.[1]) {
+    return { threadId: matchQuery[1], rawUrl: trimmed };
   }
   const matchPrivate = trimmed.match(/t\.me\/c\/\d+\/(\d+)/i);
   if (matchPrivate?.[1]) {
@@ -288,22 +300,25 @@ export function registerDiscoveredTopic(
 }
 
 /**
- * Добавить или обновить топик
+ * Добавить или обновить топик по ссылке или ID
  */
 export function setTopicConfig(
-  threadId: number | string,
-  title: string,
+  inputLinkOrId: number | string,
+  title?: string,
   permission: TopicPermission = 'read_write',
   enabled = true,
   notes?: string
 ): LittlepipSettings {
-  const key = String(threadId);
+  const parsed = parseTelegramTopicLink(String(inputLinkOrId));
+  const key = parsed ? parsed.threadId : String(inputLinkOrId);
+  const existing = activeSettings.topics[key];
+
   activeSettings.topics[key] = {
     threadId: key,
-    title,
+    title: title || existing?.title || (key === 'root' ? 'Главная ветка' : `Топик #${key}`),
     permission,
     enabled,
-    notes
+    notes: notes || existing?.notes || (permission === 'read_only' ? 'Только чтение: сбор фактов в память' : 'Активный диалог')
   };
   saveSettings(activeSettings);
   return { ...activeSettings };

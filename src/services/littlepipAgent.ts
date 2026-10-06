@@ -25,7 +25,13 @@ import {
   searchFalloutEquestriaWiki,
   shouldSearchFalloutEquestriaWiki
 } from './falloutEquestriaWiki';
-import { checkTopicPermissions } from './littlepipConfig';
+import {
+  checkTopicPermissions,
+  setTopicConfig,
+  getLittlepipSettings,
+  parseTelegramTopicLink,
+  TopicPermission
+} from './littlepipConfig';
 import {
   rememberLearnedKnowledge,
   recordDialogueMessage,
@@ -52,11 +58,9 @@ import {
 } from './littlepipMemes';
 
 // Стабильный стек моделей
-export const LITTLEPIP_GEMINI_MODEL = 'gemini-2.5-flash';
+export const LITTLEPIP_GEMINI_MODEL = 'gemini-3.1-flash-lite';
 const LITTLEPIP_GEMINI_FALLBACK_MODELS = [
-  'gemini-flash-latest',
-  'gemini-3.1-flash-lite',
-  'gemini-2.5-pro'
+  'gemini-3.8-flash'
 ];
 
 // ==========================================
@@ -253,7 +257,7 @@ export function getBotArchitectureOverview(): string {
 
 export function hasPipMention(text: string): boolean {
   if (!text) return false;
-  return /(^|[^\p{L}\p{N}_])(?:литлпип(?:а|у|е|ом)?|пипка(?:и|е|у|ой)?|пип(?:а|ке|ку|кой)?|литка(?:и|е|у|ой)?|лилька(?:и|е|у|ой)?|малышка(?:и|е|у|ой)?|littlepip|lily)(?=$|[^\p{L}\p{N}_])/iu.test(text);
+  return /(^|[^\p{L}\p{N}_])(?:литлпип(?:а|у|е|ом)?|пипка(?:и|е|у|ой)?|пип(?:а|ке|ку|кой)?|литка(?:и|е|у|ой)?|лилька(?:и|е|у|ой)?|малышка(?:и|е|у|ой)?|littlepip|pip|lily|@dusttown_rp_bot|@dusttown|\/pip)(?=$|[^\p{L}\p{N}_])/iu.test(text);
 }
 
 // ==========================================
@@ -331,7 +335,7 @@ async function generateGeminiReply(systemInstruction: string, prompt: string): P
             }
           }),
           new Promise<never>((_, reject) => {
-            timeoutId = setTimeout(() => reject(new Error('Littlepip generation timeout')), 22000);
+            timeoutId = setTimeout(() => reject(new Error('Littlepip generation timeout')), 7000);
           })
         ]);
 
@@ -742,11 +746,124 @@ export async function handleLittlepipUpdate(
     return { handled: true, replyText: statusText };
   }
 
+  // 9. КОМАНДА /pip_topic <ссылка_или_id> <read_only|read_write|blocked> [название]
+  if (command && ['pip_topic', 'topic', 'topic_set'].includes(command)) {
+    const parts = cleanText.split(/\s+/);
+    if (parts.length < 2) {
+      const helpMsg = `⚙️ **Формат команды настройки топика Литлпип:**\n\`/pip_topic <ссылка на топик или ID> <read_only|read_write|blocked> [Название]\`\n\nПример:\n\`/pip_topic https://t.me/c/12345/42 read_only Лор и Анкеты\``;
+      await sendMessageFn(chatId, helpMsg, sendOpts);
+      return { handled: true, replyText: helpMsg };
+    }
+
+    const targetLinkOrId = parts[1];
+    const rawMode = parts[2]?.toLowerCase() || 'read_write';
+    const mode: TopicPermission = ['read_only', 'read_write', 'blocked'].includes(rawMode) ? rawMode as any : 'read_write';
+    const customTitle = parts.slice(3).join(' ') || (parts[2] && !['read_only', 'read_write', 'blocked'].includes(rawMode) ? parts.slice(2).join(' ') : undefined);
+
+    const updatedSettings = setTopicConfig(targetLinkOrId, customTitle, mode);
+    const parsed = parseTelegramTopicLink(targetLinkOrId);
+    const resolvedId = parsed ? parsed.threadId : targetLinkOrId;
+    const configuredTopic = updatedSettings.topics[resolvedId];
+
+    const modeLabel = mode === 'read_only'
+      ? '👁️ Только чтение (Запоминание в память)'
+      : mode === 'blocked'
+        ? '🚫 Запретная зона (Игнорировать)'
+        : '💬 Активный диалог';
+
+    const respText = `✅ **Топик Литлпип настроен!**\n\n• **ID/Ветка:** #${resolvedId}\n• **Название:** ${configuredTopic?.title || 'Топик'}\n• **Режим:** ${modeLabel}`;
+    await sendMessageFn(chatId, respText, sendOpts);
+    return { handled: true, replyText: respText };
+  }
+
+  // Шорткат: /pip_read <ссылка_или_id> [название] — быстро перевести топик в «только чтение и память»
+  if (command && ['pip_read', 'read'].includes(command)) {
+    const parts = cleanText.split(/\s+/);
+    if (parts.length < 2) {
+      const helpMsg = `👁️ **Шорткат режима Только Чтение для Литлпип:**\n\`/pip_read <ссылка на топик или ID> [Название]\`\n\nЛитлпип будет молча читать эту ветку и сохранять все факты, правила и сюжет в свою постоянную память.`;
+      await sendMessageFn(chatId, helpMsg, sendOpts);
+      return { handled: true, replyText: helpMsg };
+    }
+    const targetLinkOrId = parts[1];
+    const customTitle = parts.slice(2).join(' ') || undefined;
+    const updatedSettings = setTopicConfig(targetLinkOrId, customTitle, 'read_only');
+    const parsed = parseTelegramTopicLink(targetLinkOrId);
+    const resolvedId = parsed ? parsed.threadId : targetLinkOrId;
+    const respText = `👁️ **Топик #${resolvedId} переведён в режим «Только чтение» для Литлпип!**\n\nЯ не буду отправлять сообщения в эту ветку, но буду внимательно впитывать каждое слово и сохранять в память Стойла 2.`;
+    await sendMessageFn(chatId, respText, sendOpts);
+    return { handled: true, replyText: respText };
+  }
+
+  // Шорткат: /pip_write <ссылка_или_id> [название] — разрешить писать и общаться в топике
+  if (command && ['pip_write', 'write'].includes(command)) {
+    const parts = cleanText.split(/\s+/);
+    if (parts.length < 2) {
+      const helpMsg = `💬 **Шорткат активного режима для Литлпип:**\n\`/pip_write <ссылка на топик или ID> [Название]\`\n\nЛитлпип будет активно общаться, отвечать на вопросы и шутить в этой ветке.`;
+      await sendMessageFn(chatId, helpMsg, sendOpts);
+      return { handled: true, replyText: helpMsg };
+    }
+    const targetLinkOrId = parts[1];
+    const customTitle = parts.slice(2).join(' ') || undefined;
+    const updatedSettings = setTopicConfig(targetLinkOrId, customTitle, 'read_write');
+    const parsed = parseTelegramTopicLink(targetLinkOrId);
+    const resolvedId = parsed ? parsed.threadId : targetLinkOrId;
+    const respText = `💬 **Топик #${resolvedId} открыт для живого общения с Литлпип!**\n\nЯ на связи в этой ветке, готова к диалогам, байкам и техподдержке! 🦄✨`;
+    await sendMessageFn(chatId, respText, sendOpts);
+    return { handled: true, replyText: respText };
+  }
+
+  // Шорткат: /pip_block <ссылка_или_id> — заблокировать ветку
+  if (command && ['pip_block', 'block'].includes(command)) {
+    const parts = cleanText.split(/\s+/);
+    if (parts.length < 2) {
+      const helpMsg = `🚫 **Шорткат блокировки ветки для Литлпип:**\n\`/pip_block <ссылка на топик или ID>\``;
+      await sendMessageFn(chatId, helpMsg, sendOpts);
+      return { handled: true, replyText: helpMsg };
+    }
+    const targetLinkOrId = parts[1];
+    setTopicConfig(targetLinkOrId, undefined, 'blocked');
+    const parsed = parseTelegramTopicLink(targetLinkOrId);
+    const resolvedId = parsed ? parsed.threadId : targetLinkOrId;
+    const respText = `🚫 **Топик #${resolvedId} помечен как запретная зона!**\n\nЛитлпип полностью игнорирует сообщения из этой ветки.`;
+    await sendMessageFn(chatId, respText, sendOpts);
+    return { handled: true, replyText: respText };
+  }
+
+  // Память Литлпип: /pip_memory
+  if (command && ['pip_memory', 'memory'].includes(command)) {
+    const knowledgeCtx = getKnowledgeContextForPrompt();
+    const memMsg = `🧠 **Память и База Знаний Литлпип:**\n\n${knowledgeCtx || 'В памяти пока только стандартные правила Стойла 2.'}\n\nЧтобы Пипка запомнила информацию из топика, переведи его в режим чтения: \`/pip_read <ссылка>\``;
+    await sendMessageFn(chatId, memMsg, sendOpts);
+    return { handled: true, replyText: memMsg };
+  }
+
+  // 10. КОМАНДА /pip_topics
+  if (command && ['pip_topics', 'topics'].includes(command)) {
+    const s = getLittlepipSettings();
+    const list = Object.values(s.topics || {});
+    if (list.length === 0) {
+      const emptyMsg = `📋 У Литлпип пока нет отдельных настроек топиков (работает в основной ветке). Настроить: \`/pip_topic <ссылка> <режим>\``;
+      await sendMessageFn(chatId, emptyMsg, sendOpts);
+      return { handled: true, replyText: emptyMsg };
+    }
+    const lines = list.map(t => {
+      const icon = t.permission === 'read_only' ? '👁️ [Только чтение/Память]' : t.permission === 'blocked' ? '🚫 [Запретная зона]' : '💬 [Диалог]';
+      return `• **${t.title}** (#${t.threadId}): ${icon}`;
+    });
+    const topicsMsg = `📋 **Топики Литлпип:**\n\n${lines.join('\n')}\n\nНастроить новый: \`/pip_topic <ссылка> <read_only|read_write|blocked>\``;
+    await sendMessageFn(chatId, topicsMsg, sendOpts);
+    return { handled: true, replyText: topicsMsg };
+  }
+
   if (command) return { handled: false };
 
-  // 9. ПРОВЕРКА ОБРАЩЕНИЯ К ЛИТЛПИП
+  // 11. ПРОВЕРКА ОБРАЩЕНИЯ К ЛИТЛПИП
   const binding = getBinding(chatId, threadId);
-  const isMentioned = hasPipMention(cleanText);
+  const isDirect = ctx.chatType === 'private' || (!threadId && String(chatId) > '0');
+  const isBoundTopic = Boolean(binding && binding.isActive);
+  const isMentioned = hasPipMention(cleanText) ||
+    Boolean(botUsername && cleanText.toLowerCase().includes('@' + botUsername.toLowerCase())) ||
+    isDirect;
   const isReplyToMe = Boolean(
     replyToMessage && (
       (botUsername && replyToMessage.from?.username?.toLowerCase() === botUsername.toLowerCase()) ||
@@ -754,7 +871,7 @@ export async function handleLittlepipUpdate(
     )
   );
 
-  if (!isMentioned && !isReplyToMe) return { handled: false };
+  if (!isMentioned && !isReplyToMe && !isDirect && !isBoundTopic) return { handled: false };
 
   // 10. ГЕНЕРАЦИЯ ОТВЕТА
   const activeMode: AgentMode = binding?.mode || (lower.includes('ошибк') || lower.includes('помоги') || lower.includes('код') ? 'support' : 'chat');

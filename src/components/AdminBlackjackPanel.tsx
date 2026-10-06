@@ -22,7 +22,11 @@ import {
   Key,
   Layers,
   ChevronRight,
-  History as HistoryIcon
+  History as HistoryIcon,
+  Plus,
+  Trash2,
+  Eye,
+  Link as LinkIcon
 } from 'lucide-react';
 
 interface MuteRecord {
@@ -100,6 +104,14 @@ export const AdminBlackjackPanel: React.FC<AdminBlackjackPanelProps> = ({
   const [forbiddenTopics, setForbiddenTopics] = useState('private_staff, archive');
   const [saveSuccessNotice, setSaveSuccessNotice] = useState<string | null>(null);
 
+  // Topics and Memory states for Blackjack
+  const [topicsMap, setTopicsMap] = useState<Record<string, any>>({});
+  const [newTopicLink, setNewTopicLink] = useState('');
+  const [newTopicTitle, setNewTopicTitle] = useState('');
+  const [newTopicPerm, setNewTopicPerm] = useState<'read_write' | 'read_only' | 'blocked'>('read_only');
+  const [newTopicNotes, setNewTopicNotes] = useState('');
+  const [memoryObservations, setMemoryObservations] = useState<any[]>([]);
+
   // Bot Connection & Polling State
   const [botPolling, setBotPolling] = useState(false);
   const [serverConnected, setServerConnected] = useState(true);
@@ -134,6 +146,20 @@ export const AdminBlackjackPanel: React.FC<AdminBlackjackPanelProps> = ({
         }
       }
 
+      // Load topics map
+      const topRes = await fetch('/api/blackjack/topics');
+      if (topRes.ok) {
+        const topData = await topRes.json();
+        if (topData.topics) setTopicsMap(topData.topics);
+      }
+
+      // Load memory observations
+      const memRes = await fetch('/api/blackjack/memory');
+      if (memRes.ok) {
+        const memData = await memRes.json();
+        if (memData.memory?.observations) setMemoryObservations(memData.memory.observations);
+      }
+
       // Check bot polling status
       const botRes = await fetch('/api/blackjack/bot/status');
       if (botRes.ok) {
@@ -145,6 +171,70 @@ export const AdminBlackjackPanel: React.FC<AdminBlackjackPanelProps> = ({
     } catch (e) {
       setServerConnected(false);
     }
+  };
+
+  const handleAddTopicByLink = async () => {
+    if (!newTopicLink.trim()) return;
+    try {
+      const res = await fetch('/api/blackjack/topics/set', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          inputLinkOrId: newTopicLink.trim(),
+          title: newTopicTitle.trim() || undefined,
+          permission: newTopicPerm,
+          notes: newTopicNotes.trim() || undefined
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setNewTopicLink('');
+        setNewTopicTitle('');
+        setNewTopicNotes('');
+        setSaveSuccessNotice('Топик успешно настроен!');
+        setTimeout(() => setSaveSuccessNotice(null), 4000);
+        await refreshData();
+      } else {
+        alert(data.error || 'Ошибка настройки топика');
+      }
+    } catch (e: any) {
+      alert('Ошибка: ' + e.message);
+    }
+  };
+
+  const handleQuickChangePerm = async (threadId: string, perm: 'read_write' | 'read_only' | 'blocked') => {
+    try {
+      const existing = topicsMap[threadId];
+      await fetch('/api/blackjack/topics/set', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          inputLinkOrId: threadId,
+          title: existing?.title,
+          permission: perm,
+          notes: existing?.notes
+        })
+      });
+      await refreshData();
+    } catch (e) {}
+  };
+
+  const handleDeleteTopic = async (threadId: string) => {
+    try {
+      await fetch(`/api/blackjack/topics/${threadId}`, { method: 'DELETE' });
+      await refreshData();
+    } catch (e) {}
+  };
+
+  const handleResetBlackjackMemory = async (scope: '24h' | '3d' | 'all') => {
+    try {
+      await fetch('/api/blackjack/memory/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scope })
+      });
+      await refreshData();
+    } catch (e) {}
   };
 
   useEffect(() => {
@@ -753,79 +843,251 @@ export const AdminBlackjackPanel: React.FC<AdminBlackjackPanelProps> = ({
           </div>
         )}
 
-        {/* TAB 3: TOPICS & PERMISSIONS */}
+        {/* TAB 3: TOPICS & PERMISSIONS (ПО ССЫЛКЕ И ID) */}
         {activeTab === 'topics' && (
-          <div className="space-y-4 font-mono-pip text-xs">
-            <div className="p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-3">
-              <h3 className="font-bold text-white text-sm">Управление топиками в Telegram супергруппе:</h3>
-              <p className="text-zinc-400 text-[11px]">
-                Укажите через запятую ID или названия топиков (веток), чтобы разграничить доступ Блэкджек.
+          <div className="space-y-5 font-mono-pip text-xs">
+            {/* Form: Add or Configure Topic by Link or ID */}
+            <div className="p-5 rounded-2xl bg-zinc-900/70 border border-zinc-800 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <LinkIcon className="w-4 h-4 text-red-400" />
+                  <h3 className="font-bold text-white text-sm">Привязать или настроить топик по ссылке Telegram:</h3>
+                </div>
+                <span className="text-[10px] text-zinc-400 px-2 py-0.5 rounded bg-zinc-800">Блэкджек</span>
+              </div>
+              <p className="text-zinc-400 text-[11px] leading-relaxed">
+                Вставьте прямую ссылку на топик супергруппы Telegram (или укажите его ID). Выберите: где Блэкджек <strong className="text-amber-400">только читает и сохраняет факты в память</strong>, а где <strong className="text-emerald-400">активно отвечает и модерирует</strong>.
               </p>
 
-              <div className="space-y-3 pt-2">
-                <div>
-                  <label className="text-emerald-400 font-bold block mb-1">
-                    🟢 Разрешенные топики (активный ответ и модерация):
-                  </label>
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 pt-1">
+                <div className="sm:col-span-5 space-y-1">
+                  <label className="text-[10px] text-zinc-400 uppercase">Ссылка на топик Telegram или ID:</label>
                   <input
                     type="text"
-                    value={allowedTopics}
-                    onChange={e => setAllowedTopics(e.target.value)}
-                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-700 rounded-xl text-xs text-zinc-200"
-                    placeholder="general, main, rp, chat"
+                    placeholder="https://t.me/c/2149182371/42 или ID"
+                    value={newTopicLink}
+                    onChange={e => setNewTopicLink(e.target.value)}
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-700 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-red-500"
                   />
                 </div>
 
-                <div>
-                  <label className="text-amber-400 font-bold block mb-1">
-                    🟡 Только чтение (наблюдение без ответов):
-                  </label>
+                <div className="sm:col-span-4 space-y-1">
+                  <label className="text-[10px] text-zinc-400 uppercase">Название темы / топика:</label>
                   <input
                     type="text"
-                    value={readOnlyTopics}
-                    onChange={e => setReadOnlyTopics(e.target.value)}
-                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-700 rounded-xl text-xs text-zinc-200"
-                    placeholder="news, rules, announcements"
+                    placeholder="Например: Сводки СБ или Правила"
+                    value={newTopicTitle}
+                    onChange={e => setNewTopicTitle(e.target.value)}
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-700 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-red-500"
                   />
                 </div>
 
-                <div>
-                  <label className="text-red-400 font-bold block mb-1">
-                    🔴 Запретные топики (Блэкджек полностью игнорирует):
-                  </label>
-                  <input
-                    type="text"
-                    value={forbiddenTopics}
-                    onChange={e => setForbiddenTopics(e.target.value)}
-                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-700 rounded-xl text-xs text-zinc-200"
-                    placeholder="private_staff, admin_secret"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-zinc-300 font-bold block mb-1">
-                    🔑 Токен Telegram Бота Блэкджек:
-                  </label>
-                  <input
-                    type="text"
-                    value={botToken}
-                    onChange={e => setBotToken(e.target.value)}
-                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-700 rounded-xl text-xs text-zinc-200"
-                  />
+                <div className="sm:col-span-3 space-y-1">
+                  <label className="text-[10px] text-zinc-400 uppercase">Режим доступа:</label>
+                  <select
+                    value={newTopicPerm}
+                    onChange={e => setNewTopicPerm(e.target.value as any)}
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-700 rounded-xl text-xs text-white focus:outline-none focus:border-red-500"
+                  >
+                    <option value="read_only">👁️ Только чтение (В память)</option>
+                    <option value="read_write">💬 Активный диалог (Писать)</option>
+                    <option value="blocked">🚫 Запретная зона (Игнор)</option>
+                  </select>
                 </div>
               </div>
 
-              <div className="pt-2 flex items-center justify-between">
+              <div className="space-y-1">
+                <label className="text-[10px] text-zinc-400 uppercase">Заметки / Назначение для ИИ (Опционально):</label>
+                <input
+                  type="text"
+                  placeholder="Например: Тема с регламентом сообщества, собирать правила для рапортов"
+                  value={newTopicNotes}
+                  onChange={e => setNewTopicNotes(e.target.value)}
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-700 rounded-xl text-xs text-zinc-300 placeholder-zinc-600 focus:outline-none focus:border-red-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-between pt-1">
                 <button
-                  onClick={handleSaveConfig}
-                  className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold transition flex items-center gap-1.5"
+                  onClick={handleAddTopicByLink}
+                  disabled={!newTopicLink.trim()}
+                  className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 disabled:opacity-40 text-white font-bold transition flex items-center gap-1.5 shadow-md shadow-red-950/50"
                 >
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Сохранить настройки</span>
+                  <Plus className="w-4 h-4" />
+                  <span>Сохранить топик по ссылке</span>
                 </button>
                 {saveSuccessNotice && (
-                  <span className="text-emerald-400">{saveSuccessNotice}</span>
+                  <span className="text-emerald-400 font-bold">{saveSuccessNotice}</span>
                 )}
+              </div>
+            </div>
+
+            {/* List of Configured Topics */}
+            <div className="p-5 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-amber-400" />
+                  <h4 className="font-bold text-white text-xs uppercase tracking-wide">
+                    Настроенные топики Блэкджек ({Object.keys(topicsMap).length}):
+                  </h4>
+                </div>
+                <span className="text-[10px] text-zinc-400">Быстрое переключение прав в 1 клик</span>
+              </div>
+
+              {Object.keys(topicsMap).length === 0 ? (
+                <div className="p-4 rounded-xl bg-zinc-950 text-zinc-400 text-center text-xs">
+                  Топики пока не настроены. Добавьте ссылку выше или используйте в чате команду: <code className="text-red-300">/bj_topic &lt;ссылка&gt; &lt;режим&gt;</code>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {Object.entries(topicsMap).map(([id, t]: [string, any]) => (
+                    <div
+                      key={id}
+                      className={`p-3.5 rounded-xl border flex flex-col justify-between gap-3 ${
+                        t.permission === 'read_only'
+                          ? 'bg-amber-950/20 border-amber-900/50'
+                          : t.permission === 'blocked'
+                            ? 'bg-red-950/20 border-red-900/50'
+                            : 'bg-zinc-950 border-zinc-800'
+                      }`}
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="font-bold text-white text-xs">
+                            {t.title || `Топик #${id}`}
+                          </span>
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                              t.permission === 'read_only'
+                                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                : t.permission === 'blocked'
+                                  ? 'bg-red-500/20 text-red-300 border border-red-500/30'
+                                  : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                            }`}
+                          >
+                            {t.permission === 'read_only' ? '👁️ Только чтение / Память' : t.permission === 'blocked' ? '🚫 Запретная зона' : '💬 Активный диалог'}
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-zinc-400 flex items-center gap-2">
+                          <span>ID/Ветка: <code className="text-zinc-200">#{t.threadId || id}</code></span>
+                          {t.notes && <span className="text-zinc-500 truncate max-w-[150px]">· {t.notes}</span>}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2 pt-1 border-t border-zinc-800/60">
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => handleQuickChangePerm(id, 'read_only')}
+                            title="Сделать только для чтения и запоминания"
+                            className={`px-2 py-1 rounded text-[10px] font-bold transition ${
+                              t.permission === 'read_only'
+                                ? 'bg-amber-500 text-black'
+                                : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-amber-300'
+                            }`}
+                          >
+                            👁️ В память
+                          </button>
+                          <button
+                            onClick={() => handleQuickChangePerm(id, 'read_write')}
+                            title="Разрешить писать и общаться"
+                            className={`px-2 py-1 rounded text-[10px] font-bold transition ${
+                              t.permission === 'read_write'
+                                ? 'bg-emerald-500 text-black'
+                                : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-emerald-300'
+                            }`}
+                          >
+                            💬 Писать
+                          </button>
+                          <button
+                            onClick={() => handleQuickChangePerm(id, 'blocked')}
+                            title="Заблокировать топик"
+                            className={`px-2 py-1 rounded text-[10px] font-bold transition ${
+                              t.permission === 'blocked'
+                                ? 'bg-red-600 text-white'
+                                : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-red-300'
+                            }`}
+                          >
+                            🚫 Блок
+                          </button>
+                        </div>
+
+                        <button
+                          onClick={() => handleDeleteTopic(id)}
+                          className="p-1 rounded text-zinc-500 hover:text-red-400 transition"
+                          title="Удалить настройку топика"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Memory & Surveillance dossier */}
+            <div className="p-5 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <BookOpen className="w-4 h-4 text-red-400" />
+                  <h4 className="font-bold text-white text-xs uppercase tracking-wide">
+                    База наблюдений и память Шерифа (.blackjack_memory.json):
+                  </h4>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-zinc-400">Фактов в памяти: {memoryObservations.length}</span>
+                  <button
+                    onClick={() => handleResetBlackjackMemory('24h')}
+                    className="px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[10px] transition"
+                  >
+                    Сброс 24ч
+                  </button>
+                  <button
+                    onClick={() => handleResetBlackjackMemory('all')}
+                    className="px-2 py-0.5 rounded bg-red-950 hover:bg-red-900 text-red-300 text-[10px] transition"
+                  >
+                    Очистить всё
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                {memoryObservations.length === 0 ? (
+                  <p className="text-zinc-500 text-xs italic">
+                    Блэкджек пока не зафиксировала фактов из Read-Only топиков.
+                  </p>
+                ) : (
+                  memoryObservations.slice(0, 8).map(obs => (
+                    <div key={obs.id} className="p-2.5 rounded-xl bg-zinc-950 border border-zinc-800/80 text-xs space-y-1">
+                      <div className="flex items-center justify-between text-[10px] text-zinc-400">
+                        <span className="font-bold text-amber-300">[{obs.topicTitle || 'Топик'}]</span>
+                        <span>{obs.author} · {new Date(obs.timestamp).toLocaleTimeString()}</span>
+                      </div>
+                      <p className="text-zinc-200 text-[11px] leading-snug">{obs.content}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Bot Token Configuration */}
+            <div className="p-4 rounded-2xl bg-zinc-900/40 border border-zinc-800 space-y-2">
+              <label className="text-zinc-300 font-bold block text-xs">
+                🔑 Токен Telegram Бота Блэкджек:
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={botToken}
+                  onChange={e => setBotToken(e.target.value)}
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-700 rounded-xl text-xs text-zinc-200"
+                />
+                <button
+                  onClick={handleSaveConfig}
+                  className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold transition whitespace-nowrap"
+                >
+                  Сохранить токен
+                </button>
               </div>
             </div>
           </div>

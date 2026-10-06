@@ -38,6 +38,7 @@ import {
 } from './src/services/littlepipMemory';
 import {
   handleBlackjackMessage,
+  hasBlackjackMention,
   parseModerationIntent,
   summonBlackjackForViolation
 } from './src/services/blackjackAgent';
@@ -56,7 +57,9 @@ import {
   loadBlackjackConfig,
   saveBlackjackConfig,
   checkBlackjackTopicPermission,
-  isAuthorizedBlackjackAdmin
+  isAuthorizedBlackjackAdmin,
+  setBlackjackTopic,
+  removeBlackjackTopic
 } from './src/services/blackjackConfig';
 import {
   getBlackjackBotStatus,
@@ -64,6 +67,10 @@ import {
   stopBlackjackPolling,
   testBlackjackTelegramConnection
 } from './src/services/blackjackTelegram';
+import {
+  getBlackjackMemory,
+  resetBlackjackMemory
+} from './src/services/blackjackMemory';
 import {
   loadBlackjackReputations,
   adjustBlackjackReputation
@@ -77,6 +84,14 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = Number(process.env.PORT) || Number(process.env.DEV_PORT) || 3000;
+function getTelegramBotToken(): string {
+  try {
+    const pipCfg = getLittlepipSettings();
+    return (pipCfg as any)?.telegramBotToken || process.env.TELEGRAM_BOT_TOKEN || '';
+  } catch (e) {
+    return process.env.TELEGRAM_BOT_TOKEN || '';
+  }
+}
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 
 app.use(express.json({ limit: '50mb' }));
@@ -641,10 +656,11 @@ function addBotLog(type: 'info' | 'message' | 'error', text: string) {
 // Telegram API Helper
 async function tgApi(method: string, body?: any) {
   try {
-    if (!TELEGRAM_BOT_TOKEN) {
+    const token = getTelegramBotToken();
+    if (!token) {
       throw new Error('TELEGRAM_BOT_TOKEN is not configured');
     }
-    const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/${method}`, {
+    const res = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: body ? JSON.stringify(body) : undefined
@@ -718,15 +734,21 @@ async function sendLittlepipReply(
 ) {
   const { meme, ...telegramOptions } = options as { meme?: LittlepipMeme; [key: string]: any };
   if (!meme) {
-    const result = await tgApi('sendMessage', { chat_id: chatId, text, ...telegramOptions });
-    if (!result.ok) {
-      throw new Error(`Telegram could not send Littlepip message: ${result.description || 'unknown error'}`);
+    let result = await tgApi('sendMessage', { chat_id: chatId, text, ...telegramOptions });
+    if (!result?.ok && telegramOptions?.parse_mode) {
+      // Retry without Markdown if entity parsing failed
+      const { parse_mode, ...plainOpts } = telegramOptions;
+      result = await tgApi('sendMessage', { chat_id: chatId, text, ...plainOpts });
+    }
+    if (!result?.ok) {
+      throw new Error(`Telegram could not send Littlepip message: ${result?.description || 'unknown error'}`);
     }
     return result;
   }
 
+  const token = getTelegramBotToken();
   try {
-    if (!TELEGRAM_BOT_TOKEN) {
+    if (!token) {
       throw new Error('TELEGRAM_BOT_TOKEN is not configured');
     }
     const image = await fs.promises.readFile(meme.filePath);
@@ -746,7 +768,7 @@ async function sendLittlepipReply(
       }
     }
 
-    const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`, {
+    const response = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
       method: 'POST',
       body: form
     });
@@ -757,22 +779,78 @@ async function sendLittlepipReply(
     return result;
   } catch (error) {
     console.warn(`[Littlepip Memes] Could not send ${meme.fileName}; sending the text reply instead:`, error);
-    const fallback = await tgApi('sendMessage', { chat_id: chatId, text, ...telegramOptions });
-    if (!fallback.ok) {
-      throw new Error(fallback.description || 'Telegram could not send the Littlepip reply');
+    let fallback = await tgApi('sendMessage', { chat_id: chatId, text, ...telegramOptions });
+    if (!fallback?.ok && telegramOptions?.parse_mode) {
+      const { parse_mode, ...plainOpts } = telegramOptions;
+      fallback = await tgApi('sendMessage', { chat_id: chatId, text, ...plainOpts });
+    }
+    if (!fallback?.ok) {
+      throw new Error(fallback?.description || 'Telegram could not send the Littlepip reply');
     }
     return fallback;
   }
 }
 
-// Start Telegram Polling Loop (STRICTLY DISABLED IN AI STUDIO PREVIEW: BOT HOSTED ON RENDER)
+// Start Telegram Polling Loop
 let lastUpdateId = 0;
 
 async function startTelegramPolling() {
-  console.log('ℹ️ Telegram polling is intentionally disabled in this preview environment.');
-  console.log('🚀 The Telegram bot is already hosted 24/7 on Render cloud.');
-  addBotLog('info', '⚠️ Telegram Bot хостится на Render! Локальный polling отключен во избежание конфликтов 409 Conflict.');
-  return;
+  if (isBotPolling) return { success: true, message: 'Бот Littlepip уже запущен' };
+  const token = getTelegramBotToken();
+  if (!token) {
+    console.warn('TELEGRAM_BOT_TOKEN не задан; Littlepip polling не может быть запущен.');
+    addBotLog('error', 'TELEGRAM_BOT_TOKEN не задан. Бот не может запуститься.');
+    return { success: false, error: 'TELEGRAM_BOT_TOKEN не настроен' };
+  }
+
+  try {
+    const me = await tgApi('getMe');
+    if (me && me.ok) {
+      botInfo = me.result;
+      lastBotError = null;
+      addBotLog('info', `✅ Связь с Telegram Littlepip подтверждена: @${botInfo.username} (${botInfo.first_name})`);
+    } else {
+      lastBotError = me?.description || 'Не удалось получить данные бота';
+      addBotLog('error', `Ошибка проверки связи Littlepip: ${lastBotError}`);
+      return { success: false, error: lastBotError };
+    }
+  } catch (err: any) {
+    lastBotError = err.message;
+    addBotLog('error', `Ошибка проверки связи Littlepip: ${err.message}`);
+    return { success: false, error: err.message };
+  }
+
+  isBotPolling = true;
+  pollingAbortController = new AbortController();
+  addBotLog('info', '🚀 Long-polling Littlepip запущен');
+
+  (async () => {
+    while (isBotPolling && pollingAbortController && !pollingAbortController.signal.aborted) {
+      try {
+        const currentToken = getTelegramBotToken();
+        const url = `https://api.telegram.org/bot${currentToken}/getUpdates?offset=${lastUpdateId + 1}&timeout=20`;
+        const res = await fetch(url, { signal: pollingAbortController.signal });
+        const data = await res.json();
+
+        if (data.ok && Array.isArray(data.result)) {
+          for (const update of data.result) {
+            lastUpdateId = update.update_id;
+            await handleTelegramUpdate(update);
+          }
+        } else if (!data.ok) {
+          lastBotError = data.description || 'Polling error';
+          addBotLog('error', `Ошибка ответа Telegram: ${lastBotError}`);
+          await new Promise(r => setTimeout(r, 4000));
+        }
+      } catch (err: any) {
+        if (err.name === 'AbortError') break;
+        lastBotError = err.message;
+        await new Promise(r => setTimeout(r, 5000));
+      }
+    }
+  })();
+
+  return { success: true, botInfo };
 }
 
 function stopTelegramPolling() {
@@ -850,6 +928,7 @@ async function handleTelegramUpdate(update: any) {
     const littlepipResult = await handleLittlepipUpdate(
       {
         chatId,
+        chatType: msg.chat.type,
         threadId: msg.message_thread_id,
         messageId: msg.message_id,
         userId: user?.id || 0,
@@ -882,6 +961,30 @@ async function handleTelegramUpdate(update: any) {
         ...(msg.message_thread_id ? { message_thread_id: msg.message_thread_id } : {})
       });
       return;
+    }
+  }
+
+  // 1.5. Blackjack AI processing if addressed to Blackjack (@Bleckjek_bot, Джеки, Блэкджек, /bj_ commands, moderation)
+  if (hasBlackjackMention(text) || text.startsWith('/bj') || text.startsWith('/mute') || text.startsWith('/unmute') || text.startsWith('/ban')) {
+    try {
+      const topicId = msg.message_thread_id ? String(msg.message_thread_id) : undefined;
+      const bjResult = await handleBlackjackMessage({
+        text,
+        senderUsername: userTag,
+        senderDisplayName: [user.first_name, user.last_name].filter(Boolean).join(' ') || userTag,
+        chatId,
+        topicId
+      });
+      if (bjResult.replyText) {
+        await sendLittlepipReply(chatId, bjResult.replyText, {
+          reply_to_message_id: msg.message_id,
+          ...(topicId ? { message_thread_id: parseInt(topicId, 10) } : {})
+        });
+        addBotLog('info', `[Блэкджек ИИ (шлюз)]: ответ в чат ${chatId} (${bjResult.actionTaken || 'диалог'})`);
+        return;
+      }
+    } catch (bjErr: any) {
+      console.warn('[Blackjack Gateway Error]:', bjErr);
     }
   }
 
@@ -1173,19 +1276,24 @@ app.get('/api/bot/status', (req, res) => {
 });
 
 app.post('/api/bot/start', async (req, res) => {
-  // Telegram bot runs on Render. Do not run here.
-  addBotLog('info', 'Попытка запуска отклонена: бот уже работает на Render');
-  res.json({
-    success: false,
-    message: 'Telegram-бот уже активен на Render. Локальный polling в AI Studio отключен во избежание конфликтов.',
-    isPolling: false,
-    botInfo
-  });
+  try {
+    const result = await startTelegramPolling();
+    res.json({
+      success: true,
+      message: 'Telegram-бот Littlepip запущен',
+      isPolling: isBotPolling,
+      botInfo,
+      ...result
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 app.post('/api/bot/stop', (req, res) => {
   stopTelegramPolling();
-  res.json({ success: true, isPolling: false });
+  addBotLog('info', 'Telegram-бот Littlepip остановлен');
+  res.json({ success: true, isPolling: false, message: 'Бот остановлен' });
 });
 
 // ==========================================
@@ -2077,6 +2185,62 @@ app.post('/api/blackjack/bot/test', async (req, res) => {
     res.json(result);
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Blackjack Topics Management (Read-Only / Active / Blocked by link or ID)
+app.get('/api/blackjack/topics', (req, res) => {
+  try {
+    const cfg = loadBlackjackConfig();
+    res.json({
+      success: true,
+      topics: cfg.topics || {},
+      allowedTopicIds: cfg.allowedTopicIds,
+      readOnlyTopicIds: cfg.readOnlyTopicIds,
+      forbiddenTopicIds: cfg.forbiddenTopicIds
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/blackjack/topics/set', (req, res) => {
+  try {
+    const { inputLinkOrId, permission, title, notes } = req.body;
+    if (!inputLinkOrId) return res.status(400).json({ error: 'Missing inputLinkOrId' });
+    const result = setBlackjackTopic(inputLinkOrId, permission || 'read_write', title, notes);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/blackjack/topics/:threadId', (req, res) => {
+  try {
+    const updated = removeBlackjackTopic(req.params.threadId);
+    res.json({ success: true, config: updated });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Blackjack Memory / Surveillance Logs
+app.get('/api/blackjack/memory', (req, res) => {
+  try {
+    const memory = getBlackjackMemory();
+    res.json({ success: true, memory });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/blackjack/memory/reset', (req, res) => {
+  try {
+    const { scope } = req.body;
+    const result = resetBlackjackMemory(scope || '24h');
+    res.json({ success: true, ...result });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -3019,7 +3183,14 @@ async function startServer() {
     console.log(`DustTown RP Server running on http://localhost:${PORT}`);
     const isRenderOrProd = process.env.RENDER === 'true' || process.env.NODE_ENV === 'production' || process.env.AUTOSTART_BOTS === 'true';
     if (isRenderOrProd) {
-      console.log('🚀 Running in production/Render environment: starting Blackjack Telegram Polling worker...');
+      console.log('🚀 Running in production/Render environment: starting Telegram Polling workers for BOTH bots...');
+      if (TELEGRAM_BOT_TOKEN) {
+        startTelegramPolling().catch(err => {
+          console.error('Failed to start Littlepip polling on boot:', err.message);
+        });
+      } else {
+        console.warn('⚠️ TELEGRAM_BOT_TOKEN not provided, Littlepip bot will wait for token.');
+      }
       startBlackjackPolling({ resolveUserId: resolveTelegramUserId }).catch(err => {
         console.error('Failed to start Blackjack polling on boot:', err.message);
       });

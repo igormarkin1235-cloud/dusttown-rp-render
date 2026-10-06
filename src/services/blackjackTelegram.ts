@@ -3,9 +3,15 @@
  * Handles updates from Telegram @Bleckjek_bot, enforces moderation, and talks in character.
  */
 
-import { loadBlackjackConfig, checkBlackjackTopicPermission } from './blackjackConfig';
+import {
+  loadBlackjackConfig,
+  checkBlackjackTopicPermission,
+  setBlackjackTopic,
+  parseBlackjackTopicLink
+} from './blackjackConfig';
 import { handleBlackjackMessage, hasBlackjackMention } from './blackjackAgent';
 import { executeTelegramModerationAction } from './blackjackModeration';
+import { rememberBlackjackObservation } from './blackjackMemory';
 
 export interface BlackjackBotLog {
   id: string;
@@ -175,6 +181,47 @@ export function stopBlackjackPolling() {
 }
 
 /**
+ * Send reply using Blackjack Telegram bot token with automatic Markdown fallback
+ */
+export async function sendBlackjackReply(
+  chatId: number | string,
+  topicId: string | number | undefined,
+  replyToMessageId: number | undefined,
+  text: string
+) {
+  const body: any = {
+    chat_id: chatId,
+    text,
+    parse_mode: 'Markdown'
+  };
+  if (topicId && topicId !== 'root') {
+    const threadNum = typeof topicId === 'number' ? topicId : parseInt(String(topicId), 10);
+    if (!isNaN(threadNum) && threadNum > 0) {
+      body.message_thread_id = threadNum;
+    }
+  }
+  if (replyToMessageId) {
+    body.reply_to_message_id = replyToMessageId;
+  }
+
+  try {
+    return await tgBlackjackApi('sendMessage', body);
+  } catch (err: any) {
+    // If Telegram rejected Markdown formatting, retry immediately with plain text
+    if (body.parse_mode) {
+      delete body.parse_mode;
+      try {
+        return await tgBlackjackApi('sendMessage', body);
+      } catch (err2: any) {
+        addBlackjackLog('error', `Ошибка отправки ответа: ${err2.message}`);
+        throw err2;
+      }
+    }
+    throw err;
+  }
+}
+
+/**
  * Process a single Telegram update for Blackjack
  */
 async function processBlackjackUpdate(
@@ -201,6 +248,118 @@ async function processBlackjackUpdate(
     return; // Forbidden topic
   }
 
+  // Read-only topic: quietly observe and remember information into Blackjack persistent memory
+  if (topicPerm.canObserve && !topicPerm.canReply) {
+    rememberBlackjackObservation(
+      topicId || 'root',
+      topicPerm.topicTitle || (topicId ? `Топик #${topicId}` : 'Основная ветка'),
+      senderUsername,
+      text,
+      user.id
+    );
+    return;
+  }
+
+  // 1. Команда настройки топика по ссылке: /bj_topic <ссылка_или_id> <read_only|read_write|blocked> [название]
+  if (text.startsWith('/bj_topic') || text.startsWith('/bj_bind')) {
+    const parts = text.split(/\s+/);
+    if (parts.length < 2) {
+      await sendBlackjackReply(chatId, topicId, msg.message_id, `⚙️ **Формат настройки топика Блэкджек по ссылке:**\n\`/bj_topic <ссылка на топик или ID> <read_only|read_write|blocked> [Название]\`\n\n• \`read_only\` — Только чтение (сохранение фактов в память)\n• \`read_write\` — Активный диалог и модерация (можно писать)\n• \`blocked\` — Запретная зона (полный игнор)\n\nПример: \`/bj_topic https://t.me/c/2149182371/42 read_only Сводки и правила\``);
+      return;
+    }
+    const targetLinkOrId = parts[1];
+    const rawMode = parts[2]?.toLowerCase() || 'read_write';
+    const mode = ['read_only', 'read_write', 'blocked'].includes(rawMode) ? rawMode as any : 'read_write';
+    const customTitle = parts.slice(3).join(' ') || (parts[2] && !['read_only', 'read_write', 'blocked'].includes(rawMode) ? parts.slice(2).join(' ') : undefined);
+    const result = setBlackjackTopic(targetLinkOrId, mode, customTitle);
+    if (result.success && result.topic) {
+      const modeLabel = mode === 'read_only' ? '👁️ Только чтение (Запоминание в память)' : mode === 'blocked' ? '🚫 Запретная зона (Игнорировать)' : '💬 Активный диалог и модерация';
+      await sendBlackjackReply(chatId, topicId, msg.message_id, `✅ **Топик Блэкджек настроен!**\n\n• **ID/Ветка:** #${result.topic.threadId}\n• **Название:** ${result.topic.title}\n• **Режим:** ${modeLabel}`);
+    } else {
+      await sendBlackjackReply(chatId, topicId, msg.message_id, `❌ **Ошибка:** ${result.error || 'Не удалось распознать ссылку на топик'}`);
+    }
+    return;
+  }
+
+  // Шорткат: /bj_read <ссылка_или_id> [название] — быстро сделать топик «только чтение и память»
+  if (text.startsWith('/bj_read')) {
+    const parts = text.split(/\s+/);
+    if (parts.length < 2) {
+      await sendBlackjackReply(chatId, topicId, msg.message_id, `👁️ **Шорткат режима Только Чтение для Блэкджек:**\n\`/bj_read <ссылка на топик или ID> [Название]\`\n\nБлэкджек будет молча собирать сообщения из этой ветки в память.`);
+      return;
+    }
+    const targetLinkOrId = parts[1];
+    const customTitle = parts.slice(2).join(' ') || undefined;
+    const result = setBlackjackTopic(targetLinkOrId, 'read_only', customTitle);
+    if (result.success && result.topic) {
+      await sendBlackjackReply(chatId, topicId, msg.message_id, `👁️ **Топик #${result.topic.threadId} переведён в режим «Только чтение»!**\n\nБлэкджек молчит в эфире, а все факты и сообщения сохраняются в память Стойла 99.`);
+    } else {
+      await sendBlackjackReply(chatId, topicId, msg.message_id, `❌ **Ошибка:** ${result.error || 'Не удалось распознать ссылку'}`);
+    }
+    return;
+  }
+
+  // Шорткат: /bj_write <ссылка_или_id> [название] — разрешить писать и общаться в топике
+  if (text.startsWith('/bj_write')) {
+    const parts = text.split(/\s+/);
+    if (parts.length < 2) {
+      await sendBlackjackReply(chatId, topicId, msg.message_id, `💬 **Шорткат активного режима для Блэкджек:**\n\`/bj_write <ссылка на топик или ID> [Название]\`\n\nБлэкджек будет активно отвечать и модерировать эту ветку.`);
+      return;
+    }
+    const targetLinkOrId = parts[1];
+    const customTitle = parts.slice(2).join(' ') || undefined;
+    const result = setBlackjackTopic(targetLinkOrId, 'read_write', customTitle);
+    if (result.success && result.topic) {
+      await sendBlackjackReply(chatId, topicId, msg.message_id, `💬 **Топик #${result.topic.threadId} переведён в режим «Активный диалог»!**\n\nБлэкджек отвечает на вопросы, реагирует на нарушения и общается.`);
+    } else {
+      await sendBlackjackReply(chatId, topicId, msg.message_id, `❌ **Ошибка:** ${result.error || 'Не удалось распознать ссылку'}`);
+    }
+    return;
+  }
+
+  // Шорткат: /bj_block <ссылка_или_id>
+  if (text.startsWith('/bj_block')) {
+    const parts = text.split(/\s+/);
+    if (parts.length < 2) {
+      await sendBlackjackReply(chatId, topicId, msg.message_id, `🚫 **Шорткат блокировки топика:**\n\`/bj_block <ссылка на топик или ID>\``);
+      return;
+    }
+    const targetLinkOrId = parts[1];
+    const result = setBlackjackTopic(targetLinkOrId, 'blocked');
+    if (result.success && result.topic) {
+      await sendBlackjackReply(chatId, topicId, msg.message_id, `🚫 **Топик #${result.topic.threadId} заблокирован!**\n\nБлэкджек полностью игнорирует эту ветку.`);
+    } else {
+      await sendBlackjackReply(chatId, topicId, msg.message_id, `❌ **Ошибка:** ${result.error || 'Не удалось распознать ссылку'}`);
+    }
+    return;
+  }
+
+  // 2. Список топиков: /bj_topics
+  if (text.startsWith('/bj_topics')) {
+    const cfg = loadBlackjackConfig();
+    const topicsList = Object.values(cfg.topics || {});
+    if (topicsList.length === 0) {
+      await sendBlackjackReply(chatId, topicId, msg.message_id, `📋 У Блэкджек пока нет отдельных настроек топиков (работает во всех доступных). Настроить: \`/bj_topic <ссылка> <режим>\``);
+      return;
+    }
+    const lines = topicsList.map(t => {
+      const icon = t.permission === 'read_only' ? '👁️ [Только чтение/Память]' : t.permission === 'blocked' ? '🚫 [Запретная зона]' : '💬 [Диалог и Модерация]';
+      return `• **${t.title}** (#${t.threadId}): ${icon}`;
+    });
+    await sendBlackjackReply(chatId, topicId, msg.message_id, `📋 **Топики Блэкджек:**\n\n${lines.join('\n')}\n\nНастроить топик: \`/bj_topic <ссылка> <read_only|read_write|blocked>\``);
+    return;
+  }
+
+  // Память шерифа: /bj_memory
+  if (text.startsWith('/bj_memory')) {
+    const mem = getBlackjackMemory();
+    const obsCount = mem.observations.length;
+    const rulesCount = mem.observations.filter(o => o.category === 'rule').length;
+    const recent = mem.observations.slice(0, 5).map(o => `• [${o.topicTitle}] (${o.author}): ${o.content.slice(0, 80)}...`).join('\n');
+    await sendBlackjackReply(chatId, topicId, msg.message_id, `🧠 **Досье и память Блэкджек:**\n\n• Всего записей в памяти: **${obsCount}**\n• Зафиксировано правил: **${rulesCount}**\n• Последние наблюдения:\n${recent || 'Записей пока нет.'}`);
+    return;
+  }
+
   // Check if addressed to Blackjack
   const isDirect = msg.chat.type === 'private';
   const isReplyToBlackjack = msg.reply_to_message?.from?.id === blackjackBotInfo?.id;
@@ -208,11 +367,6 @@ async function processBlackjackUpdate(
   const isPipAlert = text.includes('🚨 @Blackjack') || text.includes('🚨 @Bleckjek_bot');
 
   if (!isDirect && !isReplyToBlackjack && !isMentioned && !isPipAlert) {
-    return;
-  }
-
-  if (topicPerm.canObserve && !topicPerm.canReply) {
-    // Read only topic: observe without replying
     return;
   }
 
@@ -273,15 +427,7 @@ async function processBlackjackUpdate(
 
     // Send reply to Telegram
     if (result.replyText) {
-      const sendBody: any = {
-        chat_id: chatId,
-        text: result.replyText,
-        parse_mode: 'Markdown'
-      };
-      if (topicId) {
-        sendBody.message_thread_id = parseInt(topicId, 10);
-      }
-      await tgBlackjackApi('sendMessage', sendBody);
+      await sendBlackjackReply(chatId, topicId, msg.message_id, result.replyText);
     }
   } catch (err: any) {
     addBlackjackLog('error', `Ошибка обработки сообщения: ${err.message}`);

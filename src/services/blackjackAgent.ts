@@ -38,8 +38,10 @@ import {
   recordBlackjackInfraction
 } from './blackjackReputation';
 import { fetchBlackjackWikiDossier } from './projectHorizonsWiki';
+import { getBlackjackMemoryContextForPrompt } from './blackjackMemory';
 
-export const BLACKJACK_GEMINI_MODEL = 'gemini-2.5-flash';
+export const BLACKJACK_GEMINI_MODEL = 'gemini-3.1-flash-lite';
+export const BLACKJACK_GEMINI_FALLBACK_MODELS = ['gemini-3.8-flash'];
 
 // Anti-loop trigger flag
 let lastInterBotTriggerTime = 0;
@@ -59,7 +61,7 @@ export interface BlackjackCommandParseResult {
  */
 export function hasBlackjackMention(text: string): boolean {
   if (!text) return false;
-  return /(?:блэкджек|блекджек|джеки|блэки|блеки|дилер|blackjack|\/bj|\/blackjack|\/mute|\/unmute|\/ban|\/unban|\/blacklist)/iu.test(text);
+  return /(?:блэкджек|блекджек|джеки|блэки|блеки|дилер|шериф|blackjack|bleckjek|@bleckjek_bot|@blackjack|\/bj|\/blackjack|\/mute|\/unmute|\/ban|\/unban|\/blacklist)/iu.test(text);
 }
 
 /**
@@ -386,34 +388,66 @@ export async function handleBlackjackMessage(params: {
 
   // 6. Conversational / Lore / Assistance via Gemini
   try {
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
     if (apiKey) {
       const ai = new GoogleGenAI({ apiKey });
+      const memoryContext = getBlackjackMemoryContextForPrompt();
       const prompt = `Пользователь ${senderDisplayName || senderUsername} пишет: "${text}".
-Ответь кратко (2-4 предложения) в своем фирменном характере сурового охранника Стойла 99 Блэкджек (Project Horizons).
+${memoryContext ? memoryContext + '\n' : ''}Ответь кратко (2-4 предложения) в своем фирменном характере сурового охранника Стойла 99 Блэкджек (Project Horizons).
 Если спрашивают о боте или правилах, помоги чётко и без лишней воды.`;
 
-      const response = await ai.models.generateContent({
-        model: BLACKJACK_GEMINI_MODEL,
-        contents: prompt,
-        config: {
-          systemInstruction: getBlackjackSystemPrompt(),
-          temperature: 0.7,
-          maxOutputTokens: 350
-        }
-      });
+      for (const model of [BLACKJACK_GEMINI_MODEL, ...BLACKJACK_GEMINI_FALLBACK_MODELS]) {
+        let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+        try {
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            timeoutHandle = setTimeout(() => reject(new Error('Blackjack timeout')), 7000);
+          });
+          const response = await Promise.race([
+            ai.models.generateContent({
+              model,
+              contents: prompt,
+              config: {
+                systemInstruction: getBlackjackSystemPrompt(),
+                temperature: 0.7,
+                maxOutputTokens: 350
+              }
+            }),
+            timeoutPromise
+          ]);
 
-      if (response.text) {
-        return { replyText: response.text.trim(), actionTaken: 'chat_ai' };
+          if (response.text && response.text.trim()) {
+            return { replyText: response.text.trim(), actionTaken: 'chat_ai' };
+          }
+        } catch (mErr: any) {
+          console.warn(`[Blackjack AI] Model ${model} failed, trying next fallback:`, mErr?.message || mErr);
+        } finally {
+          if (timeoutHandle) clearTimeout(timeoutHandle);
+        }
       }
     }
   } catch (err) {
-    console.warn('Blackjack Gemini call failed, using lore fallback:', err);
+    console.warn('Blackjack Gemini call failed, using dynamic lore fallback:', err);
   }
 
-  // Fallback in character
+  // Dynamic fallback in character (no repetitive template!)
+  const name = senderDisplayName || senderUsername || 'сталкер';
+  const cleanLower = text.toLowerCase();
+  let fallbackReply = `🚬 **Блэкджек на связи.** Стволы начищены, в Стойле 99 всё спокойно. Держи ухо востро, ${name}, пустошь ошибок не прощает.`;
+
+  if (cleanLower.includes('привет') || cleanLower.includes('здравствуй') || cleanLower.includes('хай') || cleanLower.includes('ку')) {
+    fallbackReply = `🚬 Здорово, ${name}. Я на посту у гермошлюза. Если по делу — выкладывай быстро, а если просто поболтать — не путайся под копытами, пока я патроны считаю.`;
+  } else if (cleanLower.includes('как дела') || cleanLower.includes('как ты') || cleanLower.includes('что делаешь')) {
+    fallbackReply = `🔫 Дела в порядке, ${name}: дробовик смазан, наручники на поясе, на радаре чисто. Слежу, чтобы никто в чате не превратил всё в балаган. У тебя всё тихо?`;
+  } else if (cleanLower.includes('кто ты') || cleanLower.includes('о себе') || cleanLower.includes('джеки')) {
+    fallbackReply = `🛡️ Я офицер безопасности Блэкджек из Стойла 99. Моя работа — охранять порядок в Даст Тауне, вешать муты на дебоширов и помогать шерифам. Не нарушай правил — и мы поладим.`;
+  } else if (cleanLower.includes('правил') || cleanLower.includes('закон')) {
+    fallbackReply = `📋 Правила простые, ${name}: никакого спама, взаимного дерьма, токсичности и рекламы. За соблюдением слежу я и Пипка. Нарушишь — получишь 10 минут тишины в карцере без лишних предупреждений.`;
+  } else if (cleanLower.includes('помоги') || cleanLower.includes('хелп') || cleanLower.includes('команд')) {
+    fallbackReply = `⚙️ По командам: \`/bj_topic <ссылка> <режим>\` для настройки топиков, \`/bj_topics\` список веток, «Блэкджек, статус @юзер» для досье, а для админов — команды мута и бана. Выкладывай, в чём затык!`;
+  }
+
   return {
-    replyText: `🚬 **Блэкджек на связи.** Стволы начищены, в Стойле 99 всё спокойно. Если кто-то нарушает дисциплину — дай знать, шериф, и наручники защёлкнутся быстрее, чем он успеет мигнуть.`,
+    replyText: fallbackReply,
     actionTaken: 'chat_fallback'
   };
 }
