@@ -150,7 +150,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           }`}
         >
           <ShieldAlert className="w-3.5 h-3.5" />
-          <span>Блэкджек (Шериф ИИ)</span>
+          <span>ИИ-Боты: Блэкджек & Пипка</span>
         </button>
 
         <button

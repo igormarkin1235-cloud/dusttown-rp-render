@@ -1,0 +1,82 @@
+{
+  "boldnessLevel": "saucy",
+  "allowProfanity": true,
+  "allowFlirting": true,
+  "flirtChanceAdmins": 35,
+  "flirtChanceRegular": 10,
+  "useMemesAndQuotes": true,
+  "empathySupport": true,
+  "blackjackEnabled": true,
+  "blackjackUsername": "@SecurityBlackjack",
+  "callBlackjackOnViolations": true,
+  "callBlackjackOnAggression": true,
+  "callBlackjackTriggers": [
+    "блэкджек",
+    "блэки",
+    "джеки",
+    "блэк",
+    "blackjack",
+    "blackie",
+    "jackie"
+  ],
+  "model": "gemini-2.5-flash",
+  "temperature": 0.84,
+  "topics": {
+    "root": {
+      "threadId": "root",
+      "title": "Основной чат (Главная ветка)",
+      "permission": "read_write",
+      "enabled": true,
+      "notes": "Главный чат сообщества Даст Таун"
+    },
+    "rules": {
+      "threadId": "rules",
+      "title": "Правила и Законы Даст Тауна",
+      "permission": "read_only",
+      "enabled": true,
+      "notes": "Только чтение: Пипка впитывает правила и регламент, запоминает в память, но писать сюда запрещено"
+    },
+    "tavern": {
+      "threadId": "tavern",
+      "title": "Таверна «Слепая Пуля» (Общение)",
+      "permission": "read_write",
+      "enabled": true,
+      "notes": "Живой диалог, сталкерские байки, шутки и подколы"
+    },
+    "quests": {
+      "threadId": "quests",
+      "title": "Квесты, Вылазки и Пустоши",
+      "permission": "read_write",
+      "enabled": true,
+      "notes": "Координация рейдов, помощь сталкерам и техподдержка"
+    },
+    "market": {
+      "threadId": "market",
+      "title": "Базар и Торговля ℰQ",
+      "permission": "read_write",
+      "enabled": true,
+      "notes": "Экономика крышек и валюты ℰQ, обсуждение инвентаря"
+    },
+    "lore": {
+      "threadId": "lore",
+      "title": "Лор, Архив и История Стойла 2",
+      "permission": "read_only",
+      "enabled": true,
+      "notes": "База знаний: запоминает историю мира, персонажей и сюжет"
+    },
+    "announcements": {
+      "threadId": "announcements",
+      "title": "Объявления Администрации",
+      "permission": "read_only",
+      "enabled": true,
+      "notes": "Важные новости от создателей Даст Тауна: читает и запоминает"
+    },
+    "offtopic": {
+      "threadId": "offtopic",
+      "title": "Флудилка, Оффтоп и Мемы",
+      "permission": "blocked",
+      "enabled": true,
+      "notes": "Запрещено: Пипка полностью игнорирует сообщения из этой вкладки"
+    }
+  }
+}

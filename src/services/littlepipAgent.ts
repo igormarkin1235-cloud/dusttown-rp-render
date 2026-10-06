@@ -537,6 +537,7 @@ function generateLocalLittlepipReply(
 
 export interface TelegramMessageContext {
   chatId: number | string;
+  chatType?: string;
   threadId?: number;
   messageId: number;
   userId: number | string;

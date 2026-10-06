@@ -421,12 +421,18 @@ export function deduplicateProfiles(profiles: UserProfile[]): UserProfile[] {
     const rawUsername = (p.username || '').trim().toLowerCase();
     const isOwner = rawUsername === '@mrwhitepio' || p.id === 'owner_mrwhitepio' || p.id === 'user_mrwhite' || p.id === 'user_pio';
 
-    const key = isOwner ? '@mrwhitepio' : (rawUsername || p.id);
+    const defaultKey = isOwner ? '@mrwhitepio' : (p.telegramId ? `tg_${p.telegramId}` : (rawUsername || p.id));
+    let matchKey = defaultKey;
+    if (!map.has(matchKey)) {
+      if (p.telegramId && map.has(`tg_${p.telegramId}`)) matchKey = `tg_${p.telegramId}`;
+      else if (rawUsername && map.has(rawUsername)) matchKey = rawUsername;
+      else if (p.id && map.has(p.id)) matchKey = p.id;
+    }
 
-    const existing = map.get(key);
+    const existing = map.get(matchKey);
     if (!existing) {
       if (isOwner) {
-        map.set(key, {
+        map.set(defaultKey, {
           ...p,
           id: 'owner_mrwhitepio',
           username: '@MrWhitePio',
@@ -434,13 +440,14 @@ export function deduplicateProfiles(profiles: UserProfile[]): UserProfile[] {
           isInfiniteEquivaxes: true
         });
       } else {
-        map.set(key, { ...p });
+        map.set(defaultKey, { ...p });
       }
     } else {
       const merged: UserProfile = {
         ...existing,
         ...p,
         id: isOwner ? 'owner_mrwhitepio' : existing.id,
+        telegramId: p.telegramId || existing.telegramId,
         username: isOwner ? '@MrWhitePio' : (existing.username || p.username),
         displayName: (existing.displayName && !existing.displayName.startsWith('Сталкер #')) ? existing.displayName : (p.displayName || existing.displayName),
         avatarUrl: (existing.avatarUrl && !existing.avatarUrl.includes('unsplash.com/photo-1535713875002')) ? existing.avatarUrl : (p.avatarUrl || existing.avatarUrl),
@@ -449,16 +456,37 @@ export function deduplicateProfiles(profiles: UserProfile[]): UserProfile[] {
         isInfiniteEquivaxes: isOwner || existing.isInfiniteEquivaxes || p.isInfiniteEquivaxes,
         activeThemeId: (p.activeThemeId && p.activeThemeId !== 'default') ? p.activeThemeId : (existing.activeThemeId || 'default'),
         activeAvatarFrame: (p.activeAvatarFrame && p.activeAvatarFrame !== 'frame_none') ? p.activeAvatarFrame : (existing.activeAvatarFrame || 'frame_none'),
+        activeFrameId: p.activeFrameId || existing.activeFrameId,
+        activeCardFrame: p.activeCardFrame || existing.activeCardFrame,
         activeTextColor: p.activeTextColor || existing.activeTextColor,
         activeTextBg: p.activeTextBg || existing.activeTextBg,
         customBgUrl: p.customBgUrl || existing.customBgUrl,
         customBgEffect: p.customBgEffect || existing.customBgEffect,
+        customBgPosition: p.customBgPosition || existing.customBgPosition,
+        avatarFitMode: p.avatarFitMode || existing.avatarFitMode,
+        unlockedThemes: Array.from(new Set([...(existing.unlockedThemes || []), ...(p.unlockedThemes || [])])),
+        unlockedFrames: Array.from(new Set([...(existing.unlockedFrames || []), ...(p.unlockedFrames || [])])),
+        unlockedCardFrames: Array.from(new Set([...(existing.unlockedCardFrames || []), ...(p.unlockedCardFrames || [])])),
+        unlockedTextColors: Array.from(new Set([...(existing.unlockedTextColors || []), ...(p.unlockedTextColors || [])])),
+        unlockedTextBgs: Array.from(new Set([...(existing.unlockedTextBgs || []), ...(p.unlockedTextBgs || [])])),
+        claimedAchievementIds: Array.from(new Set([...(existing.claimedAchievementIds || []), ...(p.claimedAchievementIds || [])])),
+        hasVip: existing.hasVip || p.hasVip || false,
+        vipExpiresAt: p.vipExpiresAt || existing.vipExpiresAt,
+        hasTraderLicense: existing.hasTraderLicense || p.hasTraderLicense || false,
+        hasNeonAura: existing.hasNeonAura || p.hasNeonAura || false,
+        hasHonoredCitizen: existing.hasHonoredCitizen || p.hasHonoredCitizen || false,
+        factionId: p.factionId || existing.factionId,
+        factionName: p.factionName || existing.factionName,
+        factionRole: p.factionRole || existing.factionRole,
+        factionRoleColor: p.factionRoleColor || existing.factionRoleColor,
+        factionJoinedAt: p.factionJoinedAt || existing.factionJoinedAt,
         eventsAttended: Math.max(existing.eventsAttended || 0, p.eventsAttended || 0),
         plannedRpsAttended: Math.max(existing.plannedRpsAttended || 0, p.plannedRpsAttended || 0),
+        pinnedArts: Array.from(new Map([...(existing.pinnedArts || []), ...(p.pinnedArts || [])].map(a => [a.id || a.url, a])).values()),
         inventory: Array.from(new Map([...(existing.inventory || []), ...(p.inventory || [])].map(i => [i.id || i.itemId, i])).values()),
         transactions: Array.from(new Map([...(existing.transactions || []), ...(p.transactions || [])].map(t => [t.id, t])).values())
       };
-      map.set(key, merged);
+      map.set(defaultKey, merged);
     }
   }
 

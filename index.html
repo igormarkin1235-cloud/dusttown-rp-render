@@ -1,23 +1,49 @@
 <!doctype html>
-<html lang="ru">
+<html lang="ru" style="background-color: #09090b; color: #f4f4f5;">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>DustTown RP - Mini App & Patch Manager</title>
-    <meta name="description" content="Интерактивный Mini App для ролевого проекта DustTown RP (Fallout: Equestria): события, запланированные сессии, анкеты персонажей, профили, рынок, кейсы и менеджер патчей обновлений." />
-    <meta property="og:title" content="DustTown RP - Mini App & Patch Manager" />
-    <meta property="og:description" content="Интерактивный Mini App для ролевого проекта DustTown RP (Fallout: Equestria): события, запланированные сессии, анкеты персонажей, профили, рынок, кейсы и менеджер патчей обновлений." />
+    <title>ДТ-Колектив_бот — Mini App & Telegram Bot</title>
+    <meta name="description" content="Интерактивный бот и Mini App группы ДТ-Колектив (Fallout: Equestria): события, запланированные сессии, анкеты персонажей, топ активных игроков, рынок, кейсы и ИИ Литлпип." />
+    <meta property="og:title" content="ДТ-Колектив_бот — Mini App" />
+    <meta property="og:description" content="Интерактивный бот и Mini App группы ДТ-Колектив (Fallout: Equestria): события, запланированные сессии, анкеты персонажей, топ активных игроков, рынок, кейсы и ИИ Литлпип." />
     <meta property="og:type" content="website" />
+    <meta property="og:image" content="/preview.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <meta name="twitter:title" content="ДТ-Колектив_бот — Mini App" />
+    <meta name="twitter:description" content="Интерактивный бот и Mini App группы ДТ-Колектив (Fallout: Equestria)" />
+    <meta name="twitter:image" content="/preview.jpg" />
+    <script>
+      window.addEventListener('error', function(e) {
+        var el = document.getElementById('terminal-err-box');
+        if (el) {
+          el.style.display = 'block';
+          el.innerText = '⚠️ Сбой скрипта: ' + (e.message || e.error);
+        }
+      });
+    </script>
+    <script defer src="https://telegram.org/js/telegram-web-app.js" onerror="console.warn('Telegram WebApp SDK not reachable outside Telegram')"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   </head>
-  <body class="bg-zinc-950 text-zinc-100 antialiased selection:bg-amber-500/30 selection:text-amber-200 min-h-screen">
-    <div id="root"></div>
+  <body style="background-color: #09090b; color: #f4f4f5; margin: 0; min-height: 100vh;" class="bg-zinc-950 text-zinc-100 antialiased selection:bg-amber-500/30 selection:text-amber-200 min-h-screen">
+    <div id="root">
+      <div style="min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; background-color: #09090b; color: #f59e0b; font-family: monospace; text-align: center; padding: 24px;">
+        <div style="font-size: 48px; margin-bottom: 16px; animation: pulse 1.5s infinite;">☢️</div>
+        <div style="font-size: 18px; font-weight: bold; margin-bottom: 8px; color: #fef08a;">ДАСТ ТАУН КОЛЕКТИВ</div>
+        <div style="font-size: 13px; color: #a1a1aa; margin-bottom: 24px;">Инициализация интерфейса терминала...</div>
+        
+        <div id="terminal-err-box" style="display: none; background: #7f1d1d; color: #fee2e2; border: 1px solid #ef4444; border-radius: 8px; padding: 10px 16px; margin-bottom: 20px; font-size: 12px; max-width: 90vw;"></div>
+
+        <a href="/api/updates/download-patch" download="dusttown-update-patch.zip" style="display: inline-flex; align-items: center; gap: 8px; background: linear-gradient(135deg, #f59e0b, #d97706); color: #000; font-weight: 900; text-decoration: none; padding: 12px 20px; border-radius: 12px; font-size: 13px; box-shadow: 0 0 20px rgba(245, 158, 11, 0.4); text-transform: uppercase;">
+          📥 Скачать патч напрямую (.ZIP)
+        </a>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-
 

@@ -108,12 +108,14 @@ export const LITTLEPIP_WIKI_KNOWLEDGE: WikiArticle[] = [
 export function shouldSearchFalloutEquestriaWiki(text: string): boolean {
   if (!text) return false;
   const lower = text.toLowerCase();
-  return /(?:fallout|эквестри|фоэ|стойл[оа-я]*|вельвет|каламити|стилхувз|ксенит|ред\s*ай|богин[яеи]|анклав|аликорн|дарительниц|спп|spp|наварро|магитекс?|миротворцы|гул[ией]|рейдер[а-я]*|лоре?|вики|wiki|биографи[яи]|прошлое|откуда ты|кто ты такая)/iu.test(lower);
+  return /(?:fallout|эквестри|фоэ|стойл[оа-я]*|вельвет|каламити|стилхувз|ксенит|ред\s*ай|богин[яеи]|анклав|аликорн|дарительниц|спп|spp|наварро|магитекс?|миротворцы|гул[ией]|рейдер[а-я]*|лоре?|вики|wiki|биографи[яи]|прошлое|откуда ты|кто\s+(?:ты\s+)?так[аоеи][яйе]|литлпип|флаттершай)/iu.test(lower);
 }
 
 export function cleanFalloutEquestriaWikitext(input: string): string {
   let text = String(input || '');
-  text = text.replace(/\{\{[^{}]*\}\}/g, '');
+  while (/\{\{[^{}]*\}\}/.test(text)) {
+    text = text.replace(/\{\{[^{}]*\}\}/g, '');
+  }
   text = text.replace(/\{\{[^\n]*\n[^\n]*\}\}/g, '');
   text = text.replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, '$2');
   text = text.replace(/\[\[([^\]]+)\]\]/g, '$1');

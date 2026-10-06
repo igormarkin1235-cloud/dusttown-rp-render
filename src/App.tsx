@@ -101,26 +101,15 @@ export default function App() {
         try { localStorage.removeItem('dt_current_user_id'); } catch (_) {}
       }
 
-      // If Telegram user is present, try to match their real profile directly from localStorage state
+      // If Telegram user is present: predict their ID immediately so they never see guest screen
       if (tgUser && tgUser.id) {
-        const localDataStr = typeof window !== 'undefined' ? localStorage.getItem('dusttown_rp_app_state') : null;
-        if (localDataStr) {
-          try {
-            const parsed = JSON.parse(localDataStr);
-            const tgId = `tg_user_${tgUser.id}`;
-            const matched = (parsed.profiles || []).find((p: any) =>
-              p.id === tgId || (tgUsername && p.username && p.username.toLowerCase() === tgUsername)
-            );
-            if (matched) return matched.id;
-          } catch {}
-        }
+        return `tg_user_${tgUser.id}`;
       }
 
       // If valid non-owner saved user ID exists
       const validSaved = typeof window !== 'undefined' ? localStorage.getItem('dt_current_user_id') : null;
       if (validSaved && validSaved !== 'owner_mrwhitepio' && validSaved !== 'user_mrwhite') {
-        const profiles = appState?.profiles || [];
-        if (profiles.some(p => p.id === validSaved)) return validSaved;
+        return validSaved;
       }
       if (validSaved === 'owner_mrwhitepio' && (tgUsername === '@mrwhitepio' || isSessionUnlocked)) {
         return 'owner_mrwhitepio';
@@ -214,24 +203,7 @@ export default function App() {
           const { profile, fullData } = await syncUserWithServer(tgUser);
           if (isMounted) {
             if (fullData) {
-              const collectionKeys = [
-                'profiles', 'admins', 'characters', 'events', 'awards', 'cases', 'caseItems',
-                'weeklyShopItems', 'auctionListings', 'preReleasePosts', 'achievements',
-                'factions', 'artworks', 'activityLogs', 'notifications', 'botVersions', 'chatMessages'
-              ] as const;
-              const cachedStateIsRicher = collectionKeys.some(key => {
-                const cachedItems = (appState as any)[key];
-                const serverItems = (fullData as any)[key];
-                return Array.isArray(cachedItems) && cachedItems.length > (Array.isArray(serverItems) ? serverItems.length : 0);
-              });
-
-              if (cachedStateIsRicher) {
-                await restoreServerData(appState);
-                const restoredState = await fetchServerState();
-                setAppState(restoredState || fullData);
-              } else {
-                setAppState(fullData);
-              }
+              setAppState(fullData);
             }
             if (profile) {
               setCurrentUserId(profile.id);

@@ -1,7 +1,7 @@
 {
-  "name": "react-example",
+  "name": "dusttown-rp",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.2.5",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
@@ -10,7 +10,11 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "make-patch": "python3 scripts/patch_manager.py make-patch"
+    "make-zip": "python3 scripts/make_zip.py",
+    "import-firebase-state": "tsx scripts/import-firebase-state.ts"
+  },
+  "engines": {
+    "node": ">=20.0.0"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -20,21 +24,19 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
+    "autoprefixer": "^10.4.21",
     "dotenv": "^17.2.3",
+    "esbuild": "^0.28.0",
     "express": "^4.21.2",
     "firebase-admin": "^14.5.0",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
-    "msedge-tts": "^2.0.9",
+    "msedge-tts": "^2.0.8",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
+    "tailwindcss": "^4.3.3",
     "tsx": "^4.21.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.0"
-  },
-  "devDependencies": {
-    "autoprefixer": "^10.4.21",
-    "esbuild": "^0.25.0",
-    "tailwindcss": "^4.3.3"
   }
 }

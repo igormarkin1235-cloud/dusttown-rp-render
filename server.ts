@@ -16,6 +16,7 @@ import {
 import { LittlepipMeme } from './src/services/littlepipMemes';
 import { CloudChatState, FirebaseCloudStore } from './src/services/firebaseCloud';
 import { AppStateData } from './src/types';
+import { deduplicateProfiles } from './src/services/storage';
 import { extractSongSearchQuery, searchYouTubeTrack } from './src/services/youtubeSearch';
 import { generateLittlepipVoice } from './src/services/littlepipVoice';
 import {
@@ -101,7 +102,16 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 const DATA_FILE = path.join(__dirname, '.dusttown_data.json');
 const BACKUP_FILE = path.join(__dirname, 'backup_seed_data.json');
 const firebaseCloudStore = new FirebaseCloudStore();
-const firebaseConfigured = Boolean(process.env.FIREBASE_SERVICE_ACCOUNT_JSON && process.env.FIREBASE_STORAGE_BUCKET);
+const firebaseConfigured = Boolean(
+  process.env.FIREBASE_SERVICE_ACCOUNT_JSON ||
+  process.env.FIREBASE_SERVICE_ACCOUNT ||
+  process.env.FIREBASE_CREDENTIALS ||
+  process.env.GOOGLE_APPLICATION_CREDENTIALS ||
+  fs.existsSync(path.join(process.cwd(), 'serviceAccountKey.json')) ||
+  fs.existsSync(path.join(process.cwd(), 'firebase-service-account.json')) ||
+  fs.existsSync(path.join(__dirname, 'firebase-service-account.json')) ||
+  fs.existsSync(path.join(process.cwd(), 'firebase-key.json'))
+);
 let firebaseConnected = false;
 let firebaseHealthy = false;
 let firebaseLastError: string | null = null;
@@ -556,13 +566,44 @@ async function initializeFirebasePersistence() {
       const restored = {
         ...localState,
         ...cloudState,
+        profiles: deduplicateProfiles([
+          ...(Array.isArray(cloudState.profiles) ? cloudState.profiles : []),
+          ...(Array.isArray(localState.profiles) ? localState.profiles : [])
+        ]),
+        characters: (Array.isArray(cloudState.characters) && cloudState.characters.length > 0)
+          ? cloudState.characters
+          : (localState.characters || []),
+        events: (Array.isArray(cloudState.events) && cloudState.events.length > 0)
+          ? cloudState.events
+          : (localState.events || []),
+        cases: (Array.isArray(cloudState.cases) && cloudState.cases.length > 0)
+          ? cloudState.cases
+          : (localState.cases || []),
+        weeklyShopItems: (Array.isArray(cloudState.weeklyShopItems) && cloudState.weeklyShopItems.length > 0)
+          ? cloudState.weeklyShopItems
+          : (localState.weeklyShopItems || []),
+        auctionListings: (Array.isArray(cloudState.auctionListings) && cloudState.auctionListings.length > 0)
+          ? cloudState.auctionListings
+          : (localState.auctionListings || []),
+        preReleasePosts: (Array.isArray(cloudState.preReleasePosts) && cloudState.preReleasePosts.length > 0)
+          ? cloudState.preReleasePosts
+          : (localState.preReleasePosts || []),
+        achievements: (Array.isArray(cloudState.achievements) && cloudState.achievements.length > 0)
+          ? cloudState.achievements
+          : (localState.achievements || []),
+        factions: (Array.isArray(cloudState.factions) && cloudState.factions.length > 0)
+          ? cloudState.factions
+          : (localState.factions || []),
+        artworks: (Array.isArray(cloudState.artworks) && cloudState.artworks.length > 0)
+          ? cloudState.artworks
+          : (localState.artworks || []),
         chatMessages: cloudChat?.messages ?? localState.chatMessages ?? [],
         nukeAlert: cloudChat?.nukeAlerts?.[0] ?? null
       };
       fs.writeFileSync(DATA_FILE, JSON.stringify(restored, null, 2), 'utf-8');
       firebaseHealthy = true;
       firebaseLastSyncedAt = new Date().toISOString();
-      console.info('[Persistence] Restored application state from Firebase');
+      console.info(`[Persistence] Restored application state from Firebase: ${restored.profiles.length} profiles, ${(restored.events || []).length} events`);
       return;
     }
 
@@ -588,6 +629,7 @@ function registerOrUpdateUser(user: { id: number | string; first_name?: string; 
 
   let profile = data.profiles.find((p: any) =>
     p.id === 'tg_user_' + userIdStr ||
+    p.telegramId === userIdStr ||
     (p.username && p.username.toLowerCase() === formattedUsername.toLowerCase())
   );
 
@@ -597,12 +639,14 @@ function registerOrUpdateUser(user: { id: number | string; first_name?: string; 
     }
     if (user.photo_url) profile.avatarUrl = user.photo_url;
     if (user.username) profile.username = `@${user.username}`;
+    profile.telegramId = userIdStr;
     if (isOwner) {
       profile.isInfiniteEquivaxes = true;
     }
   } else {
     profile = {
       id: 'tg_user_' + userIdStr,
+      telegramId: userIdStr,
       username: formattedUsername,
       displayName,
       avatarUrl: user.photo_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80',
@@ -630,6 +674,9 @@ function registerOrUpdateUser(user: { id: number | string; first_name?: string; 
   }
 
   saveData(data);
+  if (firebaseConnected) {
+    firebaseCloudStore.saveSingleProfile(profile).catch(() => {});
+  }
   return { profile, data };
 }
 
@@ -1279,7 +1326,6 @@ app.post('/api/bot/start', async (req, res) => {
   try {
     const result = await startTelegramPolling();
     res.json({
-      success: true,
       message: 'Telegram-бот Littlepip запущен',
       isPolling: isBotPolling,
       botInfo,
@@ -2353,8 +2399,8 @@ app.post('/api/profile/update', async (req, res) => {
 
     data.lastUpdated = new Date().toISOString();
     await saveData(data);
-    if (firebaseConnected && !firebaseHealthy) {
-      return res.status(503).json({ error: 'Firebase не подтвердил сохранение профиля', persistence: 'firebase' });
+    if (firebaseConnected) {
+      firebaseCloudStore.saveSingleProfile(data.profiles[profileIndex]).catch(() => {});
     }
     res.json({ success: true, profile: data.profiles[profileIndex], fullData: data });
   } catch (err: any) {

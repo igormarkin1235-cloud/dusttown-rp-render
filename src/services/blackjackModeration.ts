@@ -118,7 +118,7 @@ export async function executeTelegramModerationAction(
   untilDateTimestamp?: number
 ): Promise<{ success: boolean; error?: string }> {
   const cfg = loadBlackjackConfig();
-  const token = cfg.telegramBotToken;
+  const token = process.env.BLACKJACK_TELEGRAM_BOT_TOKEN || cfg.telegramBotToken || process.env.TELEGRAM_BOT_TOKEN;
   if (!token) return { success: false, error: 'Telegram bot token is not configured' };
 
   try {

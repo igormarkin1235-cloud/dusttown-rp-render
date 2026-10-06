@@ -1,6 +1,6 @@
 {
-  "name": "DustTown RP - Mini App & Patch Manager",
-  "description": "Интерактивный Mini App для ролевого проекта DustTown RP (Fallout: Equestria): события, запланированные сессии, анкеты персонажей, профили, рынок, кейсы и менеджер патчей обновлений.",
+  "name": "ДТ-Колектив_бот — Mini App & Telegram Bot",
+  "description": "Интерактивный бот и Mini App группы ДТ-Колектив (Fallout: Equestria): события, запланированные сессии, анкеты персонажей, топ активных игроков, рынок, кейсы и ИИ Литлпип.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

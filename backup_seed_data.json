@@ -14,9 +14,23 @@
       "activeThemeId": "black_tree",
       "activeAvatarFrame": "frame_rad_pulse",
       "inventory": [],
-      "pinnedArts": [],
-      "activeCardFrame": "card_frame_void_nebula",
-      "activeTextColor": "bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500 bg-clip-text text-transparent font-black"
+      "pinnedArts": []
+    },
+    {
+      "id": "tg_user_12345678",
+      "telegramId": "12345678",
+      "username": "@stalker_test",
+      "displayName": "Stalker",
+      "avatarUrl": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80",
+      "bio": "Опытный сталкер Пустошей",
+      "equivaxes": 150,
+      "isInfiniteEquivaxes": false,
+      "joinedAt": "2026-10-06T13:57:37.913Z",
+      "eventsAttended": 0,
+      "plannedRpsAttended": 0,
+      "inventory": [],
+      "activeThemeId": "rad_core",
+      "activeAvatarFrame": "frame_rad_pulse"
     }
   ],
   "admins": [
@@ -73,40 +87,24 @@
   ],
   "auctionListings": [],
   "factions": [],
-  "lastUpdated": "2026-10-04T21:22:49.160Z",
+  "lastUpdated": "2026-10-06T13:58:22.025Z",
   "artworks": [],
   "activityLogs": [
     {
-      "id": "act_1791148969160_qv5b",
-      "timestamp": "2026-10-04T21:22:49.160Z",
-      "userId": "owner_mrwhitepio",
-      "username": "@MrWhitePio",
-      "displayName": "MrWhitePio [Создатель]",
-      "userAvatarUrl": "https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=300&q=80",
+      "id": "act_1791295062877_axqu",
+      "timestamp": "2026-10-06T13:57:42.877Z",
+      "userId": "tg_user_12345678",
+      "username": "@stalker_test",
+      "displayName": "Stalker",
+      "userAvatarUrl": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80",
       "category": "profile_update",
       "title": "Обновление профиля сталкера",
-      "description": "Сталкер @MrWhitePio обновил параметры профиля, гардероб или аватарку",
+      "description": "Сталкер @stalker_test обновил параметры профиля, гардероб или аватарку",
       "details": {
-        "targetName": "MrWhitePio [Создатель]"
+        "targetName": "Stalker"
       },
       "serverVerified": true,
-      "handshakeId": "hs_muubuls8_f7blt"
-    },
-    {
-      "id": "act_1791148957861_r769",
-      "timestamp": "2026-10-04T21:22:37.861Z",
-      "userId": "owner_mrwhitepio",
-      "username": "@MrWhitePio",
-      "displayName": "MrWhitePio [Создатель]",
-      "userAvatarUrl": "https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=300&q=80",
-      "category": "profile_update",
-      "title": "Обновление профиля сталкера",
-      "description": "Сталкер @MrWhitePio обновил параметры профиля, гардероб или аватарку",
-      "details": {
-        "targetName": "MrWhitePio [Создатель]"
-      },
-      "serverVerified": true,
-      "handshakeId": "hs_muubud2d_auxyc"
+      "handshakeId": "hs_muwqtwf1_7v0ke"
     },
     {
       "id": "act_init_1",
@@ -173,5 +171,39 @@
       "handshakeId": "hs_init_19e48f"
     }
   ],
-  "syncVersion": 14
+  "syncVersion": 22,
+  "notifications": [
+    {
+      "id": "notif_user_tg_user_12345678",
+      "type": "new_user",
+      "title": "Новый сталкер в Даст Таун",
+      "message": "Пипка приветствует Stalker, нового жителя Пустоши.",
+      "timestamp": "2026-10-06T13:57:37.913Z",
+      "isRead": false,
+      "targetTab": "profile",
+      "targetId": "tg_user_12345678",
+      "iconEmoji": "👋"
+    }
+  ],
+  "chatMessages": [
+    {
+      "id": "msg_pip_notif_user_tg_user_12345678",
+      "senderId": "littlepip",
+      "senderUsername": "@Pip",
+      "senderDisplayName": "Пипка · Радио Даст Таун",
+      "senderAvatarUrl": "https://images.unsplash.com/photo-1535268647677-300dbf3d78d1?auto=format&fit=crop&w=160&q=80",
+      "senderRole": "Радио Даст Таун",
+      "content": "Новый сталкер в Даст Таун\nПипка приветствует Stalker, нового жителя Пустоши.",
+      "timestamp": "2026-10-06T13:57:37.913Z",
+      "type": "system",
+      "style": {
+        "customBgEffect": "radiation",
+        "bubbleBorderTheme": "border-emerald-400/60 shadow-[0_0_18px_rgba(52,211,153,0.18)]",
+        "textColorClass": "text-emerald-100"
+      }
+    }
+  ],
+  "preReleasePosts": [],
+  "achievements": [],
+  "botVersions": []
 }

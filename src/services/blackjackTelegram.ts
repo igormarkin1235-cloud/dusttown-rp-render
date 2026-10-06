@@ -11,7 +11,11 @@ import {
 } from './blackjackConfig';
 import { handleBlackjackMessage, hasBlackjackMention } from './blackjackAgent';
 import { executeTelegramModerationAction } from './blackjackModeration';
-import { rememberBlackjackObservation } from './blackjackMemory';
+import {
+  rememberBlackjackObservation,
+  getBlackjackMemory,
+  BlackjackObservationItem
+} from './blackjackMemory';
 
 export interface BlackjackBotLog {
   id: string;
@@ -354,8 +358,8 @@ async function processBlackjackUpdate(
   if (text.startsWith('/bj_memory')) {
     const mem = getBlackjackMemory();
     const obsCount = mem.observations.length;
-    const rulesCount = mem.observations.filter(o => o.category === 'rule').length;
-    const recent = mem.observations.slice(0, 5).map(o => `• [${o.topicTitle}] (${o.author}): ${o.content.slice(0, 80)}...`).join('\n');
+    const rulesCount = mem.observations.filter((o: BlackjackObservationItem) => o.category === 'rule').length;
+    const recent = mem.observations.slice(0, 5).map((o: BlackjackObservationItem) => `• [${o.topicTitle}] (${o.author}): ${o.content.slice(0, 80)}...`).join('\n');
     await sendBlackjackReply(chatId, topicId, msg.message_id, `🧠 **Досье и память Блэкджек:**\n\n• Всего записей в памяти: **${obsCount}**\n• Зафиксировано правил: **${rulesCount}**\n• Последние наблюдения:\n${recent || 'Записей пока нет.'}`);
     return;
   }

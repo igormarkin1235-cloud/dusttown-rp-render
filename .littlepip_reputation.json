@@ -1,0 +1,130 @@
+{
+  "test-user-praise-1791150128748": {
+    "userId": "test-user-praise-1791150128748",
+    "username": "NiceStalker",
+    "score": 4,
+    "attitude": "neutral",
+    "strikes": 0,
+    "praises": 1,
+    "notes": [
+      "Часто хвалит и поддерживает"
+    ],
+    "lastImpression": "тёплые слова и искренняя поддержка",
+    "lastInteractionAt": "2026-10-04T21:42:08.749Z"
+  },
+  "test-user-bully-1791150128752": {
+    "userId": "test-user-bully-1791150128752",
+    "username": "BadRaider",
+    "score": -18,
+    "attitude": "suspicious",
+    "strikes": 1,
+    "praises": 0,
+    "notes": [
+      "Наехал на Пипку: \"Мелкая дура, заткнись!\""
+    ],
+    "lastImpression": "грубые наезды и оскорбления личности",
+    "lastInteractionAt": "2026-10-04T21:42:08.752Z",
+    "grudgeUntil": 1791152828753
+  },
+  "test-user-apology-1791150128754": {
+    "userId": "test-user-apology-1791150128754",
+    "username": "Regretful",
+    "score": -3,
+    "attitude": "neutral",
+    "strikes": 1,
+    "praises": 0,
+    "notes": [
+      "Наехал на Пипку: \"Заткнись ты\"",
+      "Извинился за прошлые выпады"
+    ],
+    "lastImpression": "принёс извинения и предложил мир",
+    "lastInteractionAt": "2026-10-04T21:42:08.754Z",
+    "grudgeUntil": 0
+  },
+  "test-user-ctx-1791150128755": {
+    "userId": "test-user-ctx-1791150128755",
+    "username": "StalkerOne",
+    "score": 0,
+    "attitude": "neutral",
+    "strikes": 0,
+    "praises": 0,
+    "notes": [],
+    "lastImpression": "Новый знакомый на волне Даст Тауна.",
+    "lastInteractionAt": "2026-10-04T21:42:08.755Z"
+  },
+  "test-user-rep-1791150128755": {
+    "userId": "test-user-rep-1791150128755",
+    "username": "GoodFellow",
+    "score": 0,
+    "attitude": "neutral",
+    "strikes": 0,
+    "praises": 0,
+    "notes": [],
+    "lastImpression": "Новый знакомый на волне Даст Тауна.",
+    "lastInteractionAt": "2026-10-04T21:42:08.756Z"
+  },
+  "test-user-praise-1791150173531": {
+    "userId": "test-user-praise-1791150173531",
+    "username": "NiceStalker",
+    "score": 4,
+    "attitude": "neutral",
+    "strikes": 0,
+    "praises": 1,
+    "notes": [
+      "Часто хвалит и поддерживает"
+    ],
+    "lastImpression": "тёплые слова и искренняя поддержка",
+    "lastInteractionAt": "2026-10-04T21:42:53.532Z"
+  },
+  "test-user-bully-1791150173535": {
+    "userId": "test-user-bully-1791150173535",
+    "username": "BadRaider",
+    "score": -18,
+    "attitude": "suspicious",
+    "strikes": 1,
+    "praises": 0,
+    "notes": [
+      "Наехал на Пипку: \"Мелкая дура, заткнись!\""
+    ],
+    "lastImpression": "грубые наезды и оскорбления личности",
+    "lastInteractionAt": "2026-10-04T21:42:53.535Z",
+    "grudgeUntil": 1791152873536
+  },
+  "test-user-apology-1791150173536": {
+    "userId": "test-user-apology-1791150173536",
+    "username": "Regretful",
+    "score": -3,
+    "attitude": "neutral",
+    "strikes": 1,
+    "praises": 0,
+    "notes": [
+      "Наехал на Пипку: \"Заткнись ты\"",
+      "Извинился за прошлые выпады"
+    ],
+    "lastImpression": "принёс извинения и предложил мир",
+    "lastInteractionAt": "2026-10-04T21:42:53.537Z",
+    "grudgeUntil": 0
+  },
+  "test-user-ctx-1791150173538": {
+    "userId": "test-user-ctx-1791150173538",
+    "username": "StalkerOne",
+    "score": 0,
+    "attitude": "neutral",
+    "strikes": 0,
+    "praises": 0,
+    "notes": [],
+    "lastImpression": "Новый знакомый на волне Даст Тауна.",
+    "lastInteractionAt": "2026-10-04T21:42:53.538Z"
+  },
+  "test-user-rep-1791150173539": {
+    "userId": "test-user-rep-1791150173539",
+    "username": "GoodFellow",
+    "score": 0,
+    "attitude": "neutral",
+    "strikes": 0,
+    "praises": 0,
+    "notes": [],
+    "lastImpression": "Новый знакомый на волне Даст Тауна.",
+    "lastInteractionAt": "2026-10-04T21:42:53.539Z"
+  }
+}

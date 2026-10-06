@@ -69,6 +69,19 @@ function dataHash(value: any): string {
   return createHash('sha256').update(stableJson(value)).digest('hex');
 }
 
+const collectionAliases: Record<string, string[]> = {
+  profiles: ['profiles', 'users', 'players', 'members', 'user_profiles'],
+  characters: ['characters', 'chars', 'player_characters', 'cards'],
+  events: ['events', 'rp_events', 'quests', 'adventures'],
+  factions: ['factions', 'groups', 'clans', 'guilds'],
+  weeklyShopItems: ['weeklyShopItems', 'shop', 'shop_items', 'items'],
+  awards: ['awards', 'medals', 'badges'],
+  cases: ['cases', 'boxes', 'crates'],
+  artworks: ['artworks', 'arts', 'gallery'],
+  activityLogs: ['activityLogs', 'logs', 'activity'],
+  achievements: ['achievements']
+};
+
 export class FirebaseCloudStore {
   private firestore: Firestore | null = null;
   private bucket: FirebaseStorageBucket | null = null;
@@ -76,7 +89,17 @@ export class FirebaseCloudStore {
   private collectionHashes = new Map<string, Map<string, string>>();
 
   async connect(): Promise<boolean> {
-    let accountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON?.trim();
+    let accountJson = (
+      process.env.FIREBASE_SERVICE_ACCOUNT_JSON ||
+      process.env.FIREBASE_SERVICE_ACCOUNT ||
+      process.env.FIREBASE_CREDENTIALS ||
+      process.env.FIREBASE_ADMIN_CREDENTIALS ||
+      process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON ||
+      process.env.FIREBASE_KEY ||
+      process.env.SERVICE_ACCOUNT_KEY ||
+      process.env.GOOGLE_CREDENTIALS
+    )?.trim();
+
     if (!accountJson) {
       const candidates = [
         path.join(process.cwd(), 'serviceAccountKey.json'),
@@ -87,6 +110,10 @@ export class FirebaseCloudStore {
       ].filter(Boolean) as string[];
 
       for (const p of candidates) {
+        if (p && (p.startsWith('{') || p.startsWith('ey'))) {
+          accountJson = p;
+          break;
+        }
         if (fs.existsSync(p)) {
           try {
             accountJson = fs.readFileSync(p, 'utf-8');
@@ -107,7 +134,20 @@ export class FirebaseCloudStore {
         accountJson = fs.readFileSync(accountJson, 'utf-8');
       }
 
-      const serviceAccount = JSON.parse(accountJson);
+      let cleanJson = accountJson.trim();
+      // Handle potential outer quotes from environment variables
+      if ((cleanJson.startsWith('"') && cleanJson.endsWith('"')) || (cleanJson.startsWith("'") && cleanJson.endsWith("'"))) {
+        cleanJson = cleanJson.slice(1, -1).trim();
+      }
+      // Handle base64 encoded credentials
+      if (!cleanJson.startsWith('{') && (cleanJson.startsWith('ey') || /^[A-Za-z0-9+/=]+$/.test(cleanJson.slice(0, 50)))) {
+        try {
+          const decoded = Buffer.from(cleanJson, 'base64').toString('utf-8');
+          if (decoded.startsWith('{')) cleanJson = decoded;
+        } catch (_) {}
+      }
+
+      const serviceAccount = JSON.parse(cleanJson);
       if (typeof serviceAccount.private_key === 'string') {
         serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
       }
@@ -121,11 +161,15 @@ export class FirebaseCloudStore {
         storageBucket: bucketName
       }, appName);
 
-      this.firestore = getFirestore(app);
-      try {
-        this.firestore.settings({ ignoreUndefinedProperties: true });
-      } catch (settingsErr) {
-        // May already be initialized
+      const dbId = process.env.FIREBASE_DATABASE_ID?.trim();
+      const cleanDbId = (dbId && dbId !== '(default)' && dbId !== 'default') ? dbId : undefined;
+      this.firestore = cleanDbId ? (getFirestore as any)(app, cleanDbId) : getFirestore(app);
+      if (this.firestore) {
+        try {
+          this.firestore.settings({ ignoreUndefinedProperties: true });
+        } catch (settingsErr) {
+          // May already be initialized
+        }
       }
 
       try {
@@ -137,11 +181,17 @@ export class FirebaseCloudStore {
         console.warn('[Firebase Storage] Bucket warning; Firestore data storage will continue normally:', bErr?.message || bErr);
       }
 
-      this.root = this.firestore.collection('dusttown').doc('appState');
-      await this.firestore.doc('dusttown/health').set({
-        checkedAt: new Date().toISOString(),
-        projectId
-      }, { merge: true });
+      if (this.firestore) {
+        this.root = this.firestore.collection('dusttown').doc('appState');
+        try {
+          await this.firestore.doc('dusttown/health').set({
+            checkedAt: new Date().toISOString(),
+            projectId
+          }, { merge: true });
+        } catch (hErr: any) {
+          console.warn('[Firebase] Health check notice (proceeding normally):', hErr?.message || hErr);
+        }
+      }
       console.info(`[Firebase] Connected to Cloud Firestore successfully (Project: ${projectId})`);
       return true;
     } catch (err: any) {
@@ -153,12 +203,33 @@ export class FirebaseCloudStore {
   async loadAppState(): Promise<AppStateData | null> {
     if (!this.firestore) return null;
     try {
-      let metadata: any = null;
-      if (this.root) {
+      let rootMetadata: any = null;
+      let directDocData: Record<string, any> = {};
+
+      const candidateDocPaths = [
+        'dusttown/appState',
+        'dusttown/data',
+        'dusttown/backup',
+        'dusttown_data/appState',
+        'dusttown_data/data',
+        'appState/data',
+        'appState/state',
+        'data/appState',
+        'state/appState'
+      ];
+
+      for (const docPath of candidateDocPaths) {
         try {
-          const metaDoc = await this.root.get();
-          if (metaDoc.exists) {
-            metadata = metaDoc.data();
+          const [col, doc] = docPath.split('/');
+          const snap = await this.firestore.collection(col).doc(doc).get();
+          if (snap.exists) {
+            const d = snap.data() || {};
+            if (!rootMetadata && (d.schemaVersion || d.lastUpdated || d.syncVersion)) {
+              rootMetadata = d;
+            }
+            // Unpack if data is nested inside `data` or `appState`
+            const unpacked = d.data || d.appState || d.state || d;
+            directDocData = { ...unpacked, ...directDocData };
           }
         } catch (_) {}
       }
@@ -168,32 +239,66 @@ export class FirebaseCloudStore {
 
       await Promise.all(stateCollections.map(async ({ key, collection }) => {
         try {
-          // 1. Try subcollection under dusttown/appState/collection
-          let snapshot: FirebaseFirestore.QuerySnapshot | null = null;
-          if (this.root) {
-            snapshot = await this.root.collection(collection).get();
-          }
+          const aliases = collectionAliases[key] || [collection];
+          const docsMap = new Map<string, any>();
 
-          // 2. Fallback to top-level collection /collection if empty
-          if (!snapshot || snapshot.empty) {
-            const rootSnapshot = await this.firestore!.collection(collection).get();
-            if (!rootSnapshot.empty) {
-              snapshot = rootSnapshot;
+          // Priority 1: Subcollection under dusttown/appState/{collection} or alias
+          if (this.root) {
+            for (const alias of aliases) {
+              try {
+                const subSnap = await this.root.collection(alias).get();
+                if (!subSnap.empty) {
+                  for (const doc of subSnap.docs) {
+                    const docData = doc.data();
+                    docsMap.set(doc.id, {
+                      id: docData.id || docData.userId || doc.id,
+                      ...docData
+                    });
+                  }
+                }
+              } catch (_) {}
             }
           }
 
-          if (snapshot && !snapshot.empty) {
-            totalLoadedDocs += snapshot.docs.length;
-            this.collectionHashes.set(collection, new Map(snapshot.docs.map(document => [document.id, dataHash(document.data())])));
-            state[key] = snapshot.docs
-              .map(document => ({ data: document.data(), index: document.data().__sortIndex }))
-              .sort((left, right) => (left.index ?? 0) - (right.index ?? 0))
-              .map(({ data }) => {
-                const { __sortIndex: _sortIndex, ...item } = data;
-                return item;
-              });
+          // Priority 2: Also check top-level collections /{alias}
+          for (const alias of aliases) {
+            try {
+              const rootSnapshot = await this.firestore!.collection(alias).get();
+              if (!rootSnapshot.empty) {
+                for (const doc of rootSnapshot.docs) {
+                  if (!docsMap.has(doc.id)) {
+                    const docData = doc.data();
+                    docsMap.set(doc.id, {
+                      id: docData.id || docData.userId || doc.id,
+                      ...docData
+                    });
+                  }
+                }
+              }
+            } catch (_) {}
+          }
+
+          if (docsMap.size > 0) {
+            totalLoadedDocs += docsMap.size;
+            const items = Array.from(docsMap.values())
+              .sort((left, right) => (left.__sortIndex ?? 0) - (right.__sortIndex ?? 0))
+              .map(({ __sortIndex: _sortIndex, ...item }) => item);
+            state[key] = items;
           } else {
-            state[key] = [];
+            // Priority 3: Fields directly inside root document or unpacked data
+            let foundInDoc: any[] | null = null;
+            for (const alias of aliases) {
+              if (Array.isArray(directDocData[alias]) && directDocData[alias].length > 0) {
+                foundInDoc = directDocData[alias];
+                break;
+              }
+            }
+            if (foundInDoc) {
+              state[key] = foundInDoc;
+              totalLoadedDocs += foundInDoc.length;
+            } else {
+              state[key] = [];
+            }
           }
         } catch (colErr: any) {
           console.error(`[Firebase] Failed to load collection ${collection}:`, colErr?.message || colErr);
@@ -201,22 +306,94 @@ export class FirebaseCloudStore {
         }
       }));
 
-      if (totalLoadedDocs === 0 && !metadata) {
+      if (totalLoadedDocs === 0 && !rootMetadata) {
         console.info('[Firebase] No documents found in Firestore collections');
         return null;
       }
 
-      console.info(`[Firebase] Successfully retrieved ${totalLoadedDocs} documents from Cloud Firestore`);
-      const meta = metadata || {};
+      console.info(`[Firebase] Successfully retrieved ${totalLoadedDocs} records from Cloud Firestore`);
+      const meta = rootMetadata || {};
       return {
         ...state,
-        schemaVersion: meta.schemaVersion,
-        lastUpdated: meta.lastUpdated,
-        syncVersion: meta.syncVersion
+        schemaVersion: meta.schemaVersion || 1,
+        lastUpdated: meta.lastUpdated || new Date().toISOString(),
+        syncVersion: meta.syncVersion || 1
       } as AppStateData;
     } catch (err: any) {
       console.error('[Firebase] Failed to loadAppState:', err?.message || err);
       return null;
+    }
+  }
+
+  async diagnose(): Promise<{
+    configured: boolean;
+    connected: boolean;
+    projectId?: string;
+    databaseId?: string;
+    rootDocExists?: boolean;
+    totalDocuments: number;
+    collections: Record<string, number>;
+    error?: string | null;
+  }> {
+    if (!this.firestore) {
+      return {
+        configured: Boolean(process.env.FIREBASE_SERVICE_ACCOUNT_JSON),
+        connected: false,
+        totalDocuments: 0,
+        collections: {},
+        error: 'Firestore client is not initialized'
+      };
+    }
+
+    try {
+      const counts: Record<string, number> = {};
+      let rootExists = false;
+      let totalDocs = 0;
+      if (this.root) {
+        const rootDoc = await this.root.get();
+        rootExists = rootDoc.exists;
+      }
+
+      for (const { key, collection } of stateCollections) {
+        const aliases = collectionAliases[key] || [collection];
+        let count = 0;
+        if (this.root) {
+          for (const alias of aliases) {
+            const snap = await this.root.collection(alias).get();
+            if (snap.size > count) count = snap.size;
+          }
+        }
+        if (count === 0) {
+          for (const alias of aliases) {
+            const rootSnap = await this.firestore.collection(alias).get();
+            if (rootSnap.size > count) count = rootSnap.size;
+          }
+        }
+        counts[collection] = count;
+        totalDocs += count;
+      }
+
+      const projectId = (this.firestore as any)._projectId || (this.firestore as any).projectId || 'aboba-bot';
+      const databaseId = (this.firestore as any)._databaseId?.database || process.env.FIREBASE_DATABASE_ID || '(default)';
+
+      return {
+        configured: true,
+        connected: true,
+        projectId,
+        databaseId,
+        rootDocExists: rootExists,
+        totalDocuments: totalDocs,
+        collections: counts,
+        error: null
+      };
+    } catch (err: any) {
+      return {
+        configured: true,
+        connected: false,
+        totalDocuments: 0,
+        collections: {},
+        error: err.message
+      };
     }
   }
 
@@ -300,6 +477,20 @@ export class FirebaseCloudStore {
     }));
   }
 
+  public async saveSingleProfile(profile: any): Promise<void> {
+    if (!this.firestore) return;
+    try {
+      const id = documentId(profile, 0);
+      const payload = cleanFirestoreData(jsonClone(profile));
+      if (this.root) {
+        await this.root.collection('profiles').doc(id).set(payload, { merge: true });
+      }
+      await this.firestore.collection('profiles').doc(id).set(payload, { merge: true });
+    } catch (e: any) {
+      console.warn('[Firebase] saveSingleProfile warning:', e?.message || e);
+    }
+  }
+
   private async replaceCollection(writer: BulkWriter, name: string, items: any[]) {
     if (!this.root) return;
     const collection = this.root.collection(name);
@@ -312,17 +503,12 @@ export class FirebaseCloudStore {
     const desiredHashes = new Map<string, string>();
     const operations: Array<Promise<any>> = [];
 
-    for (const [id] of oldHashes) {
-      if (!items.some((item, index) => documentId(item, index) === id)) {
-        operations.push(writer.delete(collection.doc(id)));
-      }
-    }
     items.forEach((item, index) => {
       const id = documentId(item, index);
       const payload = { ...cleanFirestoreData(jsonClone(item)), __sortIndex: index };
       const hash = dataHash(payload);
       desiredHashes.set(id, hash);
-      if (oldHashes!.get(id) !== hash) operations.push(writer.set(collection.doc(id), payload));
+      if (oldHashes!.get(id) !== hash) operations.push(writer.set(collection.doc(id), payload, { merge: true }));
     });
     await Promise.all(operations);
     this.collectionHashes.set(name, desiredHashes);

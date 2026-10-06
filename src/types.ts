@@ -49,6 +49,7 @@ export interface AuctionListing {
 export interface UserProfile {
   id: string;
   userId?: string;
+  telegramId?: string;
   username: string; // e.g. @MrWhitePio
   displayName: string;
   avatarUrl: string;

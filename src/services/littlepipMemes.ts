@@ -153,7 +153,7 @@ export function loadCatalogMemes(): Record<string, MemeItem> {
   const possiblePaths = [
     path.join(process.cwd(), 'assets', 'littlepip-memes', 'catalog.json'),
     path.join(process.cwd(), 'repo', 'assets', 'littlepip-memes', 'catalog.json'),
-    path.join(__dirname, '..', '..', 'assets', 'littlepip-memes', 'catalog.json')
+    ...(typeof __dirname !== 'undefined' ? [path.join(__dirname, '..', '..', 'assets', 'littlepip-memes', 'catalog.json')] : [])
   ];
 
   let catalogPath = possiblePaths.find(p => fs.existsSync(p));
@@ -169,7 +169,12 @@ export function loadCatalogMemes(): Record<string, MemeItem> {
         if (!m || !m.id) continue;
         const id = String(m.id).toLowerCase();
         const ocrLower = (m.ocrText || '').toLowerCase();
-        const filePath = path.join(memesDir, m.fileName);
+        const signedName = m.signedFileName || m.fileName;
+        const candidatePaths = [
+          path.join(memesDir, signedName),
+          path.join(memesDir, m.fileName)
+        ];
+        const filePath = candidatePaths.find(p => fs.existsSync(p)) || candidatePaths[0];
 
         const words = (ocrLower + ' ' + (m.description || '').toLowerCase())
           .replace(/[^a-zа-яё0-9]+/gi, ' ')
@@ -184,11 +189,17 @@ export function loadCatalogMemes(): Record<string, MemeItem> {
           mediaUrl: filePath,
           filePath,
           badgeEmoji: '🖼️',
-          keywords: Array.from(new Set([id, id.slice(0, 8), m.fileName, ocrLower, ...words]))
+          keywords: Array.from(new Set([id, id.slice(0, 8), m.fileName, signedName, ocrLower, ...words]))
         };
 
         result[id] = item;
         result[id.slice(0, 8)] = item;
+
+        // Индексация по названию подписанного файла и чистому имени
+        if (signedName) {
+          result[signedName.toLowerCase()] = item;
+          result[signedName.replace(/\.jpe?g$/i, '').toLowerCase()] = item;
+        }
 
         // Нормализованный текст без знаков препинания
         const cleanOcr = ocrLower.replace(/[^a-zа-яё0-9]+/gi, ' ').trim();
@@ -197,6 +208,11 @@ export function loadCatalogMemes(): Record<string, MemeItem> {
           result[cleanOcr.replace(/\s+/g, '_')] = item;
           result[cleanOcr.replace(/\s+/g, '-')] = item;
           result[cleanOcr.replace(/\s+/g, '')] = item;
+        }
+
+        // Индексация по ключевым фразам
+        for (const w of words) {
+          if (!result[w]) result[w] = item;
         }
 
         // Популярные короткие псевдонимы по смыслу
